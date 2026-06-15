@@ -6,6 +6,7 @@ from pathlib import Path
 
 @dataclass
 class HtmlComponent:
+    """An OLX html component referencing an external .html file."""
     url_name: str
     display_name: str
     content: str = "<p>Test content</p>"
@@ -13,6 +14,7 @@ class HtmlComponent:
 
 @dataclass
 class VideoComponent:
+    """An OLX video component with a YouTube ID."""
     url_name: str
     display_name: str
     youtube_id: str = "dQw4w9WgXcQ"
@@ -20,13 +22,15 @@ class VideoComponent:
 
 @dataclass
 class Vertical:
+    """An OLX vertical (unit) containing html/video components."""
     url_name: str
     display_name: str
-    components: list = field(default_factory=list)
+    components: list[HtmlComponent | VideoComponent] = field(default_factory=list)
 
 
 @dataclass
 class Sequential:
+    """An OLX sequential (subsection) containing verticals."""
     url_name: str
     display_name: str
     verticals: list[Vertical] = field(default_factory=list)
@@ -34,20 +38,29 @@ class Sequential:
 
 @dataclass
 class Chapter:
+    """An OLX chapter (section) containing sequentials."""
     url_name: str
     display_name: str
     sequentials: list[Sequential] = field(default_factory=list)
 
 
+    #TODO: Probably would make more sense to modulate XML structure of an OLX course with its own class
 class OLXFixtureBuilder:
-    def __init__(self, root: Path):
+    """Writes a valid OLX directory tree from a dataclass course description."""
+
+    def __init__(self, root: Path) -> None:
+        """
+        Args:
+            root: Directory to write the OLX tree into. Wiped on each build().
+        """
         self.root = root
-        self.course_id = "TEST101"
-        self.course_name = "Test Course"
+        self.course_id: str = "TEST101"
+        self.course_name: str = "Test Course"
         self.chapters: list[Chapter] = []
         self.static_files: dict[str, bytes] = {}
 
     def build(self) -> Path:
+        """Write the OLX tree to self.root and return it."""
         shutil.rmtree(self.root, ignore_errors=True)
         self.root.mkdir(parents=True, exist_ok=True)
         self._write_course_xml()
@@ -59,12 +72,15 @@ class OLXFixtureBuilder:
             (static / name).write_bytes(data)
         return self.root
 
-    def as_tar(self, out: Path) -> Path:
+    def as_tar(self, out: Path | None = None) -> Path:
+        """Package self.root as a .tar.gz. Defaults to alongside self.root."""
+        if out is None:
+            out = self.root.parent / f"{self.root.name}.tar.gz"
         with tarfile.open(out, "w:gz") as tar:
             tar.add(self.root, arcname=self.root.name)
         return out
 
-    def _write_course_xml(self):
+    def _write_course_xml(self) -> None:
         d = self.root / "course"
         d.mkdir(exist_ok=True)
         (d / "course.xml").write_text(
@@ -75,7 +91,7 @@ class OLXFixtureBuilder:
             f'<course display_name="{self.course_name}" course="{self.course_id}">\n  {chapter_tags}\n</course>'
         )
 
-    def _write_chapter(self, ch: Chapter):
+    def _write_chapter(self, ch: Chapter) -> None:
         d = self.root / "chapter"
         d.mkdir(exist_ok=True)
         seq_tags = "\n  ".join(f'<sequential url_name="{s.url_name}"/>' for s in ch.sequentials)
@@ -85,7 +101,7 @@ class OLXFixtureBuilder:
         for seq in ch.sequentials:
             self._write_sequential(seq)
 
-    def _write_sequential(self, seq: Sequential):
+    def _write_sequential(self, seq: Sequential) -> None:
         d = self.root / "sequential"
         d.mkdir(exist_ok=True)
         vert_tags = "\n  ".join(f'<vertical url_name="{v.url_name}"/>' for v in seq.verticals)
@@ -95,7 +111,7 @@ class OLXFixtureBuilder:
         for vert in seq.verticals:
             self._write_vertical(vert)
 
-    def _write_vertical(self, vert: Vertical):
+    def _write_vertical(self, vert: Vertical) -> None:
         d = self.root / "vertical"
         d.mkdir(exist_ok=True)
         comp_tags = []
@@ -112,7 +128,7 @@ class OLXFixtureBuilder:
             + "\n</vertical>"
         )
 
-    def _write_html(self, c: HtmlComponent):
+    def _write_html(self, c: HtmlComponent) -> None:
         d = self.root / "html"
         d.mkdir(exist_ok=True)
         (d / f"{c.url_name}.xml").write_text(
@@ -120,7 +136,7 @@ class OLXFixtureBuilder:
         )
         (d / f"{c.url_name}.html").write_text(c.content)
 
-    def _write_video(self, c: VideoComponent):
+    def _write_video(self, c: VideoComponent) -> None:
         d = self.root / "video"
         d.mkdir(exist_ok=True)
         (d / f"{c.url_name}.xml").write_text(

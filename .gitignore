@@ -3,3 +3,4 @@
 .git
 plan.md
 tests/fixtures/generated/
+tests/fixtures/*.tar.gz
