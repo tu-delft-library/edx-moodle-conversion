@@ -2,7 +2,7 @@ import logging
 from pathlib import Path
 from typing import Optional
 
-log = logging.getLogger("owc.parser")
+log = logging.getLogger("ocw.parser")
 
 
 class OLXCourse:

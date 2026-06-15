@@ -1,9 +1,9 @@
 import logging
 from pathlib import Path
 
-from owc.parser import OLXCourse
+from ocw.parser import OLXCourse
 
-log = logging.getLogger("owc.converter")
+log = logging.getLogger("ocw.converter")
 
 MOODLE_VERSION = "2025100601"
 

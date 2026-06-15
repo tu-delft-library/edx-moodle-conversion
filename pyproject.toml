@@ -1,5 +1,5 @@
 [project]
-name = "owc"
+name = "ocw"
 version = "0.1.0"
 description = "OpenEdX OLX → Moodle MBZ converter"
 authors = [
@@ -10,7 +10,7 @@ requires-python = ">=3.11"
 dependencies = []
 
 [project.scripts]
-owc = "owc.cli:main"
+ocw = "ocw.cli:main"
 
 [build-system]
 requires = ["poetry-core>=2.0.0,<3.0.0"]

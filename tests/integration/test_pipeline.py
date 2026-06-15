@@ -2,8 +2,8 @@ import tarfile
 
 import pytest
 
-from owc.converter import MBZBuilder
-from owc.parser import OLXCourse
+from ocw.converter import MBZBuilder
+from ocw.parser import OLXCourse
 
 
 def test_olxcourse_instantiates(minimal_fixture):
