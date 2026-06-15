@@ -1,0 +1,5 @@
+.venv
+.claude
+.git
+plan.md
+tests/fixtures/generated/
