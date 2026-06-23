@@ -44,7 +44,6 @@ class Chapter:
     sequentials: list[Sequential] = field(default_factory=list)
 
 
-    #TODO: Probably would make more sense to modulate XML structure of an OLX course with its own class
 class OLXFixtureBuilder:
     """Writes a valid OLX directory tree from a dataclass course description."""
 

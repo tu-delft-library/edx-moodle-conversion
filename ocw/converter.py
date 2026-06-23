@@ -6,6 +6,7 @@ from ocw.parser import OLXCourse
 log = logging.getLogger("ocw.converter")
 
 #INFO: Cross refrence to docker image
+#FIX: Move to a config file .py
 MOODLE_VERSION = "2025100601"
 
 
