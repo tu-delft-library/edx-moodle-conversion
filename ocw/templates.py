@@ -148,6 +148,52 @@ SECTION_XML = """\
   <timemodified>{ts}</timemodified>
 </section>"""
 
+COURSE_ROLES_XML = '<?xml version="1.0" encoding="UTF-8"?>\n<roles>\n  <role_overrides/>\n  <role_assignments/>\n</roles>'
+COURSE_FILTERS_XML = '<?xml version="1.0" encoding="UTF-8"?>\n<filters>\n  <filter_actives/>\n  <filter_configs/>\n</filters>'
+COURSE_INFOREF_XML = '<?xml version="1.0" encoding="UTF-8"?>\n<inforef/>'
+COURSE_COMPLETION_DEFAULTS_XML = '<?xml version="1.0" encoding="UTF-8"?>\n<course_completion_defaults/>'
+COURSE_ENROLMENTS_XML = """\
+<?xml version="1.0" encoding="UTF-8"?>
+<enrolments>
+  <enrols>
+    <enrol id="1">
+      <enrol>manual</enrol>
+      <status>0</status>
+      <name>$@NULL@$</name>
+      <enrolperiod>0</enrolperiod>
+      <enrolstartdate>0</enrolstartdate>
+      <enrolenddate>0</enrolenddate>
+      <expirynotify>0</expirynotify>
+      <expirythreshold>86400</expirythreshold>
+      <notifyall>0</notifyall>
+      <password>$@NULL@$</password>
+      <cost>$@NULL@$</cost>
+      <currency>$@NULL@$</currency>
+      <role>0</role>
+      <customint1>$@NULL@$</customint1>
+      <customint2>$@NULL@$</customint2>
+      <customint3>$@NULL@$</customint3>
+      <customint4>$@NULL@$</customint4>
+      <customint5>$@NULL@$</customint5>
+      <customint6>$@NULL@$</customint6>
+      <customint7>$@NULL@$</customint7>
+      <customint8>$@NULL@$</customint8>
+      <customchar1>$@NULL@$</customchar1>
+      <customchar2>$@NULL@$</customchar2>
+      <customchar3>$@NULL@$</customchar3>
+      <customdec1>$@NULL@$</customdec1>
+      <customdec2>$@NULL@$</customdec2>
+      <customtext1>$@NULL@$</customtext1>
+      <customtext2>$@NULL@$</customtext2>
+      <customtext3>$@NULL@$</customtext3>
+      <customtext4>$@NULL@$</customtext4>
+      <timecreated>{ts}</timecreated>
+      <timemodified>{ts}</timemodified>
+      <userinstances/>
+    </enrol>
+  </enrols>
+</enrolments>"""
+
 ACTIVITY_GRADES_XML = '<?xml version="1.0" encoding="UTF-8"?>\n<activity_gradebook/>'
 ACTIVITY_GRADE_HISTORY_XML = '<?xml version="1.0" encoding="UTF-8"?>\n<grade_history/>'
 ACTIVITY_ROLES_XML = '<?xml version="1.0" encoding="UTF-8"?>\n<roles/>'

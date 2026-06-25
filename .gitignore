@@ -10,3 +10,4 @@ tests/fixtures/[0-9]_*/
 poetry.lock
 info.md
 CLAUDE.md
+ocw.log 

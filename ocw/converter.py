@@ -149,10 +149,17 @@ class MBZBuilder:
             (tmp / name).write_text(content, encoding="utf-8")
 
     def _write_course_xml(self, tmp: Path, c: Course, ts: int) -> None:
-        """Write course/course.xml."""
-        (tmp / "course").mkdir(exist_ok=True)
-        xml = templates.COURSE_XML.format(course_id=esc(c.course_id), course_name=esc(c.course_name), ts=ts)
-        (tmp / "course" / "course.xml").write_text(xml, encoding="utf-8")
+        d = tmp / "course"
+        d.mkdir(exist_ok=True)
+        (d / "course.xml").write_text(
+            templates.COURSE_XML.format(course_id=esc(c.course_id), course_name=esc(c.course_name), ts=ts),
+            encoding="utf-8",
+        )
+        (d / "roles.xml").write_text(templates.COURSE_ROLES_XML, encoding="utf-8")
+        (d / "filters.xml").write_text(templates.COURSE_FILTERS_XML, encoding="utf-8")
+        (d / "inforef.xml").write_text(templates.COURSE_INFOREF_XML, encoding="utf-8")
+        (d / "completiondefaults.xml").write_text(templates.COURSE_COMPLETION_DEFAULTS_XML, encoding="utf-8")
+        (d / "enrolments.xml").write_text(templates.COURSE_ENROLMENTS_XML.format(ts=ts), encoding="utf-8")
 
     def _write_section(self, tmp: Path, sec: dict, idx: int, ts: int) -> None:
         """Write sections/section_{id}/section.xml and inforef.xml."""

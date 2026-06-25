@@ -125,10 +125,7 @@ def _parse(mbz_path, entry):
 @pytest.mark.parametrize("path", [
     "moodle_backup.xml",
     "course/course.xml",
-    pytest.param(
-        "course/inforef.xml",
-        marks=pytest.mark.xfail(strict=True, reason="course/inforef.xml not yet generated"),
-    ),
+    "course/inforef.xml",
     "roles.xml", "gradebook.xml", "grade_history.xml",
     "groups.xml", "outcomes.xml", "questions.xml", "scales.xml",
     "files.xml",
