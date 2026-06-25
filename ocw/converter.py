@@ -16,7 +16,6 @@ from ocw.utils import _Counter, esc, rewrite_static_urls, sha1_of
 load_dotenv()
 MOODLE_VERSION = os.getenv("MOODLE_VERSION", "2025100601")
 
-#TODO: Pydocs for all and proper hinting for all
 
 class MBZBuilder:
     """Converts a parsed Course into a Moodle MBZ backup archive."""
@@ -37,6 +36,7 @@ class MBZBuilder:
             shutil.rmtree(tmp, ignore_errors=True)
 
     def _populate(self, tmp: Path) -> None:
+        """Build the full MBZ directory tree in tmp."""
         ids = _Counter()
         ts = int(time.time())
         c = self.course
@@ -59,14 +59,13 @@ class MBZBuilder:
                         pages.append({"id": mod_id, "ctx": ctx_id, "sec_id": sections[i]["id"], "name": comp["display_name"], "content": content})
                         sections[i]["modules"].append(mod_id)
 
-        #TODO: Descriptive comment
+        # sha1 + mime metadata for files.xml and files/ dir
         file_entries = []
         for name, path in c.static_files.items():
             sha1 = sha1_of(path)
             mime = mimetypes.guess_type(name)[0] or "application/octet-stream"
             file_entries.append({"id": ids.next(), "sha1": sha1, "name": name, "size": path.stat().st_size, "mime": mime, "path": path})
 
-        #TODO: Descriptive comment
         self._write_moodle_backup(tmp, c, sections, pages, ts)
         self._write_course_xml(tmp, c, ts)
         for idx, sec in enumerate(sections):
@@ -77,6 +76,7 @@ class MBZBuilder:
         self._copy_static(tmp, file_entries)
 
     def _write_moodle_backup(self, tmp: Path, c: Course, sections: list, pages: list, ts: int) -> None:
+        """Write moodle_backup.xml with activity and section manifests."""
         acts = "\n".join(
             f'      <activity><moduleid>{p["id"]}</moduleid><sectionid>{p["sec_id"]}</sectionid>'
             f'<modulename>page</modulename><title>{esc(p["name"])}</title>'
@@ -99,11 +99,13 @@ class MBZBuilder:
         (tmp / "moodle_backup.xml").write_text(xml, encoding="utf-8")
 
     def _write_course_xml(self, tmp: Path, c: Course, ts: int) -> None:
+        """Write course/course.xml."""
         (tmp / "course").mkdir(exist_ok=True)
         xml = templates.COURSE_XML.format(course_id=esc(c.course_id), course_name=esc(c.course_name), ts=ts)
         (tmp / "course" / "course.xml").write_text(xml, encoding="utf-8")
 
     def _write_section(self, tmp: Path, sec: dict, idx: int) -> None:
+        """Write sections/section_{id}/section.xml."""
         d = tmp / "sections" / f"section_{sec['id']}"
         d.mkdir(parents=True, exist_ok=True)
         xml = templates.SECTION_XML.format(
@@ -115,6 +117,7 @@ class MBZBuilder:
         (d / "section.xml").write_text(xml, encoding="utf-8")
 
     def _write_page(self, tmp: Path, page: dict, ts: int) -> None:
+        """Write activities/page_{id}/page.xml and inforef.xml."""
         d = tmp / "activities" / f"page_{page['id']}"
         d.mkdir(parents=True, exist_ok=True)
         xml = templates.PAGE_XML.format(id=page["id"], ctx=page["ctx"], name=esc(page["name"]), content=esc(page["content"]), ts=ts)
@@ -122,6 +125,7 @@ class MBZBuilder:
         (d / "inforef.xml").write_text('<?xml version="1.0" encoding="UTF-8"?>\n<inforef/>', encoding="utf-8")
 
     def _write_files_xml(self, tmp: Path, file_entries: list, ts: int) -> None:
+        """Write files.xml listing all static asset metadata."""
         entries = "\n".join(
             templates.FILE_ENTRY.format(id=f["id"], sha1=f["sha1"], name=esc(f["name"]), size=f["size"], mime=esc(f["mime"]), ts=ts)
             for f in file_entries
@@ -132,6 +136,7 @@ class MBZBuilder:
         )
 
     def _copy_static(self, tmp: Path, file_entries: list) -> None:
+        """Copy static assets into files/{sha1[:2]}/{sha1}."""
         files_dir = tmp / "files"
         for f in file_entries:
             dest = files_dir / f["sha1"][:2]
