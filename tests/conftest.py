@@ -32,3 +32,19 @@ def simple_course(olx_builder):
         ])
     ]
     return olx_builder.build()
+
+
+INTRO_COURSE = Path(__file__).parent / "fixtures" / "Intro To Open edX Course.tar.gz"
+CORE_COURSE  = Path(__file__).parent / "fixtures" / "Core Contributor Onboarding.tar.gz"
+
+@pytest.fixture
+def intro_course_path():
+    if not INTRO_COURSE.exists():
+        pytest.skip("real tarball not present")
+    return INTRO_COURSE
+
+@pytest.fixture
+def core_course_path():
+    if not CORE_COURSE.exists():
+        pytest.skip("real tarball not present")
+    return CORE_COURSE

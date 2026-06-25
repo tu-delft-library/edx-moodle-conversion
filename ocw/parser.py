@@ -1,7 +1,5 @@
 import logging
 import re
-import tarfile
-import tempfile
 from pathlib import Path
 from typing import Optional
 from xml.etree import ElementTree as ET
@@ -30,19 +28,18 @@ class Course:
         General flow takes the url-links from the parent xml file, and searches for child elements.
         These are saved in this intermediate class as dictionaries roughly matching the original structure of the OLX format.
         """
-        # base_path = #self._resolve_root()
-
         stub_path = self.root / "course.xml"
         if not stub_path.exists():
-            stub_path = base_path / "course" / "course.xml"
+            stub_path = self.root / "course" / "course.xml"
 
         stub = ET.parse(stub_path).getroot()
-        url_name = stub.get("course", "")
+        url_name = stub.get("url_name", "course")
+        self.course_id = stub.get("course", "")
 
-        course = ET.parse(stub_path / "course" / f"{url_name}.xml").getroot()
+        course = ET.parse(self.root / "course" / f"{url_name}.xml").getroot()
         self.course_name = course.get("display_name", "")
 
-        static_dir = base_path / "static"
+        static_dir = self.root / "static"
         # Record all static content: images
         if static_dir.is_dir():
             for f in static_dir.iterdir():
@@ -51,13 +48,11 @@ class Course:
 
         # Record all chapters, which contain the XML linking to all sequences (sub sections)
         for ref in course.findall("chapter"):
-            ch = self._parse_chapter(olx, ref.get("url_name", ""))
+            ch = self._parse_chapter(self.root, ref.get("url_name", ""))
             if ch is not None:
                 self.chapters.append(ch)
 
-    # def _resolve_root(self) -> Path:
-    #     """Figures out the root path of the import OLX file"""
-    #
+
     def _parse_chapter(self, root: Path, url_name: str) -> Optional[dict]:
         path = root / "chapter" / f"{url_name}.xml"
         if not path.exists():

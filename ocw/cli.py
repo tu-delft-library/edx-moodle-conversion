@@ -4,7 +4,7 @@ import sys
 from pathlib import Path
 
 from ocw.converter import MBZBuilder
-from ocw.parser import OLXCourse
+from ocw.parser import Course
 
 
 def _setup_logging(debug: bool, log_path: Path) -> None:
@@ -33,7 +33,7 @@ def main() -> None:
     _setup_logging(args.debug, Path("ocw.log"))
 
     # The course in question
-    course = OLXCourse(args.olx_path)
+    course = Course(args.olx_path)
     course.parse()
 
     # MBZ output

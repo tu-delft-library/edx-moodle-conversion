@@ -5,6 +5,7 @@ plan.md
 todo_updated.md
 tests/fixtures/generated/
 tests/fixtures/*.tar.gz
+tests/fixtures/[0-9]_*/
 poetry.lock
 info.md
 CLAUDE.md

@@ -1,4 +1,4 @@
 from ocw.converter import MBZBuilder
-from ocw.parser import OLXCourse
+from ocw.parser import Course
 
-__all__ = ["OLXCourse", "MBZBuilder"]
+__all__ = ["Course", "MBZBuilder"]
