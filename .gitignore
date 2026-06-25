@@ -1,8 +1,9 @@
 .venv
 .claude
 .git
+.env
 plan.md
-todo_updated.md
+plan_update.md
 tests/fixtures/generated/
 tests/fixtures/*.tar.gz
 tests/fixtures/[0-9]_*/

@@ -14,7 +14,7 @@ from ocw.parser import Course
 from ocw.utils import _Counter, esc, rewrite_static_urls, sha1_of
 
 load_dotenv()
-MOODLE_VERSION = os.getenv("MOODLE_VERSION", "2025100601")
+MOODLE_VERSION = os.getenv("MOODLE_VERSION", "2024042212")
 
 
 class MBZBuilder:
@@ -56,7 +56,7 @@ class MBZBuilder:
                             content = f'<iframe width="560" height="315" src="https://www.youtube.com/embed/{yt}" allowfullscreen></iframe>'
                         else:
                             raise ValueError(f"unsupported component type: {comp['type']}")
-                        pages.append({"id": mod_id, "ctx": ctx_id, "sec_id": sections[i]["id"], "name": comp["display_name"], "content": content})
+                        pages.append({"id": mod_id, "ctx": ctx_id, "sec_id": sections[i]["id"], "sec_num": i + 1, "name": comp["display_name"], "content": content})
                         sections[i]["modules"].append(mod_id)
 
         # sha1 + mime metadata for files.xml and files/ dir
@@ -67,9 +67,10 @@ class MBZBuilder:
             file_entries.append({"id": ids.next(), "sha1": sha1, "name": name, "size": path.stat().st_size, "mime": mime, "path": path})
 
         self._write_moodle_backup(tmp, c, sections, pages, ts)
+        self._write_static_manifests(tmp)
         self._write_course_xml(tmp, c, ts)
         for idx, sec in enumerate(sections):
-            self._write_section(tmp, sec, idx + 1)
+            self._write_section(tmp, sec, idx + 1, ts)
         for page in pages:
             self._write_page(tmp, page, ts)
         self._write_files_xml(tmp, file_entries, ts)
@@ -88,6 +89,31 @@ class MBZBuilder:
             f'<directory>sections/section_{s["id"]}</directory></section>'
             for s in sections
         )
+        root_settings = [
+            ("filename", esc(c.course_name)),
+            ("imscc11", "0"), ("users", "0"), ("anonymize", "0"),
+            ("role_assignments", "0"), ("activities", "1"), ("blocks", "1"),
+            ("filters", "1"), ("comments", "0"), ("badges", "0"),
+            ("calendarevents", "0"), ("userscompletion", "0"), ("logs", "0"),
+            ("grade_histories", "0"), ("questionbank", "1"), ("groups", "1"),
+            ("competencies", "0"), ("customfield", "1"),
+        ]
+        setting_lines = [
+            f'      <setting><level>root</level><name>{k}</name><value>{v}</value></setting>'
+            for k, v in root_settings
+        ]
+        for sec in sections:
+            sid = f"section_{sec['id']}"
+            setting_lines += [
+                f'      <setting><level>section</level><section>{sid}</section><name>{sid}_included</name><value>1</value></setting>',
+                f'      <setting><level>section</level><section>{sid}</section><name>{sid}_userinfo</name><value>0</value></setting>',
+            ]
+        for page in pages:
+            aid = f"page_{page['id']}"
+            setting_lines += [
+                f'      <setting><level>activity</level><activity>{aid}</activity><name>{aid}_included</name><value>1</value></setting>',
+                f'      <setting><level>activity</level><activity>{aid}</activity><name>{aid}_userinfo</name><value>0</value></setting>',
+            ]
         xml = templates.MOODLE_BACKUP.format(
             course_name=esc(c.course_name),
             course_id=esc(c.course_id),
@@ -95,8 +121,22 @@ class MBZBuilder:
             ts=ts,
             acts=acts,
             secs=secs,
+            settings="\n".join(setting_lines),
         )
         (tmp / "moodle_backup.xml").write_text(xml, encoding="utf-8")
+
+    def _write_static_manifests(self, tmp: Path) -> None:
+        """Write required root-level XML stubs that have no OLX equivalent."""
+        for name, content in (
+            ("roles.xml", templates.ROLES_XML),
+            ("gradebook.xml", templates.GRADEBOOK_XML),
+            ("grade_history.xml", templates.GRADE_HISTORY_XML),
+            ("groups.xml", templates.GROUPS_XML),
+            ("outcomes.xml", templates.OUTCOMES_XML),
+            ("questions.xml", templates.QUESTIONS_XML),
+            ("scales.xml", templates.SCALES_XML),
+        ):
+            (tmp / name).write_text(content, encoding="utf-8")
 
     def _write_course_xml(self, tmp: Path, c: Course, ts: int) -> None:
         """Write course/course.xml."""
@@ -104,8 +144,8 @@ class MBZBuilder:
         xml = templates.COURSE_XML.format(course_id=esc(c.course_id), course_name=esc(c.course_name), ts=ts)
         (tmp / "course" / "course.xml").write_text(xml, encoding="utf-8")
 
-    def _write_section(self, tmp: Path, sec: dict, idx: int) -> None:
-        """Write sections/section_{id}/section.xml."""
+    def _write_section(self, tmp: Path, sec: dict, idx: int, ts: int) -> None:
+        """Write sections/section_{id}/section.xml and inforef.xml."""
         d = tmp / "sections" / f"section_{sec['id']}"
         d.mkdir(parents=True, exist_ok=True)
         xml = templates.SECTION_XML.format(
@@ -113,8 +153,10 @@ class MBZBuilder:
             number=idx,
             name=esc(sec["name"]),
             sequence=",".join(str(m) for m in sec["modules"]),
+            ts=ts,
         )
         (d / "section.xml").write_text(xml, encoding="utf-8")
+        (d / "inforef.xml").write_text('<?xml version="1.0" encoding="UTF-8"?>\n<inforef/>', encoding="utf-8")
 
     def _write_page(self, tmp: Path, page: dict, ts: int) -> None:
         """Write activities/page_{id}/page.xml and inforef.xml."""
@@ -123,6 +165,15 @@ class MBZBuilder:
         xml = templates.PAGE_XML.format(id=page["id"], ctx=page["ctx"], name=esc(page["name"]), content=esc(page["content"]), ts=ts)
         (d / "page.xml").write_text(xml, encoding="utf-8")
         (d / "inforef.xml").write_text('<?xml version="1.0" encoding="UTF-8"?>\n<inforef/>', encoding="utf-8")
+        (d / "grades.xml").write_text(templates.ACTIVITY_GRADES_XML, encoding="utf-8")
+        (d / "grade_history.xml").write_text(templates.ACTIVITY_GRADE_HISTORY_XML, encoding="utf-8")
+        (d / "roles.xml").write_text(templates.ACTIVITY_ROLES_XML, encoding="utf-8")
+        (d / "filters.xml").write_text(templates.ACTIVITY_FILTERS_XML, encoding="utf-8")
+        module_xml = templates.MODULE_XML.format(
+            id=page["id"], moodle_version=MOODLE_VERSION,
+            sec_id=page["sec_id"], sec_num=page["sec_num"], ts=ts,
+        )
+        (d / "module.xml").write_text(module_xml, encoding="utf-8")
 
     def _write_files_xml(self, tmp: Path, file_entries: list, ts: int) -> None:
         """Write files.xml listing all static asset metadata."""
