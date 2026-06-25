@@ -1,6 +1,9 @@
 import argparse
 import logging
+import shutil
 import sys
+import tarfile
+import tempfile
 from pathlib import Path
 
 from ocw.converter import MBZBuilder
@@ -22,7 +25,6 @@ def _setup_logging(debug: bool, log_path: Path) -> None:
     log.addHandler(fh)
 
 
-# FIX: Move out to ../main.py
 def main() -> None:
     """CLI entry point: parse an OLX export and write a Moodle MBZ archive."""
     ap = argparse.ArgumentParser(description="Convert OLX course to Moodle MBZ")
@@ -32,9 +34,18 @@ def main() -> None:
     args = ap.parse_args()
     _setup_logging(args.debug, Path("ocw.log"))
 
-    # The course in question
-    course = Course(args.olx_path)
-    course.parse()
+    tmp = None
+    try:
+        olx_path = args.olx_path
+        if olx_path.suffix == ".gz":
+            tmp = Path(tempfile.mkdtemp())
+            with tarfile.open(olx_path) as tar:
+                tar.extractall(tmp)
+            olx_path = next(p for p in tmp.iterdir() if p.is_dir())
 
-    # MBZ output
-    MBZBuilder(course).build(args.output)
+        course = Course(olx_path)
+        course.parse()
+        MBZBuilder(course).build(args.output)
+    finally:
+        if tmp:
+            shutil.rmtree(tmp, ignore_errors=True)
