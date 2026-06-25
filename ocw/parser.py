@@ -1,11 +1,9 @@
 import logging
 import re
 from pathlib import Path
-from typing import Optional
 from xml.etree import ElementTree as ET
 
 log = logging.getLogger("ocw.parser")
-# TODO: Throw an exception for all cases that return None for a url link
 
 
 class Course:
@@ -21,7 +19,7 @@ class Course:
         self.course_id: str = ""
         self.chapters: list[dict] = []
         self.static_files: dict[str, Path] = {}
-        self._b64_tmp_dir: Optional[Path] = None
+        self._b64_tmp_dir: Path | None = None
 
     def parse(self) -> None:
         """Populate course metadata, chapters, and static_files from the OLX tree.
@@ -48,61 +46,48 @@ class Course:
 
         # Record all chapters, which contain the XML linking to all sequences (sub sections)
         for ref in course.findall("chapter"):
-            ch = self._parse_chapter(self.root, ref.get("url_name", ""))
-            if ch is not None:
-                self.chapters.append(ch)
+            self.chapters.append(self._parse_chapter(self.root, ref.get("url_name", "")))
 
 
-    def _parse_chapter(self, root: Path, url_name: str) -> Optional[dict]:
+    def _parse_chapter(self, root: Path, url_name: str) -> dict:
         path = root / "chapter" / f"{url_name}.xml"
         if not path.exists():
-            # NOTE: For future errors: This is specifically an error within the OLX export not the conversion
-            log.warning("Missing Chapter %s", url_name)
-            return None
+            raise FileNotFoundError(f"Missing Chapter XML: {url_name}")
         el = ET.parse(path).getroot()
         sequentials = []
         # So this finds all sequential keys in the XML element, records them
         for ref in el.findall("sequential"):
-            s = self._parse_sequential(root, ref.get("url_name", ""))
-            if s is not None:
-                sequentials.append(s)
+            sequentials.append(self._parse_sequential(root, ref.get("url_name", "")))
         return {
             "url_name": url_name,
             "display_name": el.get("display_name", ""),
             "sequentials": sequentials,
         }
 
-    def _parse_sequential(self, root: Path, url_name: str) -> Optional[dict]:
+    def _parse_sequential(self, root: Path, url_name: str) -> dict:
         path = root / "sequential" / f"{url_name}.xml"
         if not path.exists():
-            # NOTE: For future errors: This is specifically an error within the OLX export not the conversion
-            log.warning("Missing sequential %s", url_name)
-            return None
+            raise FileNotFoundError(f"Missing Sequential XML: {url_name}")
         el = ET.parse(path).getroot()
         verticals = []
         # This finds all the verticles, which are wrappers around the html content that each sub section links to
         for ref in el.findall("vertical"):
-            v = self._parse_vertical(root, ref.get("url_name", ""))
-            if v is not None:
-                verticals.append(v)
+            verticals.append(self._parse_vertical(root, ref.get("url_name", "")))
         return {
             "url_name": url_name,
             "display_name": el.get("display_name", ""),
             "verticals": verticals,
         }
 
-    def _parse_vertical(self, root: Path, url_name: str) -> Optional[dict]:
+    def _parse_vertical(self, root: Path, url_name: str) -> dict:
         path = root / "vertical" / f"{url_name}.xml"
         if not path.exists():
-            log.warning("Missing vertical %s", url_name)
-            return None
+            raise FileNotFoundError(f"Missing Vertical XML: {url_name}")
         el = ET.parse(path).getroot()
         components = []
         for child in el:
             if child.tag == "html":
-                c = self._parse_html(root, child.get("url_name", ""))
-                if c is not None:
-                    components.append(c)
+                components.append(self._parse_html(root, child.get("url_name", "")))
             elif child.tag == "video":
                 # TODO: For future this is more complicated
                 pass
@@ -117,11 +102,10 @@ class Course:
             "components": components,
         }
 
-    def _parse_html(self, root: Path, url_name: str) -> Optional[dict]:
+    def _parse_html(self, root: Path, url_name: str) -> dict:
         path = root / "html" / f"{url_name}.xml"
         if not path.exists():
-            log.warning("missing html %s", url_name)
-            return None
+            raise FileNotFoundError(f"Missing HTML XML: {url_name}")
         el = ET.parse(path).getroot()
         filename = el.get("filename", url_name)
         html_path = root / "html" / f"{filename}.html"
