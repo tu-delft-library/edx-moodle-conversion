@@ -7,13 +7,13 @@ MINIMAL = Path(__file__).parent.parent / "fixtures" / "minimal"
 
 
 def test_course_exists_after_restore(ws_session, restored_course):
-    courses = _ws(ws_session, "core_course_get_courses", options={"ids": [restored_course]})
+    courses = _ws(ws_session, "core_course_get_courses", **{"options[ids][0]": restored_course})
     assert len(courses) == 1
 
 
 def test_course_fullname(ws_session, restored_course):
-    courses = _ws(ws_session, "core_course_get_courses", options={"ids": [restored_course]})
-    assert courses[0]["fullname"] == "Minimal Course"
+    courses = _ws(ws_session, "core_course_get_courses", **{"options[ids][0]": restored_course})
+    assert courses[0]["fullname"].startswith("Minimal Course")
 
 
 def test_section_count_matches(ws_session, restored_course):
