@@ -173,12 +173,15 @@ PAGE_XML = """\
 
 FILE_ENTRY = (
     '  <file id="{id}"><contenthash>{sha1}</contenthash>'
-    '<contextid>1</contextid><component>mod_page</component>'
+    '<contextid>{ctx}</contextid><component>mod_page</component>'
     '<filearea>content</filearea><itemid>0</itemid>'
     '<filepath>/</filepath><filename>{name}</filename>'
     '<filesize>{size}</filesize><mimetype>{mime}</mimetype>'
     '<status>0</status><timecreated>{ts}</timecreated>'
     '<timemodified>{ts}</timemodified><sortorder>0</sortorder>'
     '<userid>2</userid><repositorytype>$@NULL@$</repositorytype>'
-    '<repositoryid>$@NULL@$</repositoryid><reference>$@NULL@$</reference></file>'
+    '<repositoryid>$@NULL@$</repositoryid>'
+    '<source>$@NULL@$</source><author>$@NULL@$</author>'
+    '<license>allrightsreserved</license>'
+    '<reference>$@NULL@$</reference></file>'
 )

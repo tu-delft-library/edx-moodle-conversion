@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<course id="3" contextid="61">
+  <shortname>Facilitating Learning in Synchronous Environments</shortname>
+  <fullname>OER-Facilitating Learning in Synchronous Environments</fullname>
+  <idnumber></idnumber>
+  <summary>&lt;p&gt;Facilitating Learning in Synchronous Environments was developed for BC Campus and is available under a creative commons license.&lt;/p&gt;</summary>
+  <summaryformat>1</summaryformat>
+  <format>topics</format>
+  <showgrades>1</showgrades>
+  <newsitems>5</newsitems>
+  <startdate>1389254400</startdate>
+  <enddate>0</enddate>
+  <marker>0</marker>
+  <maxbytes>78643200</maxbytes>
+  <legacyfiles>0</legacyfiles>
+  <showreports>0</showreports>
+  <visible>1</visible>
+  <groupmode>0</groupmode>
+  <groupmodeforce>0</groupmodeforce>
+  <defaultgroupingid>0</defaultgroupingid>
+  <lang></lang>
+  <theme></theme>
+  <timecreated>1389239343</timecreated>
+  <timemodified>1584488392</timemodified>
+  <requested>0</requested>
+  <enablecompletion>0</enablecompletion>
+  <completionnotify>0</completionnotify>
+  <hiddensections>0</hiddensections>
+  <coursedisplay>0</coursedisplay>
+  <category id="1">
+    <name>OER Courses</name>
+    <description></description>
+  </category>
+  <tags>
+  </tags>
+  <customfields>
+  </customfields>
+</course>

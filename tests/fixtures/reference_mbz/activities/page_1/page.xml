@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<activity id="9" moduleid="48" modulename="page" contextid="85">
+  <page id="9">
+    <name>Sync Session: Develop Rubric  (class) </name>
+    <intro>&lt;p&gt;Sync Session: Develop Rubric (class)&lt;/p&gt;</intro>
+    <introformat>1</introformat>
+    <content>&lt;p&gt;In this synchronous activity we will work as a class to develop a critical analysis rubric to be used when assessing the effectiveness of online synchronous learning activities. You wil use this rubric in Unit 4 to critique a sample synchronous session prior to using it to assess your classmates' synchronous sessions to be delivered as part of Assignment 2.&lt;/p&gt;
+&lt;p&gt;Activity details:&lt;/p&gt;
+&lt;ol&gt;
+&lt;li&gt;The whole class reviews criteria for Assignment 2 presentations and shares key points about rubric design.&lt;/li&gt;
+&lt;li&gt;Each team is given one criterion to flesh out using synchronized break-out spaces.&lt;/li&gt;
+&lt;li&gt;The break-out sessions sections are compiled by instructor and shared using a wiki or other collaborative space (i.e. google docs).&lt;/li&gt;
+&lt;li&gt;The whole class reviews the compiled document in the collaborative space and adds comments.&lt;/li&gt;
+&lt;/ol&gt;
+&lt;p&gt;Watch the Latest News bulletin for scheduling information for this session. It will be scheduled for week 2 for approximately 60 minutes.&lt;/p&gt;
+&lt;p&gt;&lt;/p&gt;
+&lt;p&gt;&lt;em&gt;add link to sync session once platform has been determined&lt;/em&gt;&lt;/p&gt;</content>
+    <contentformat>1</contentformat>
+    <legacyfiles>0</legacyfiles>
+    <legacyfileslast>$@NULL@$</legacyfileslast>
+    <display>5</display>
+    <displayoptions>a:2:{s:12:"printheading";s:1:"1";s:10:"printintro";s:1:"0";}</displayoptions>
+    <revision>6</revision>
+    <timemodified>1391048011</timemodified>
+  </page>
+</activity>

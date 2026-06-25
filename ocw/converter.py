@@ -1,6 +1,7 @@
 import logging
 import mimetypes
 import os
+import re
 import shutil
 import tarfile
 import tempfile
@@ -51,20 +52,29 @@ class MBZBuilder:
                         mod_id, ctx_id = ids.next(), ids.next()
                         if comp["type"] == "html":
                             content = rewrite_static_urls(comp["content"])
+                            file_refs = re.findall(r'@@PLUGINFILE@@/([^"\'>\s]+)', content)
                         elif comp["type"] == "video":
                             yt = esc(comp["youtube_id"])
                             content = f'<iframe width="560" height="315" src="https://www.youtube.com/embed/{yt}" allowfullscreen></iframe>'
+                            file_refs = []
                         else:
                             raise ValueError(f"unsupported component type: {comp['type']}")
-                        pages.append({"id": mod_id, "ctx": ctx_id, "sec_id": sections[i]["id"], "sec_num": i + 1, "name": comp["display_name"], "content": content})
+                        pages.append({"id": mod_id, "ctx": ctx_id, "sec_id": sections[i]["id"], "sec_num": i + 1, "name": comp["display_name"], "content": content, "file_refs": file_refs, "file_ids": []})
                         sections[i]["modules"].append(mod_id)
 
-        # sha1 + mime metadata for files.xml and files/ dir
+        # sha1 + mime metadata for files.xml — one entry per (page, filename) with correct ctx
         file_entries = []
-        for name, path in c.static_files.items():
-            sha1 = sha1_of(path)
-            mime = mimetypes.guess_type(name)[0] or "application/octet-stream"
-            file_entries.append({"id": ids.next(), "sha1": sha1, "name": name, "size": path.stat().st_size, "mime": mime, "path": path})
+        for page in pages:
+            for name in page["file_refs"]:
+                path = c.static_files.get(name)
+                if path is None:
+                    self.log.warning("page %s references missing static file: %s", page["id"], name)
+                    continue
+                sha1 = sha1_of(path)
+                mime = mimetypes.guess_type(name)[0] or "application/octet-stream"
+                fid = ids.next()
+                file_entries.append({"id": fid, "sha1": sha1, "name": name, "size": path.stat().st_size, "mime": mime, "path": path, "ctx": page["ctx"]})
+                page["file_ids"].append(fid)
 
         self._write_moodle_backup(tmp, c, sections, pages, ts)
         self._write_static_manifests(tmp)
@@ -164,7 +174,12 @@ class MBZBuilder:
         d.mkdir(parents=True, exist_ok=True)
         xml = templates.PAGE_XML.format(id=page["id"], ctx=page["ctx"], name=esc(page["name"]), content=esc(page["content"]), ts=ts)
         (d / "page.xml").write_text(xml, encoding="utf-8")
-        (d / "inforef.xml").write_text('<?xml version="1.0" encoding="UTF-8"?>\n<inforef/>', encoding="utf-8")
+        if page["file_ids"]:
+            file_lines = "\n".join(f"    <file><id>{fid}</id></file>" for fid in page["file_ids"])
+            inforef = f'<?xml version="1.0" encoding="UTF-8"?>\n<inforef>\n  <fileref>\n{file_lines}\n  </fileref>\n</inforef>'
+        else:
+            inforef = '<?xml version="1.0" encoding="UTF-8"?>\n<inforef/>'
+        (d / "inforef.xml").write_text(inforef, encoding="utf-8")
         (d / "grades.xml").write_text(templates.ACTIVITY_GRADES_XML, encoding="utf-8")
         (d / "grade_history.xml").write_text(templates.ACTIVITY_GRADE_HISTORY_XML, encoding="utf-8")
         (d / "roles.xml").write_text(templates.ACTIVITY_ROLES_XML, encoding="utf-8")
@@ -178,7 +193,7 @@ class MBZBuilder:
     def _write_files_xml(self, tmp: Path, file_entries: list, ts: int) -> None:
         """Write files.xml listing all static asset metadata."""
         entries = "\n".join(
-            templates.FILE_ENTRY.format(id=f["id"], sha1=f["sha1"], name=esc(f["name"]), size=f["size"], mime=esc(f["mime"]), ts=ts)
+            templates.FILE_ENTRY.format(id=f["id"], sha1=f["sha1"], name=esc(f["name"]), size=f["size"], mime=esc(f["mime"]), ctx=f["ctx"], ts=ts)
             for f in file_entries
         )
         (tmp / "files.xml").write_text(

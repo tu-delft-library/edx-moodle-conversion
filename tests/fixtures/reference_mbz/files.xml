@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<files>
+  <file id="40">
+    <contenthash>cdbfdb7902b7ace15ca96da62c5124fe40cb0e14</contenthash>
+    <contextid>69</contextid>
+    <component>mod_page</component>
+    <filearea>content</filearea>
+    <itemid>0</itemid>
+    <filepath>/</filepath>
+    <filename>example.png</filename>
+    <userid>2</userid>
+    <filesize>1234</filesize>
+    <mimetype>image/png</mimetype>
+    <status>0</status>
+    <timecreated>1392597993</timecreated>
+    <timemodified>1392597993</timemodified>
+    <source>$@NULL@$</source>
+    <author>$@NULL@$</author>
+    <license>allrightsreserved</license>
+    <sortorder>0</sortorder>
+    <repositorytype>$@NULL@$</repositorytype>
+    <repositoryid>$@NULL@$</repositoryid>
+    <reference>$@NULL@$</reference>
+  </file>
+</files>

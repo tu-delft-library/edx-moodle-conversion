@@ -1,4 +1,7 @@
+import re
 import tarfile
+from xml.etree import ElementTree as ET
+
 import pytest
 
 from ocw.converter import MBZBuilder
@@ -120,4 +123,61 @@ def test_script2_unit_count_parity(minimal_fixture, tmp_path):
     with tarfile.open(out) as tar:
         page_count = sum(1 for m in tar.getmembers() if m.name.endswith("page.xml"))
     assert page_count == olx_count
+
+
+# ── F: cross-file integrity ───────────────────────────────────────────────────
+
+def _build_minimal(tmp_path, minimal_fixture):
+    out = tmp_path / "course.mbz"
+    course = Course(minimal_fixture)
+    course.parse()
+    MBZBuilder(course).build(out)
+    return out
+
+
+def test_section_sequence_ids_have_activity_dirs(minimal_fixture, tmp_path):
+    out = _build_minimal(tmp_path, minimal_fixture)
+    with tarfile.open(out) as tar:
+        names = set(tar.getnames())
+        section_paths = [n for n in names if re.match(r"sections/section_\d+/section\.xml", n)]
+        for path in section_paths:
+            seq = ET.parse(tar.extractfile(path)).getroot().findtext("sequence") or ""
+            for mod_id in filter(None, (s.strip() for s in seq.split(","))):
+                assert any(n.startswith(f"activities/page_{mod_id}/") for n in names), \
+                    f"section sequence references page_{mod_id} but no matching activity dir"
+
+
+def test_module_sectionid_is_real_section(minimal_fixture, tmp_path):
+    out = _build_minimal(tmp_path, minimal_fixture)
+    with tarfile.open(out) as tar:
+        names = set(tar.getnames())
+        section_ids = {
+            re.search(r"section_(\d+)", n).group(1)
+            for n in names if re.match(r"sections/section_\d+/section\.xml", n)
+        }
+        for path in [n for n in names if re.match(r"activities/page_\d+/module\.xml", n)]:
+            sec_id = ET.parse(tar.extractfile(path)).getroot().findtext("sectionid")
+            assert sec_id in section_ids, f"{path}: sectionid={sec_id} has no matching section dir"
+
+
+def test_backup_manifest_activity_dirs_exist(minimal_fixture, tmp_path):
+    out = _build_minimal(tmp_path, minimal_fixture)
+    with tarfile.open(out) as tar:
+        names = set(tar.getnames())
+        backup = ET.parse(tar.extractfile("moodle_backup.xml")).getroot()
+    for activity in backup.findall(".//contents/activities/activity"):
+        d = activity.findtext("directory")
+        assert any(n.startswith(d + "/") for n in names), \
+            f"moodle_backup.xml lists '{d}' but dir doesn't exist"
+
+
+def test_backup_manifest_section_dirs_exist(minimal_fixture, tmp_path):
+    out = _build_minimal(tmp_path, minimal_fixture)
+    with tarfile.open(out) as tar:
+        names = set(tar.getnames())
+        backup = ET.parse(tar.extractfile("moodle_backup.xml")).getroot()
+    for section in backup.findall(".//contents/sections/section"):
+        d = section.findtext("directory")
+        assert any(n.startswith(d + "/") for n in names), \
+            f"moodle_backup.xml lists '{d}' but dir doesn't exist"
 
