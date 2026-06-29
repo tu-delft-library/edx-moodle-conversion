@@ -175,6 +175,8 @@ class MBZBuilder:
         (d / "section.xml").write_text(xml, encoding="utf-8")
         (d / "inforef.xml").write_text('<?xml version="1.0" encoding="UTF-8"?>\n<inforef/>', encoding="utf-8")
 
+    #TODO: Too many conditionals can make it hard to enforce XML count parity, so think of a better way to handle different sub structures for the same XML tag
+    # OpenEdx is very incosistent 
     def _write_page(self, tmp: Path, page: dict, ts: int) -> None:
         """Write activities/page_{id}/page.xml and inforef.xml."""
         d = tmp / "activities" / f"page_{page['id']}"

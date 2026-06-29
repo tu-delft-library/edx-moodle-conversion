@@ -1,3 +1,4 @@
+# TODO: Not sure if this is an appropriate location for templates to live
 MOODLE_BACKUP = """\
 <?xml version="1.0" encoding="UTF-8"?>
 <moodle_backup>
@@ -89,7 +90,9 @@ GRADEBOOK_XML = """\
 
 GRADE_HISTORY_XML = '<?xml version="1.0" encoding="UTF-8"?>\n<grade_history>\n  <grade_grades/>\n</grade_history>'
 
-GROUPS_XML = '<?xml version="1.0" encoding="UTF-8"?>\n<groups>\n  <groupings/>\n</groups>'
+GROUPS_XML = (
+    '<?xml version="1.0" encoding="UTF-8"?>\n<groups>\n  <groupings/>\n</groups>'
+)
 
 OUTCOMES_XML = '<?xml version="1.0" encoding="UTF-8"?>\n<outcomes_definition/>'
 
@@ -151,7 +154,9 @@ SECTION_XML = """\
 COURSE_ROLES_XML = '<?xml version="1.0" encoding="UTF-8"?>\n<roles>\n  <role_overrides/>\n  <role_assignments/>\n</roles>'
 COURSE_FILTERS_XML = '<?xml version="1.0" encoding="UTF-8"?>\n<filters>\n  <filter_actives/>\n  <filter_configs/>\n</filters>'
 COURSE_INFOREF_XML = '<?xml version="1.0" encoding="UTF-8"?>\n<inforef/>'
-COURSE_COMPLETION_DEFAULTS_XML = '<?xml version="1.0" encoding="UTF-8"?>\n<course_completion_defaults/>'
+COURSE_COMPLETION_DEFAULTS_XML = (
+    '<?xml version="1.0" encoding="UTF-8"?>\n<course_completion_defaults/>'
+)
 COURSE_ENROLMENTS_XML = """\
 <?xml version="1.0" encoding="UTF-8"?>
 <enrolments>
@@ -219,15 +224,15 @@ PAGE_XML = """\
 
 FILE_ENTRY = (
     '  <file id="{id}"><contenthash>{sha1}</contenthash>'
-    '<contextid>{ctx}</contextid><component>mod_page</component>'
-    '<filearea>content</filearea><itemid>0</itemid>'
-    '<filepath>/</filepath><filename>{name}</filename>'
-    '<filesize>{size}</filesize><mimetype>{mime}</mimetype>'
-    '<status>0</status><timecreated>{ts}</timecreated>'
-    '<timemodified>{ts}</timemodified><sortorder>0</sortorder>'
-    '<userid>2</userid><repositorytype>$@NULL@$</repositorytype>'
-    '<repositoryid>$@NULL@$</repositoryid>'
-    '<source>$@NULL@$</source><author>$@NULL@$</author>'
-    '<license>allrightsreserved</license>'
-    '<reference>$@NULL@$</reference></file>'
+    "<contextid>{ctx}</contextid><component>mod_page</component>"
+    "<filearea>content</filearea><itemid>0</itemid>"
+    "<filepath>/</filepath><filename>{name}</filename>"
+    "<filesize>{size}</filesize><mimetype>{mime}</mimetype>"
+    "<status>0</status><timecreated>{ts}</timecreated>"
+    "<timemodified>{ts}</timemodified><sortorder>0</sortorder>"
+    "<userid>2</userid><repositorytype>$@NULL@$</repositorytype>"
+    "<repositoryid>$@NULL@$</repositoryid>"
+    "<source>$@NULL@$</source><author>$@NULL@$</author>"
+    "<license>allrightsreserved</license>"
+    "<reference>$@NULL@$</reference></file>"
 )

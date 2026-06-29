@@ -38,6 +38,7 @@ class Course:
         self.course_name = course.get("display_name", "")
 
         static_dir = self.root / "static"
+
         # Record all static content: images
         if static_dir.is_dir():
             for f in static_dir.iterdir():

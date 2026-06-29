@@ -49,3 +49,4 @@ def main() -> None:
     finally:
         if tmp:
             shutil.rmtree(tmp, ignore_errors=True)
+    # TODO: In the case of an exception calmly notify the user
