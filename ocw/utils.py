@@ -33,6 +33,20 @@ def sha1_of(path: Path) -> str:
     return hashlib.sha1(path.read_bytes()).hexdigest()
 
 
+def static_file_kind(filename: str) -> str:
+    match Path(filename).suffix.lower():
+        case ".png" | ".jpg" | ".jpeg" | ".gif" | ".svg" | ".webp":
+            return "image"
+        case ".mp4" | ".webm" | ".ogv":
+            return "video"
+        case ".mp3" | ".ogg" | ".wav":
+            return "audio"
+        case ".pdf":
+            return "pdf"
+        case _:
+            return "file"
+
+
 def rewrite_static_urls(html: str) -> str:
     """Replace /static/<name> with @@PLUGINFILE@@/<name> for Moodle file embedding."""
     return re.sub(r'/static/([^"\'>\s]+)', r"@@PLUGINFILE@@/\1", html)

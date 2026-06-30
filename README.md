@@ -1,4 +1,4 @@
-# edx-moodle-conversion
+# Edx (OLX) to Moodle (MBZ) conversion
 
 Converts OpenEdX OLX course exports to Moodle MBZ backup archives.
 
@@ -31,6 +31,14 @@ Example with sequential sections:
 
 ```bash
 poetry run python main.py path/to/olx_course/ -o output.mbz --sequential-sections
+```
+
+### Warnings
+
+During conversion the parser emits warnings to stderr (and `ocw.log` with `--debug`) when the OLX references a static file that doesn't exist in the `static/` directory:
+
+```
+WARNING  Parser: Missing static file logo.png referenced in unit_abc123
 ```
 
 ---

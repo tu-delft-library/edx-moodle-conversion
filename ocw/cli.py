@@ -1,6 +1,7 @@
 import argparse
 import logging
 import shutil
+import subprocess
 import sys
 import tarfile
 import tempfile
@@ -10,18 +11,32 @@ from ocw.converter import MBZBuilder
 from ocw.parser import Course
 
 
+class _ColourFormatter(logging.Formatter):
+    _YELLOW = "\033[33m"
+    _BLUE = "\033[34m"
+    _RESET = "\033[0m"
+
+    def format(self, record: logging.LogRecord) -> str:
+        if record.levelno == logging.WARNING:
+            record = logging.makeLogRecord(record.__dict__)
+            record.levelname = f"{self._YELLOW}WARNING{self._RESET}"
+            if record.args:
+                record.args = tuple(f"{self._YELLOW}{a}{self._RESET}" for a in record.args)
+        msg = super().format(record)
+        return msg.replace("Parsing OLX:", f"{self._BLUE}Parsing OLX:{self._RESET}")
+
+
 def _setup_logging(debug: bool, log_path: Path) -> None:
     """Attach stderr and file handlers to the root ocw logger."""
     log = logging.getLogger("ocw")
     log.setLevel(logging.DEBUG if debug else logging.INFO)
-    fmt = logging.Formatter(
-        "%(asctime)s [%(levelname)s] %(message)s", datefmt="%H:%M:%S"
-    )
+    fmt = "%(asctime)s [%(levelname)s] %(message)s"
+    datefmt = "%H:%M:%S"
     sh = logging.StreamHandler(sys.stderr)
-    sh.setFormatter(fmt)
+    sh.setFormatter(_ColourFormatter(fmt, datefmt=datefmt))
     log.addHandler(sh)
     fh = logging.FileHandler(log_path, mode="w", encoding="utf-8")
-    fh.setFormatter(fmt)
+    fh.setFormatter(logging.Formatter(fmt, datefmt=datefmt))
     log.addHandler(fh)
 
 
@@ -48,6 +63,11 @@ def main() -> None:
         course = Course(olx_path)
         course.parse()
         MBZBuilder(course, sequential_sections=args.sequential_sections).build(args.output)
+        subprocess.run(
+            ["poetry", "run", "pytest", "tests/integration/test_hybrid_checks.py",
+             "--olx-path", str(olx_path), "--mbz-path", str(args.output), "-v"],
+            check=False,
+        )
     except Exception as e:
         print(f"error: {e}", file=sys.stderr)
         sys.exit(1)

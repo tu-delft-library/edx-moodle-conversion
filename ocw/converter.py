@@ -37,6 +37,7 @@ class MBZBuilder:
         finally:
             shutil.rmtree(tmp, ignore_errors=True)
 
+    #TODO: Getting too big; refactor, id prefer if this was broken down into a proper chain of sequences, such that if one fails its very obvious where and why, maybe an observer pattern but i might be overcomplicating it
     def _populate(self, tmp: Path) -> None:
         """Build the full MBZ directory tree in tmp."""
         ids = _Counter()
@@ -62,7 +63,7 @@ class MBZBuilder:
                 si = sec_idx_for[id(seq)]
                 for vert in seq["verticals"]:
                     html_parts = [
-                        rewrite_static_urls(comp["content"])
+                        self._fix_unsized_base64_imgs(rewrite_static_urls(comp["content"]))
                         for comp in vert["components"]
                         if comp["type"] == "html"
                     ]
@@ -80,7 +81,6 @@ class MBZBuilder:
             for name in page["file_refs"]:
                 path = c.static_files.get(name)
                 if path is None:
-                    self.log.warning("page %s references missing static file: %s", page["id"], name)
                     continue
                 sha1 = sha1_of(path)
                 mime = mimetypes.guess_type(name)[0] or "application/octet-stream"
@@ -97,6 +97,21 @@ class MBZBuilder:
             self._write_page(tmp, page, ts)
         self._write_files_xml(tmp, file_entries, ts)
         self._copy_static(tmp, file_entries)
+
+    def _fix_unsized_base64_imgs(self, html: str) -> str:
+        # base64 imgs with no width/height render at native pixel size in Moodle;
+        # constrain them to the page container width
+        def _inject(m: re.Match) -> str:
+            tag = m.group(0)
+            if 'width=' in tag or 'height=' in tag:
+                # already explicitly sized — leave alone
+                return tag
+            if 'style=' in tag:
+                # prepend to existing style block
+                return re.sub(r'style="', 'style="max-width:100%;', tag, count=1)
+            # no style attr at all — add one
+            return tag.replace('<img ', '<img style="max-width:100%" ', 1)
+        return re.sub(r'<img\b[^>]*\bsrc="data:image/[^>]*>', _inject, html)
 
     def _write_moodle_backup(self, tmp: Path, c: Course, sections: list, pages: list, ts: int) -> None:
         """Write moodle_backup.xml with activity and section manifests."""

@@ -3,6 +3,8 @@ import re
 from pathlib import Path
 from xml.etree import ElementTree as ET
 
+from ocw.utils import static_file_kind
+
 log = logging.getLogger("ocw.parser")
 
 
@@ -57,39 +59,42 @@ class Course:
             raise FileNotFoundError(f"Missing Chapter XML: {url_name}")
         el = ET.parse(path).getroot()
         sequentials = []
+        chapter_name = el.get("display_name", url_name)
         # So this finds all sequential keys in the XML element, records them
         for ref in el.findall("sequential"):
-            sequentials.append(self._parse_sequential(root, ref.get("url_name", "")))
+            sequentials.append(self._parse_sequential(root, ref.get("url_name", ""), chapter_name))
         return {
             "url_name": url_name,
             "display_name": el.get("display_name", ""),
             "sequentials": sequentials,
         }
 
-    def _parse_sequential(self, root: Path, url_name: str) -> dict:
+    def _parse_sequential(self, root: Path, url_name: str, chapter_name: str = "") -> dict:
         path = root / "sequential" / f"{url_name}.xml"
         if not path.exists():
             raise FileNotFoundError(f"Missing Sequential XML: {url_name}")
         el = ET.parse(path).getroot()
         verticals = []
+        sequential_name = el.get("display_name", url_name)
         # This finds all the verticles, which are wrappers around the html content that each sub section links to
         for ref in el.findall("vertical"):
-            verticals.append(self._parse_vertical(root, ref.get("url_name", "")))
+            verticals.append(self._parse_vertical(root, ref.get("url_name", ""), chapter_name, sequential_name))
         return {
             "url_name": url_name,
             "display_name": el.get("display_name", ""),
             "verticals": verticals,
         }
 
-    def _parse_vertical(self, root: Path, url_name: str) -> dict:
+    def _parse_vertical(self, root: Path, url_name: str, chapter_name: str = "", sequential_name: str = "") -> dict:
         path = root / "vertical" / f"{url_name}.xml"
         if not path.exists():
             raise FileNotFoundError(f"Missing Vertical XML: {url_name}")
         el = ET.parse(path).getroot()
+        display_name = el.get("display_name", "")
         components = []
         for child in el:
             if child.tag == "html":
-                components.append(self._parse_html(root, child.get("url_name", "")))
+                components.append(self._parse_html(root, child.get("url_name", ""), display_name, sequential_name, chapter_name))
             elif child.tag == "video":
                 # TODO: For future this is more complicated
                 pass
@@ -100,11 +105,11 @@ class Course:
             # SK1: problem, discussion, drag-and-drop, advanced — silently skipped
         return {
             "url_name": url_name,
-            "display_name": el.get("display_name", ""),
+            "display_name": display_name,
             "components": components,
         }
 
-    def _parse_html(self, root: Path, url_name: str) -> dict:
+    def _parse_html(self, root: Path, url_name: str, vertical_name: str = "", sequential_name: str = "", chapter_name: str = "") -> dict:
         path = root / "html" / f"{url_name}.xml"
         if not path.exists():
             raise FileNotFoundError(f"Missing HTML XML: {url_name}")
@@ -115,7 +120,11 @@ class Course:
         for match in re.findall(r'/static/([^"\'>\s]+)', content):
             if match not in self.static_files:
                 log.warning(
-                    "C1: missing static file %s referenced in %s", match, url_name
+                    "Parsing OLX: Missing %s '%s' at chapter '%s', sequential '%s', on page '%s'",
+                    static_file_kind(match), match,
+                    chapter_name,
+                    sequential_name or url_name,
+                    vertical_name or url_name,
                 )
         return {
             "type": "html",
