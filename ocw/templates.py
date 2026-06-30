@@ -151,7 +151,17 @@ SECTION_XML = """\
 </section>"""
 
 COURSE_ROLES_XML = '<?xml version="1.0" encoding="UTF-8"?>\n<roles>\n  <role_overrides/>\n  <role_assignments/>\n</roles>'
-COURSE_FILTERS_XML = '<?xml version="1.0" encoding="UTF-8"?>\n<filters>\n  <filter_actives/>\n  <filter_configs/>\n</filters>'
+COURSE_FILTERS_XML = """\
+<?xml version="1.0" encoding="UTF-8"?>
+<filters>
+  <filter_actives>
+    <filter_active>
+      <filter>mediaplugin</filter>
+      <active>-1</active>
+    </filter_active>
+  </filter_actives>
+  <filter_configs/>
+</filters>"""
 COURSE_INFOREF_XML = '<?xml version="1.0" encoding="UTF-8"?>\n<inforef/>'
 COURSE_COMPLETION_DEFAULTS_XML = (
     '<?xml version="1.0" encoding="UTF-8"?>\n<course_completion_defaults/>'

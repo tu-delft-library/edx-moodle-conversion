@@ -226,6 +226,33 @@ def test_course_format_topics(mbz):
     assert _parse(mbz, "course/course.xml").findtext("format") == "topics"
 
 
+@pytest.fixture(scope="module")
+def spaced_mbz(tmp_path_factory):
+    root = tmp_path_factory.mktemp("smbz")
+    b = OLXFixtureBuilder(root / "course")
+    b.chapters = [Chapter("ch1", "Ch 1", [Sequential("s1", "S1", [Vertical("v1", "V1", [
+        HtmlComponent("pg1", "Page 1", content='<img src="/static/my_image.png"/>'),
+    ])])])]
+    b.static_files = {"my image.png": _PNG}
+    course = Course(b.build())
+    course.parse()
+    out = root / "out.mbz"
+    MBZBuilder(course).build(out)
+    return out
+
+
+def test_space_filename_image_included(spaced_mbz):
+    root = _parse(spaced_mbz, "files.xml")
+    names = [f.findtext("filename") for f in root.findall("file")]
+    assert "my_image.png" in names
+
+
+def test_mediaplugin_filter_disabled(mbz):
+    root = _parse(mbz, "course/filters.xml")
+    actives = {fa.findtext("filter"): fa.findtext("active") for fa in root.findall(".//filter_active")}
+    assert actives.get("mediaplugin") == "-1"
+
+
 # ── E: files.xml entry completeness ──────────────────────────────────────────
 
 _FILES_REQUIRED_FIELDS = frozenset({

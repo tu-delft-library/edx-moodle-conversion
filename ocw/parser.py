@@ -44,6 +44,7 @@ class Course:
             for f in static_dir.iterdir():
                 if f.is_file():
                     self.static_files[f.name] = f
+                    self.static_files[f.name.replace(" ", "_")] = f
 
         # Record all chapters, which contain the XML linking to all sequences (sub sections)
         for ref in course.findall("chapter"):
