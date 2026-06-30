@@ -36,10 +36,11 @@ def test_page_count_matches(ws_session, restored_course):
     c = Course(MINIMAL)
     c.parse()
     expected = sum(
-        len(v["components"])
+        1
         for ch in c.chapters
         for seq in ch["sequentials"]
         for v in seq["verticals"]
+        if any(comp["type"] == "html" for comp in v["components"])
     )
     sections = _ws(ws_session, "core_course_get_contents", courseid=restored_course)
     page_count = sum(
@@ -54,11 +55,11 @@ def test_page_titles_match(ws_session, restored_course):
     c = Course(MINIMAL)
     c.parse()
     expected = sorted(
-        comp["display_name"]
+        v["display_name"]
         for ch in c.chapters
         for seq in ch["sequentials"]
         for v in seq["verticals"]
-        for comp in v["components"]
+        if any(comp["type"] == "html" for comp in v["components"])
     )
     sections = _ws(ws_session, "core_course_get_contents", courseid=restored_course)
     actual = sorted(
@@ -68,3 +69,17 @@ def test_page_titles_match(ws_session, restored_course):
         if mod["modname"] == "page"
     )
     assert actual == expected
+
+
+# Specifically checks that a vertical with two html components is aggregated into
+# one Moodle page named after the vertical — not split into one page per component
+def test_multi_html_vertical_aggregates_to_single_page(ws_session, multi_html_course):
+    sections = _ws(ws_session, "core_course_get_contents", courseid=multi_html_course)
+    pages = [
+        mod
+        for s in sections
+        for mod in s.get("modules", [])
+        if mod["modname"] == "page"
+    ]
+    assert len(pages) == 1
+    assert pages[0]["name"] == "Combined Vertical"

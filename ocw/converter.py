@@ -48,19 +48,18 @@ class MBZBuilder:
         for i, ch in enumerate(c.chapters):
             for seq in ch["sequentials"]:
                 for vert in seq["verticals"]:
-                    for comp in vert["components"]:
-                        mod_id, ctx_id = ids.next(), ids.next()
-                        if comp["type"] == "html":
-                            content = rewrite_static_urls(comp["content"])
-                            file_refs = re.findall(r'@@PLUGINFILE@@/([^"\'>\s]+)', content)
-                        elif comp["type"] == "video":
-                            yt = esc(comp["youtube_id"])
-                            content = f'<iframe width="560" height="315" src="https://www.youtube.com/embed/{yt}" allowfullscreen></iframe>'
-                            file_refs = []
-                        else:
-                            raise ValueError(f"unsupported component type: {comp['type']}")
-                        pages.append({"id": mod_id, "ctx": ctx_id, "sec_id": sections[i]["id"], "sec_num": i + 1, "name": comp["display_name"], "content": content, "file_refs": file_refs, "file_ids": []})
-                        sections[i]["modules"].append(mod_id)
+                    html_parts = [
+                        rewrite_static_urls(comp["content"])
+                        for comp in vert["components"]
+                        if comp["type"] == "html"
+                    ]
+                    if not html_parts:
+                        continue
+                    mod_id, ctx_id = ids.next(), ids.next()
+                    combined = "".join(html_parts)
+                    file_refs = re.findall(r'@@PLUGINFILE@@/([^"\'>\s]+)', combined)
+                    pages.append({"id": mod_id, "ctx": ctx_id, "sec_id": sections[i]["id"], "sec_num": i + 1, "name": vert["display_name"], "content": combined, "file_refs": file_refs, "file_ids": []})
+                    sections[i]["modules"].append(mod_id)
 
         # sha1 + mime metadata for files.xml — one entry per (page, filename) with correct ctx
         file_entries = []

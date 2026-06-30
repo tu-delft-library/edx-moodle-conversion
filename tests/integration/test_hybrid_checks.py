@@ -7,10 +7,11 @@ def _expected_counts(olx_path):
     course = Course(olx_path)
     course.parse()
     pages = sum(
-        len(vert["components"])
+        1
         for ch in course.chapters
         for seq in ch["sequentials"]
         for vert in seq["verticals"]
+        if any(c["type"] == "html" for c in vert["components"])
     )
     return len(course.chapters), pages
 

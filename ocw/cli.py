@@ -46,7 +46,9 @@ def main() -> None:
         course = Course(olx_path)
         course.parse()
         MBZBuilder(course).build(args.output)
+    except Exception as e:
+        print(f"error: {e}", file=sys.stderr)
+        sys.exit(1)
     finally:
         if tmp:
             shutil.rmtree(tmp, ignore_errors=True)
-    # TODO: In the case of an exception calmly notify the user

@@ -48,6 +48,23 @@ poetry run python run_tests.py integration
 poetry run python run_tests.py live
 ```
 
+### Test files
+
+**`tests/unit/`** — pure unit tests, no filesystem or Moodle needed
+- `test_utils.py` — `esc`, `rewrite_static_urls`, `sha1_of`, `_Counter`
+- `test_parser.py` — parser raises correctly on missing XML files
+- `test_moodle_schema.py` — individual XML template strings validate against MBZ schema
+- `test_moodle_backup.py` — full MBZ output: required files present, all XML fields populated, semantic values correct, `files.xml` completeness
+
+**`tests/integration/`** — build real MBZ archives from fixtures, inspect output
+- `test_pipeline.py` — builder constructor/lifecycle + cross-file structural integrity (section sequences → activity dirs, module `sectionid` → real section, backup manifest → real dirs)
+- `test_requirements.py` — acceptance tests for CC1, CC2, CC3, SK1, C1
+- `test_hybrid_checks.py` — post-hoc parity checks against a real OLX+MBZ pair; requires `--olx-path` and `--mbz-path` flags
+- `test_real_courses.py` — smoke-tests parsing and building the bundled real-course fixtures; skipped if absent
+
+**`tests/live_moodle/`** — end-to-end against a live Moodle instance; requires `MOODLE_URL`, `MOODLE_TOKEN`, and Docker
+- `test_restore.py` — course exists after restore, fullname/section count/names/page count/titles all match, multi-html vertical aggregates into one page
+
 ---
 
 ## Requirements

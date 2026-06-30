@@ -1,4 +1,3 @@
-# TODO: Not sure if this is an appropriate location for templates to live
 MOODLE_BACKUP = """\
 <?xml version="1.0" encoding="UTF-8"?>
 <moodle_backup>
