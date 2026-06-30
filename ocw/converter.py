@@ -21,8 +21,9 @@ MOODLE_VERSION = os.getenv("MOODLE_VERSION", "2024042212")
 class MBZBuilder:
     """Converts a parsed Course into a Moodle MBZ backup archive."""
 
-    def __init__(self, course: Course) -> None:
+    def __init__(self, course: Course, *, sequential_sections: bool = False) -> None:
         self.course = course
+        self.sequential_sections = sequential_sections
         self.log = logging.getLogger("ocw.converter")
 
     def build(self, out: Path) -> None:
@@ -42,11 +43,23 @@ class MBZBuilder:
         ts = int(time.time())
         c = self.course
 
-        sections = [{"id": ids.next(), "name": ch["display_name"], "modules": []} for ch in c.chapters]
+        if self.sequential_sections:
+            sections, sec_idx_for = [], {}
+            for ch in c.chapters:
+                for seq in ch["sequentials"]:
+                    sec_idx_for[id(seq)] = len(sections)
+                    sections.append({"id": ids.next(), "name": f"{ch['display_name']} - {seq['display_name']}", "modules": []})
+        else:
+            sections, sec_idx_for = [], {}
+            for i, ch in enumerate(c.chapters):
+                sections.append({"id": ids.next(), "name": ch["display_name"], "modules": []})
+                for seq in ch["sequentials"]:
+                    sec_idx_for[id(seq)] = i
 
         pages = []
-        for i, ch in enumerate(c.chapters):
+        for ch in c.chapters:
             for seq in ch["sequentials"]:
+                si = sec_idx_for[id(seq)]
                 for vert in seq["verticals"]:
                     html_parts = [
                         rewrite_static_urls(comp["content"])
@@ -58,8 +71,8 @@ class MBZBuilder:
                     mod_id, ctx_id = ids.next(), ids.next()
                     combined = "".join(html_parts)
                     file_refs = re.findall(r'@@PLUGINFILE@@/([^"\'>\s]+)', combined)
-                    pages.append({"id": mod_id, "ctx": ctx_id, "sec_id": sections[i]["id"], "sec_num": i + 1, "name": vert["display_name"], "content": combined, "file_refs": file_refs, "file_ids": []})
-                    sections[i]["modules"].append(mod_id)
+                    pages.append({"id": mod_id, "ctx": ctx_id, "sec_id": sections[si]["id"], "sec_num": si + 1, "name": vert["display_name"], "content": combined, "file_refs": file_refs, "file_ids": []})
+                    sections[si]["modules"].append(mod_id)
 
         # sha1 + mime metadata for files.xml — one entry per (page, filename) with correct ctx
         file_entries = []

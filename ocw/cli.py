@@ -31,6 +31,8 @@ def main() -> None:
     ap.add_argument("olx_path", type=Path)
     ap.add_argument("--output", "-o", type=Path, default=Path("course.mbz"))
     ap.add_argument("--debug", action="store_true")
+    ap.add_argument("--sequential-sections", action="store_true",
+                    help="one Moodle section per sequential instead of per chapter")
     args = ap.parse_args()
     _setup_logging(args.debug, Path("ocw.log"))
 
@@ -45,7 +47,7 @@ def main() -> None:
 
         course = Course(olx_path)
         course.parse()
-        MBZBuilder(course).build(args.output)
+        MBZBuilder(course, sequential_sections=args.sequential_sections).build(args.output)
     except Exception as e:
         print(f"error: {e}", file=sys.stderr)
         sys.exit(1)
