@@ -4,9 +4,9 @@ MOODLE_BACKUP = """\
   <information>
     <name>{course_name}</name>
     <moodle_version>{moodle_version}</moodle_version>
-    <moodle_release>{moodle_version}</moodle_release>
+    <moodle_release>{moodle_release}</moodle_release>
     <backup_version>{moodle_version}</backup_version>
-    <backup_release>4.5</backup_release>
+    <backup_release>{backup_release}</backup_release>
     <backup_date>{ts}</backup_date>
     <mnet_remoteusers>0</mnet_remoteusers>
     <include_files>1</include_files>
@@ -147,6 +147,8 @@ SECTION_XML = """\
   <sequence>{sequence}</sequence>
   <visible>1</visible>
   <availabilityjson>$@NULL@$</availabilityjson>
+  <component>$@NULL@$</component>
+  <itemid>$@NULL@$</itemid>
   <timemodified>{ts}</timemodified>
 </section>"""
 
@@ -212,6 +214,81 @@ ACTIVITY_GRADES_XML = '<?xml version="1.0" encoding="UTF-8"?>\n<activity_gradebo
 ACTIVITY_GRADE_HISTORY_XML = '<?xml version="1.0" encoding="UTF-8"?>\n<grade_history/>'
 ACTIVITY_ROLES_XML = '<?xml version="1.0" encoding="UTF-8"?>\n<roles/>'
 ACTIVITY_FILTERS_XML = '<?xml version="1.0" encoding="UTF-8"?>\n<filters/>'
+
+SUBSECTION_XML = """\
+<?xml version="1.0" encoding="UTF-8"?>
+<activity id="{internal_id}" moduleid="{mod_id}" modulename="subsection" contextid="{ctx}">
+  <subsection id="{internal_id}">
+    <name>{name}</name>
+    <timemodified>{ts}</timemodified>
+  </subsection>
+</activity>"""
+
+SUBSECTION_MODULE_XML = """\
+<?xml version="1.0" encoding="UTF-8"?>
+<module id="{mod_id}" version="{moodle_version}">
+  <modulename>subsection</modulename>
+  <sectionid>{sec_id}</sectionid>
+  <sectionnumber>{sec_num}</sectionnumber>
+  <idnumber>$@NULL@$</idnumber>
+  <added>{ts}</added>
+  <score>0</score>
+  <indent>0</indent>
+  <visible>1</visible>
+  <visibleoncoursepage>1</visibleoncoursepage>
+  <visibleold>1</visibleold>
+  <groupmode>0</groupmode>
+  <groupingid>0</groupingid>
+  <completion>0</completion>
+  <completiongradeitemnumber>$@NULL@$</completiongradeitemnumber>
+  <completionpassgrade>0</completionpassgrade>
+  <completionview>0</completionview>
+  <completionexpected>0</completionexpected>
+  <availability>$@NULL@$</availability>
+  <showdescription>0</showdescription>
+  <downloadcontent>1</downloadcontent>
+  <lang>$@NULL@$</lang>
+  <enableaitools>$@NULL@$</enableaitools>
+  <enabledaiactions>$@NULL@$</enabledaiactions>
+  <tags>
+  </tags>
+</module>"""
+
+SUBSECTION_CALENDAR_XML = """\
+<?xml version="1.0" encoding="UTF-8"?>
+<events>
+</events>"""
+
+SUBSECTION_COMPETENCIES_XML = """\
+<?xml version="1.0" encoding="UTF-8"?>
+<course_module_competencies>
+  <competencies>
+  </competencies>
+</course_module_competencies>"""
+
+SUBSECTION_FILTERS_XML = """\
+<?xml version="1.0" encoding="UTF-8"?>
+<filters>
+  <filter_actives>
+  </filter_actives>
+  <filter_configs>
+  </filter_configs>
+</filters>"""
+
+CHILD_SECTION_XML = """\
+<?xml version="1.0" encoding="UTF-8"?>
+<section id="{id}">
+  <number>{number}</number>
+  <name>{name}</name>
+  <summary/>
+  <summaryformat>1</summaryformat>
+  <sequence>{sequence}</sequence>
+  <visible>1</visible>
+  <availabilityjson>$@NULL@$</availabilityjson>
+  <component>mod_subsection</component>
+  <itemid>{itemid}</itemid>
+  <timemodified>{ts}</timemodified>
+</section>"""
 
 PAGE_XML = """\
 <?xml version="1.0" encoding="UTF-8"?>

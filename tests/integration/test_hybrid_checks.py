@@ -1,4 +1,5 @@
 import tarfile
+import xml.etree.ElementTree as ET
 
 from ocw.parser import Course
 
@@ -13,18 +14,32 @@ def _expected_counts(olx_path):
         for vert in seq["verticals"]
         if any(c["type"] == "html" for c in vert["components"])
     )
-    return len(course.chapters), pages
+    seqs = sum(len(ch["sequentials"]) for ch in course.chapters)
+    return len(course.chapters), seqs, pages
 
 
-def test_section_count_parity(hybrid_olx_path, hybrid_mbz_path):
-    expected_sections, _ = _expected_counts(hybrid_olx_path)
+def _iter_section_xmls(tar):
+    for m in tar.getmembers():
+        if m.name.startswith("sections/") and m.name.endswith("section.xml"):
+            yield ET.parse(tar.extractfile(m)).getroot()
+
+
+def test_chapter_section_count_parity(hybrid_olx_path, hybrid_mbz_path):
+    expected_chapters, _, _ = _expected_counts(hybrid_olx_path)
     with tarfile.open(hybrid_mbz_path) as tar:
-        actual = sum(1 for m in tar.getmembers() if m.name.endswith("section.xml"))
-    assert actual == expected_sections
+        actual = sum(1 for root in _iter_section_xmls(tar) if root.findtext("component") != "mod_subsection")
+    assert actual == expected_chapters
+
+
+def test_sequential_subsection_count_parity(hybrid_olx_path, hybrid_mbz_path):
+    _, expected_seqs, _ = _expected_counts(hybrid_olx_path)
+    with tarfile.open(hybrid_mbz_path) as tar:
+        actual = sum(1 for root in _iter_section_xmls(tar) if root.findtext("component") == "mod_subsection")
+    assert actual == expected_seqs
 
 
 def test_page_count_parity(hybrid_olx_path, hybrid_mbz_path):
-    _, expected_pages = _expected_counts(hybrid_olx_path)
+    _, _, expected_pages = _expected_counts(hybrid_olx_path)
     with tarfile.open(hybrid_mbz_path) as tar:
         actual = sum(1 for m in tar.getmembers() if m.name.endswith("page.xml"))
     assert actual == expected_pages

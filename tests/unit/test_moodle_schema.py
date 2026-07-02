@@ -65,7 +65,7 @@ def test_course_xml_schema(minimal_mbz):
 def test_section_xml_schema(minimal_mbz):
     ref = ET.parse(REFERENCE / "sections" / "section_1" / "section.xml").getroot()
     with tarfile.open(minimal_mbz) as tar:
-        sec_path = next(n for n in tar.getnames() if n.endswith("section.xml"))
+        sec_path = next(n for n in tar.getnames() if n.startswith("sections/") and n.endswith("section.xml"))
         gen = _xml_from_tar(tar, sec_path)
     _assert_fields_match(gen, ref)
 

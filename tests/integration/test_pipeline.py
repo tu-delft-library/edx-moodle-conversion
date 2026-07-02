@@ -54,9 +54,10 @@ def test_section_sequence_ids_have_activity_dirs(minimal_fixture, tmp_path):
         for path in section_paths:
             seq = ET.parse(tar.extractfile(path)).getroot().findtext("sequence") or ""
             for mod_id in filter(None, (s.strip() for s in seq.split(","))):
-                assert any(n.startswith(f"activities/page_{mod_id}/") for n in names), (
-                    f"section sequence references page_{mod_id} but no matching activity dir"
-                )
+                assert any(
+                    n.startswith(f"activities/page_{mod_id}/") or n.startswith(f"activities/subsection_{mod_id}/")
+                    for n in names
+                ), f"section sequence references mod {mod_id} but no matching activity dir"
 
 
 def test_module_sectionid_is_real_section(minimal_fixture, tmp_path):
