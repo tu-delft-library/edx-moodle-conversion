@@ -1,0 +1,141 @@
+import re
+from abc import ABC, abstractmethod
+
+from ocw.converter.html import fix_unsized_base64_imgs
+from ocw.parser import Course
+from ocw.utils import _Counter, rewrite_static_urls
+
+
+class SectionStrategy(ABC):
+    """Turns a parsed Course into (all_sections, sub_mods, pages) for the MBZ writer."""
+
+    def __init__(self, course: Course, ids: _Counter) -> None:
+        self.c = course
+        self.ids = ids
+
+    @abstractmethod
+    def build(self) -> tuple[list[dict], list[dict], list[dict]]:
+        """Returns (all_sections, sub_mods, pages)."""
+
+    # NOTE: Whenever we append structural things i think it should always be in an auxillory function so that we keep a grasp on expected structure
+    def _build_page(self, vert: dict, sec_id: int, sec_num: int) -> dict | None:
+        """Shared: turn a vertical's html components into a page dict, or None if it has none."""
+        html_parts = [
+            fix_unsized_base64_imgs(rewrite_static_urls(comp["content"]))
+            for comp in vert["components"]
+            if comp["type"] == "html"
+        ]
+        if not html_parts:
+            return None
+        mod_id, ctx_id = self.ids.next(), self.ids.next()
+        combined = "".join(html_parts)
+        # NOTE: So parses encodes all static files as php out the gate?
+        file_refs = re.findall(r'@@PLUGINFILE@@/([^"\'>\s]+)', combined)
+        return {
+            "id": mod_id,
+            "ctx": ctx_id,
+            "sec_id": sec_id,
+            "sec_num": sec_num,
+            "name": vert["display_name"],
+            "content": combined,
+            "file_refs": file_refs,
+            "file_ids": [],
+        }
+
+
+class FlatSectionStrategy(SectionStrategy):
+    """sequential_sections=True: one section per sequential, no subsections."""
+
+    def build(self) -> tuple[list[dict], list[dict], list[dict]]:
+        sections: list[dict] = []
+        sec_idx_for: dict[int, int] = {}
+        for ch in self.c.chapters:
+            for seq in ch["sequentials"]:
+                sec_idx_for[id(seq)] = len(sections)
+                sections.append(
+                    {
+                        "id": self.ids.next(),
+                        "name": f"{ch['display_name']} - {seq['display_name']}",
+                        "modules": [],
+                    }
+                )
+
+        pages: list[dict] = []
+        for ch in self.c.chapters:
+            for seq in ch["sequentials"]:
+                sec_idx = sec_idx_for[id(seq)]
+                sec = sections[sec_idx]
+                for vert in seq["verticals"]:
+                    page = self._build_page(vert, sec["id"], sec_idx + 1)
+                    if page is None:
+                        continue
+                    pages.append(page)
+                    sec["modules"].append(page["id"])
+
+        return sections, [], pages
+
+
+class NestedSectionStrategy(SectionStrategy):
+    """sequential_sections=False: chapters become sections, sequentials become subsections."""
+
+    def build(self) -> tuple[list[dict], list[dict], list[dict]]:
+        sub_mods: list[dict] = []
+        ch_sections: list[dict] = []
+        for ch in self.c.chapters:
+            ch_sec = {"id": self.ids.next(), "name": ch["display_name"], "modules": []}
+            ch_sections.append(ch_sec)
+            for seq in ch["sequentials"]:
+                sub_mod_id, sub_ctx_id, sub_int_id = (
+                    self.ids.next(),
+                    self.ids.next(),
+                    self.ids.next(),
+                )
+                child_sec = {
+                    "id": self.ids.next(),
+                    "name": seq["display_name"],
+                    "modules": [],
+                    "itemid": sub_int_id,
+                    "parent_mod_id": sub_mod_id,
+                }
+                sub_mods.append(
+                    {
+                        "mod_id": sub_mod_id,
+                        "ctx": sub_ctx_id,
+                        "internal_id": sub_int_id,
+                        "name": seq["display_name"],
+                        "parent_sec_id": ch_sec["id"],
+                        "child_sec": child_sec,
+                        "seq": seq,
+                    }
+                )
+                ch_sec["modules"].append(sub_mod_id)
+
+        all_sections: list[dict] = []
+        sub_cursor = 0
+        for ch_i, ch_sec in enumerate(ch_sections):
+            all_sections.append(ch_sec)
+            n = len(self.c.chapters[ch_i]["sequentials"])
+            all_sections.extend(sub["child_sec"] for sub in sub_mods[sub_cursor : sub_cursor + n])
+            sub_cursor += n
+
+        # number parent chapters 0..n-1, child sections n..n+m-1 (matching Moodle's DB layout)
+        num_ch = len(ch_sections)
+        for ch_i, ch_sec in enumerate(ch_sections):
+            ch_sec["number"] = ch_i
+        for i, sub in enumerate(sub_mods):
+            sub["child_sec"]["number"] = num_ch + i
+        sec_num = {s["id"]: s["number"] for s in all_sections}
+        for sub in sub_mods:
+            sub["parent_sec_num"] = sec_num[sub["parent_sec_id"]]
+
+        pages: list[dict] = []
+        for sub in sub_mods:
+            child_sec = sub["child_sec"]
+            for vert in sub["seq"]["verticals"]:
+                page = self._build_page(vert, child_sec["id"], sec_num[child_sec["id"]])
+                if page is None:
+                    continue
+                pages.append(page)
+                child_sec["modules"].append(page["id"])
+
+        return all_sections, sub_mods, pages

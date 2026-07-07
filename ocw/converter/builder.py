@@ -1,7 +1,6 @@
 import logging
 import mimetypes
 import os
-import re
 import shutil
 import tarfile
 import tempfile
@@ -11,8 +10,9 @@ from pathlib import Path
 from dotenv import load_dotenv
 
 from ocw import templates
+from ocw.converter.strategies import FlatSectionStrategy, NestedSectionStrategy
 from ocw.parser import Course
-from ocw.utils import _Counter, esc, rewrite_static_urls, sha1_of
+from ocw.utils import _Counter, esc, sha1_of
 
 load_dotenv()
 MOODLE_VERSION = os.getenv("MOODLE_VERSION", "2024042212")
@@ -39,140 +39,24 @@ class MBZBuilder:
         finally:
             shutil.rmtree(tmp, ignore_errors=True)
 
-    # TODO: Getting too big; refactor, id prefer if this was broken down into a proper chain of sequences, such that if one fails its very obvious where and why, maybe an observer pattern but i might be overcomplicating it
     def _populate(self, tmp: Path) -> None:
         """Build the full MBZ directory tree in tmp."""
         ids = _Counter()
         ts = int(time.time())
         c = self.course
-        sub_mods = []
 
-        if self.sequential_sections:
-            sections, sec_idx_for = [], {}
-            for ch in c.chapters:
-                for seq in ch["sequentials"]:
-                    sec_idx_for[id(seq)] = len(sections)
-                    sections.append(
-                        {
-                            "id": ids.next(),
-                            "name": f"{ch['display_name']} - {seq['display_name']}",
-                            "modules": [],
-                        }
-                    )
-            pages = []
-            for ch in c.chapters:
-                for seq in ch["sequentials"]:
-                    sec_idx = sec_idx_for[id(seq)]
-                    for vert in seq["verticals"]:
-                        html_parts = [
-                            self._fix_unsized_base64_imgs(
-                                rewrite_static_urls(comp["content"])
-                            )
-                            for comp in vert["components"]
-                            if comp["type"] == "html"
-                        ]
-                        if not html_parts:
-                            continue
-                        mod_id, ctx_id = ids.next(), ids.next()
-                        combined = "".join(html_parts)
-                        # NOTE: So parses encodes all static files as php out the gate?
-                        file_refs = re.findall(r'@@PLUGINFILE@@/([^"\'>\s]+)', combined)
-                        # NOTE: Whenever we append structural things i think it should always be in an auxillory function so that we keep a grasp on expected structure
-                        pages.append(
-                            {
-                                "id": mod_id,
-                                "ctx": ctx_id,
-                                "sec_id": sections[sec_idx]["id"],
-                                "sec_num": sec_idx + 1,
-                                "name": vert["display_name"],
-                                "content": combined,
-                                "file_refs": file_refs,
-                                "file_ids": [],
-                            }
-                        )
-                        sections[sec_idx]["modules"].append(mod_id)
-            all_sections = sections
-        # NOTE: What does this else handle?
-        else:
-            ch_sections = []
-            for ch in c.chapters:
-                ch_sec = {"id": ids.next(), "name": ch["display_name"], "modules": []}
-                ch_sections.append(ch_sec)
-                for seq in ch["sequentials"]:
-                    sub_mod_id, sub_ctx_id, sub_int_id = (
-                        ids.next(),
-                        ids.next(),
-                        ids.next(),
-                    )
-                    child_sec = {
-                        "id": ids.next(),
-                        "name": seq["display_name"],
-                        "modules": [],
-                        "itemid": sub_int_id,
-                        "parent_mod_id": sub_mod_id,
-                    }
-                    sub_mods.append(
-                        {
-                            "mod_id": sub_mod_id,
-                            "ctx": sub_ctx_id,
-                            "internal_id": sub_int_id,
-                            "name": seq["display_name"],
-                            "parent_sec_id": ch_sec["id"],
-                            "child_sec": child_sec,
-                            "seq": seq,
-                        }
-                    )
-                    ch_sec["modules"].append(sub_mod_id)
-            all_sections = []
-            sub_cursor = 0
-            for ch_i, ch_sec in enumerate(ch_sections):
-                all_sections.append(ch_sec)
-                n = len(c.chapters[ch_i]["sequentials"])
-                all_sections.extend(
-                    sub["child_sec"] for sub in sub_mods[sub_cursor : sub_cursor + n]
-                )
-                sub_cursor += n
-            # number parent chapters 0..n-1, child sections n..n+m-1 (matching Moodle's DB layout)
-            num_ch = len(ch_sections)
-            for ch_i, ch_sec in enumerate(ch_sections):
-                ch_sec["number"] = ch_i
-            for i, sub in enumerate(sub_mods):
-                sub["child_sec"]["number"] = num_ch + i
-            sec_num = {s["id"]: s["number"] for s in all_sections}
-            for sub in sub_mods:
-                sub["parent_sec_num"] = sec_num[sub["parent_sec_id"]]
-            pages = []
-            for sub in sub_mods:
-                child_sec = sub["child_sec"]
-                for vert in sub["seq"]["verticals"]:
-                    html_parts = [
-                        self._fix_unsized_base64_imgs(
-                            rewrite_static_urls(comp["content"])
-                        )
-                        for comp in vert["components"]
-                        if comp["type"] == "html"
-                    ]
-                    if not html_parts:
-                        continue
-                    mod_id, ctx_id = ids.next(), ids.next()
-                    combined = "".join(html_parts)
-                    file_refs = re.findall(r'@@PLUGINFILE@@/([^"\'>\s]+)', combined)
-                    pages.append(
-                        {
-                            "id": mod_id,
-                            "ctx": ctx_id,
-                            "sec_id": child_sec["id"],
-                            "sec_num": sec_num[child_sec["id"]],
-                            "name": vert["display_name"],
-                            "content": combined,
-                            "file_refs": file_refs,
-                            "file_ids": [],
-                        }
-                    )
-                    child_sec["modules"].append(mod_id)
+        strategy = (
+            FlatSectionStrategy(c, ids)
+            if self.sequential_sections
+            else NestedSectionStrategy(c, ids)
+        )
+        all_sections, sub_mods, pages = strategy.build()
+        file_entries = self._build_file_entries(c, pages, ids)
+        self._write_all(tmp, c, all_sections, sub_mods, pages, file_entries, ts)
 
-        # sha1 + mime metadata for files.xml — one entry per (page, filename) with correct ctx
-        file_entries = []
+    def _build_file_entries(self, c: Course, pages: list[dict], ids: _Counter) -> list[dict]:
+        """sha1 + mime metadata for files.xml — one entry per (page, filename) with correct ctx."""
+        file_entries: list[dict] = []
         for page in pages:
             for name in page["file_refs"]:
                 path = c.static_files.get(name)
@@ -193,7 +77,18 @@ class MBZBuilder:
                     }
                 )
                 page["file_ids"].append(fid)
+        return file_entries
 
+    def _write_all(
+        self,
+        tmp: Path,
+        c: Course,
+        all_sections: list[dict],
+        sub_mods: list[dict],
+        pages: list[dict],
+        file_entries: list[dict],
+        ts: int,
+    ) -> None:
         self._write_moodle_backup(tmp, c, all_sections, sub_mods, pages, ts)
         self._write_static_manifests(tmp)
         self._write_course_xml(tmp, c, ts)
@@ -206,36 +101,16 @@ class MBZBuilder:
         self._write_files_xml(tmp, file_entries, ts)
         self._copy_static(tmp, file_entries)
 
-    def _fix_unsized_base64_imgs(self, html: str) -> str:
-        # base64 imgs with no width/height render at native pixel size in Moodle;
-        # constrain them to the page container width
-        def _inject(m: re.Match) -> str:
-            tag = m.group(0)
-            if "width=" in tag or "height=" in tag:
-                # already explicitly sized — leave alone
-                return tag
-            if "style=" in tag:
-                # prepend to existing style block
-                return re.sub(r'style="', 'style="max-width:100%;', tag, count=1)
-            # no style attr at all — add one
-            return tag.replace("<img ", '<img style="max-width:100%" ', 1)
-
-        return re.sub(r'<img\b[^>]*\bsrc="data:image/[^>]*>', _inject, html)
-
-    #TODO: This is so large that it honestly could be its own 
-    def _write_moodle_backup(
-        self, tmp: Path, c: Course, sections: list, sub_mods: list, pages: list, ts: int
-    ) -> None:
-        """Write moodle_backup.xml with activity and section manifests."""
+    def _activity_lines(self, sub_mods: list[dict], pages: list[dict]) -> list[str]:
         insubsection_page = "1" if sub_mods else ""
-        child_sec_ids = {sub["child_sec"]["id"]: sub["mod_id"] for sub in sub_mods}
         pages_by_sec: dict[int, list] = {}
         for p in pages:
             pages_by_sec.setdefault(p["sec_id"], []).append(p)
-        act_lines = []
+
+        lines = []
         consumed_secs: set[int] = set()
         for sub in sub_mods:
-            act_lines.append(
+            lines.append(
                 f"      <activity><moduleid>{sub['mod_id']}</moduleid><sectionid>{sub['parent_sec_id']}</sectionid>"
                 f"<modulename>subsection</modulename><title>{esc(sub['name'])}</title>"
                 f"<directory>activities/subsection_{sub['mod_id']}</directory>"
@@ -244,7 +119,7 @@ class MBZBuilder:
             child_id = sub["child_sec"]["id"]
             consumed_secs.add(child_id)
             for p in pages_by_sec.get(child_id, []):
-                act_lines.append(
+                lines.append(
                     f"      <activity><moduleid>{p['id']}</moduleid><sectionid>{p['sec_id']}</sectionid>"
                     f"<modulename>page</modulename><title>{esc(p['name'])}</title>"
                     f"<directory>activities/page_{p['id']}</directory>"
@@ -252,20 +127,27 @@ class MBZBuilder:
                 )
         for p in pages:
             if p["sec_id"] not in consumed_secs:
-                act_lines.append(
+                lines.append(
                     f"      <activity><moduleid>{p['id']}</moduleid><sectionid>{p['sec_id']}</sectionid>"
                     f"<modulename>page</modulename><title>{esc(p['name'])}</title>"
                     f"<directory>activities/page_{p['id']}</directory>"
                     f"<insubsection>{insubsection_page}</insubsection></activity>"
                 )
-        acts = "\n".join(act_lines)
-        secs = "\n".join(
+        return lines
+
+    def _section_lines(self, sections: list[dict], sub_mods: list[dict]) -> list[str]:
+        child_sec_ids = {sub["child_sec"]["id"]: sub["mod_id"] for sub in sub_mods}
+        return [
             f"      <section><sectionid>{s['id']}</sectionid><title>{esc(s['name'])}</title>"
             f"<directory>sections/section_{s['id']}</directory>"
             f"<parentcmid>{child_sec_ids.get(s['id'], '')}</parentcmid>"
             f"<modname>{'subsection' if s['id'] in child_sec_ids else ''}</modname></section>"
             for s in sections
-        )
+        ]
+
+    def _setting_lines(
+        self, c: Course, sections: list[dict], sub_mods: list[dict], pages: list[dict]
+    ) -> list[str]:
         root_settings = [
             ("filename", esc(c.course_name)),
             ("imscc11", "0"),
@@ -286,28 +168,37 @@ class MBZBuilder:
             ("competencies", "0"),
             ("customfield", "1"),
         ]
-        setting_lines = [
+        lines = [
             f"      <setting><level>root</level><name>{k}</name><value>{v}</value></setting>"
             for k, v in root_settings
         ]
         for sec in sections:
             sid = f"section_{sec['id']}"
-            setting_lines += [
+            lines += [
                 f"      <setting><level>section</level><section>{sid}</section><name>{sid}_included</name><value>1</value></setting>",
                 f"      <setting><level>section</level><section>{sid}</section><name>{sid}_userinfo</name><value>0</value></setting>",
             ]
         for sub in sub_mods:
             aid = f"subsection_{sub['mod_id']}"
-            setting_lines += [
+            lines += [
                 f"      <setting><level>activity</level><activity>{aid}</activity><name>{aid}_included</name><value>1</value></setting>",
                 f"      <setting><level>activity</level><activity>{aid}</activity><name>{aid}_userinfo</name><value>0</value></setting>",
             ]
         for page in pages:
             aid = f"page_{page['id']}"
-            setting_lines += [
+            lines += [
                 f"      <setting><level>activity</level><activity>{aid}</activity><name>{aid}_included</name><value>1</value></setting>",
                 f"      <setting><level>activity</level><activity>{aid}</activity><name>{aid}_userinfo</name><value>0</value></setting>",
             ]
+        return lines
+
+    def _write_moodle_backup(
+        self, tmp: Path, c: Course, sections: list, sub_mods: list, pages: list, ts: int
+    ) -> None:
+        """Write moodle_backup.xml with activity and section manifests."""
+        acts = "\n".join(self._activity_lines(sub_mods, pages))
+        secs = "\n".join(self._section_lines(sections, sub_mods))
+        settings = "\n".join(self._setting_lines(c, sections, sub_mods, pages))
         xml = templates.MOODLE_BACKUP.format(
             course_name=esc(c.course_name),
             course_id=esc(c.course_id),
@@ -317,7 +208,7 @@ class MBZBuilder:
             ts=ts,
             acts=acts,
             secs=secs,
-            settings="\n".join(setting_lines),
+            settings=settings,
         )
         (tmp / "moodle_backup.xml").write_text(xml, encoding="utf-8")
 
