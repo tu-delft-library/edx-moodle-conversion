@@ -247,6 +247,27 @@ def test_space_filename_image_included(spaced_mbz):
     assert "my_image.png" in names
 
 
+@pytest.fixture(scope="module")
+def punctuation_mbz(tmp_path_factory):
+    root = tmp_path_factory.mktemp("pmbz")
+    b = OLXFixtureBuilder(root / "course")
+    b.chapters = [Chapter("ch1", "Ch 1", [Sequential("s1", "S1", [Vertical("v1", "V1", [
+        HtmlComponent("pg1", "Page 1", content='<img src="/static/become_a_contributor_.png"/>'),
+    ])])])]
+    b.static_files = {"become a contributor!.png": _PNG}
+    course = Course(b.build())
+    course.parse()
+    out = root / "out.mbz"
+    MBZBuilder(course).build(out)
+    return out
+
+
+def test_punctuation_filename_image_included(punctuation_mbz):
+    root = _parse(punctuation_mbz, "files.xml")
+    names = [f.findtext("filename") for f in root.findall("file")]
+    assert "become_a_contributor_.png" in names
+
+
 def test_mediaplugin_filter_disabled(mbz):
     root = _parse(mbz, "course/filters.xml")
     actives = {fa.findtext("filter"): fa.findtext("active") for fa in root.findall(".//filter_active")}
@@ -271,3 +292,68 @@ def test_files_xml_entry_has_required_fields(file_mbz):
     for entry in entries:
         missing = _FILES_REQUIRED_FIELDS - {child.tag for child in entry}
         assert not missing, f"files.xml entry id={entry.get('id')} missing: {missing}"
+
+
+# ── F: parent/child section numbering (orphan "New section" regression) ──────
+
+@pytest.fixture(scope="module")
+def multi_chapter_mbz(tmp_path_factory):
+    """2 chapters x 2 sequentials each — enough sections that interleaved
+    numbering (the original bug) would show up if reintroduced."""
+    root = tmp_path_factory.mktemp("mcmbz")
+    b = OLXFixtureBuilder(root / "course")
+    b.chapters = [
+        Chapter(f"ch{i}", f"Chapter {i}", [
+            Sequential(f"ch{i}_s{j}", f"Ch{i} Seq{j}", [
+                Vertical(f"ch{i}_s{j}_v1", "V1", [
+                    HtmlComponent(f"ch{i}_s{j}_pg1", "Page 1"),
+                ])
+            ])
+            for j in range(2)
+        ])
+        for i in range(2)
+    ]
+    course = Course(b.build())
+    course.parse()
+    out = root / "out.mbz"
+    MBZBuilder(course).build(out)
+    return out
+
+
+def _section_xmls(mbz_path):
+    with tarfile.open(mbz_path) as tar:
+        return [
+            ET.parse(tar.extractfile(m)).getroot()
+            for m in tar.getmembers()
+            if re.match(r"sections/section_\d+/section\.xml", m.name)
+        ]
+
+
+def test_parent_sections_numbered_before_children(multi_chapter_mbz):
+    sections = _section_xmls(multi_chapter_mbz)
+    parent_nums = [int(s.findtext("number")) for s in sections if s.findtext("component") != "mod_subsection"]
+    child_nums = [int(s.findtext("number")) for s in sections if s.findtext("component") == "mod_subsection"]
+    assert parent_nums and child_nums
+    assert max(parent_nums) < min(child_nums), (
+        f"parent numbers {sorted(parent_nums)} must all come before "
+        f"child numbers {sorted(child_nums)} or Moodle misclassifies delegated sections"
+    )
+
+
+def test_subsection_module_sectionnumber_matches_parent(multi_chapter_mbz):
+    with tarfile.open(multi_chapter_mbz) as tar:
+        names = tar.getnames()
+        section_number_by_id = {}
+        for n in names:
+            if re.match(r"sections/section_\d+/section\.xml", n):
+                root = ET.parse(tar.extractfile(n)).getroot()
+                section_number_by_id[int(root.get("id"))] = int(root.findtext("number"))
+        subsection_modules = [n for n in names if re.match(r"activities/subsection_\d+/module\.xml", n)]
+        assert subsection_modules
+        for n in subsection_modules:
+            root = ET.parse(tar.extractfile(n)).getroot()
+            sec_id = int(root.findtext("sectionid"))
+            sec_num = int(root.findtext("sectionnumber"))
+            assert sec_num == section_number_by_id[sec_id], (
+                f"{n}: sectionnumber={sec_num} != section {sec_id}'s actual number={section_number_by_id[sec_id]}"
+            )

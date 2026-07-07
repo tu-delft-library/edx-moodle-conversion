@@ -22,6 +22,9 @@ class Course:
         self.chapters: list[dict] = []
         self.static_files: dict[str, Path] = {}
         self._b64_tmp_dir: Path | None = None
+        self.excluded_tags = frozenset(
+            {"video", "problem", "discussion", "drag-and-drop", "advanced"}
+        )
 
     def parse(self) -> None:
         """Populate course metadata, chapters, and static_files from the OLX tree.
@@ -46,12 +49,13 @@ class Course:
             for f in static_dir.iterdir():
                 if f.is_file():
                     self.static_files[f.name] = f
-                    self.static_files[f.name.replace(" ", "_")] = f
+                    self.static_files[re.sub(r"[^-\w.]", "_", f.name)] = f
 
         # Record all chapters, which contain the XML linking to all sequences (sub sections)
         for ref in course.findall("chapter"):
-            self.chapters.append(self._parse_chapter(self.root, ref.get("url_name", "")))
-
+            self.chapters.append(
+                self._parse_chapter(self.root, ref.get("url_name", ""))
+            )
 
     def _parse_chapter(self, root: Path, url_name: str) -> dict:
         path = root / "chapter" / f"{url_name}.xml"
@@ -62,14 +66,18 @@ class Course:
         chapter_name = el.get("display_name", url_name)
         # So this finds all sequential keys in the XML element, records them
         for ref in el.findall("sequential"):
-            sequentials.append(self._parse_sequential(root, ref.get("url_name", ""), chapter_name))
+            sequentials.append(
+                self._parse_sequential(root, ref.get("url_name", ""), chapter_name)
+            )
         return {
             "url_name": url_name,
             "display_name": el.get("display_name", ""),
             "sequentials": sequentials,
         }
 
-    def _parse_sequential(self, root: Path, url_name: str, chapter_name: str = "") -> dict:
+    def _parse_sequential(
+        self, root: Path, url_name: str, chapter_name: str = ""
+    ) -> dict:
         path = root / "sequential" / f"{url_name}.xml"
         if not path.exists():
             raise FileNotFoundError(f"Missing Sequential XML: {url_name}")
@@ -78,38 +86,85 @@ class Course:
         sequential_name = el.get("display_name", url_name)
         # This finds all the verticles, which are wrappers around the html content that each sub section links to
         for ref in el.findall("vertical"):
-            verticals.append(self._parse_vertical(root, ref.get("url_name", ""), chapter_name, sequential_name))
+            verticals.append(
+                self._parse_vertical(
+                    root, ref.get("url_name", ""), chapter_name, sequential_name
+                )
+            )
         return {
             "url_name": url_name,
             "display_name": el.get("display_name", ""),
             "verticals": verticals,
         }
 
-    def _parse_vertical(self, root: Path, url_name: str, chapter_name: str = "", sequential_name: str = "") -> dict:
+    def _parse_vertical(
+        self,
+        root: Path,
+        url_name: str,
+        chapter_name: str = "",
+        sequential_name: str = "",
+    ) -> dict:
         path = root / "vertical" / f"{url_name}.xml"
         if not path.exists():
             raise FileNotFoundError(f"Missing Vertical XML: {url_name}")
         el = ET.parse(path).getroot()
         display_name = el.get("display_name", "")
-        components = []
-        for child in el:
-            if child.tag == "html":
-                components.append(self._parse_html(root, child.get("url_name", ""), display_name, sequential_name, chapter_name))
-            elif child.tag == "video":
-                # TODO: For future this is more complicated
-                pass
-                # c = self._parse_video(root, child.get("url_name", ""))
-                # if c is not None:
-                #     components.append(c)
-
-            # SK1: problem, discussion, drag-and-drop, advanced — silently skipped
+        components = [
+            c
+            for child in el
+            if (
+                c := self._parse_component(
+                    root, child, display_name, sequential_name, chapter_name
+                )
+            )
+            is not None
+        ]
         return {
             "url_name": url_name,
             "display_name": display_name,
             "components": components,
         }
 
-    def _parse_html(self, root: Path, url_name: str, vertical_name: str = "", sequential_name: str = "", chapter_name: str = "") -> dict:
+    def _parse_component(
+        self,
+        root: Path,
+        child: ET.Element,
+        vertical_name: str = "",
+        sequential_name: str = "",
+        chapter_name: str = "",
+    ) -> dict | None:
+        url_name = child.get("url_name", "")
+        match child.tag:
+            case "html":
+                return self._parse_html(
+                    root, url_name, vertical_name, sequential_name, chapter_name
+                )
+            case tag if tag in self.excluded_tags:
+                # TODO: Should be debug only (add --debug flag)
+                log.info(
+                    "Skipping unsupported component type '%s' (url_name='%s') in vertical '%s'",
+                    child.tag,
+                    url_name,
+                    vertical_name,
+                )
+                return None
+            case _:
+                # TODO: Should be debug only (add --debug flag)
+                log.warning(
+                    "Unhandled OLX component tag '<%s>' in vertical '%s'",
+                    child.tag,
+                    vertical_name,
+                )
+                return None
+
+    def _parse_html(
+        self,
+        root: Path,
+        url_name: str,
+        vertical_name: str = "",
+        sequential_name: str = "",
+        chapter_name: str = "",
+    ) -> dict:
         path = root / "html" / f"{url_name}.xml"
         if not path.exists():
             raise FileNotFoundError(f"Missing HTML XML: {url_name}")
@@ -121,7 +176,8 @@ class Course:
             if match not in self.static_files:
                 log.warning(
                     "Parsing OLX: Missing %s '%s' at chapter '%s', sequential '%s', on page '%s'",
-                    static_file_kind(match), match,
+                    static_file_kind(match),
+                    match,
                     chapter_name,
                     sequential_name or url_name,
                     vertical_name or url_name,

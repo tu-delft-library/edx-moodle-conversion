@@ -222,6 +222,7 @@ class MBZBuilder:
 
         return re.sub(r'<img\b[^>]*\bsrc="data:image/[^>]*>', _inject, html)
 
+    #TODO: This is so large that it honestly could be its own 
     def _write_moodle_backup(
         self, tmp: Path, c: Course, sections: list, sub_mods: list, pages: list, ts: int
     ) -> None:
