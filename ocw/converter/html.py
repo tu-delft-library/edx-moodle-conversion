@@ -16,3 +16,17 @@ def constrain_img_size(html: str) -> str:
         return tag.replace("<img ", '<img style="max-width:100%;height:auto;" ', 1)
 
     return re.sub(r"<img\b[^>]*>", _inject, html)
+
+
+def constrain_table_size(html: str) -> str:
+    # Word-pasted tables (telltale <o:p> tags) carry hardcoded pixel widths on
+    # <table> and each <td> that overflow Moodle's narrower content column.
+    # table-layout defaults to auto, so limitting just the outer <table> lets
+    # columns shrink proportionally without touching per-cell widths.
+    def _inject(m: re.Match) -> str:
+        tag = m.group(0)
+        if "style=" in tag:
+            return re.sub(r'style="', 'style="max-width:100%;', tag, count=1)
+        return tag.replace("<table ", '<table style="max-width:100%" ', 1)
+
+    return re.sub(r"<table\b[^>]*>", _inject, html)

@@ -1,7 +1,7 @@
 import re
 from abc import ABC, abstractmethod
 
-from ocw.converter.html import constrain_img_size
+from ocw.converter.html import constrain_img_size, constrain_table_size
 from ocw.parser import Course
 from ocw.utils import _Counter, rewrite_static_urls
 
@@ -21,7 +21,7 @@ class SectionStrategy(ABC):
     def _build_page(self, vert: dict, sec_id: int, sec_num: int) -> dict | None:
         """Shared: turn a vertical's html components into a page dict, or None if it has none."""
         html_parts = [
-            constrain_img_size(rewrite_static_urls(comp["content"]))
+            constrain_table_size(constrain_img_size(rewrite_static_urls(comp["content"])))
             + '<div style="clear:both"></div>'
             for comp in vert["components"]
             if comp["type"] == "html"
