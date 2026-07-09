@@ -22,6 +22,7 @@ class SectionStrategy(ABC):
         """Shared: turn a vertical's html components into a page dict, or None if it has none."""
         html_parts = [
             fix_unsized_base64_imgs(rewrite_static_urls(comp["content"]))
+            + '<div style="clear:both"></div>'
             for comp in vert["components"]
             if comp["type"] == "html"
         ]

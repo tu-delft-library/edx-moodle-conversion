@@ -4,6 +4,7 @@ import xml.etree.ElementTree as ET
 from ocw.parser import Course
 
 
+
 def _expected_counts(olx_path):
     course = Course(olx_path)
     course.parse()
@@ -24,6 +25,8 @@ def _iter_section_xmls(tar):
             yield ET.parse(tar.extractfile(m)).getroot()
 
 
+
+#NOTE: Double check that the number of high level sections in the OLX export is the same as the high level chapters in the MBZ import
 def test_chapter_section_count_parity(hybrid_olx_path, hybrid_mbz_path):
     expected_chapters, _, _ = _expected_counts(hybrid_olx_path)
     with tarfile.open(hybrid_mbz_path) as tar:
@@ -31,13 +34,14 @@ def test_chapter_section_count_parity(hybrid_olx_path, hybrid_mbz_path):
     assert actual == expected_chapters
 
 
+#NOTE: Double check that the number of sub-sections in the OLX export is the same as sub-sections in the MBZ import
 def test_sequential_subsection_count_parity(hybrid_olx_path, hybrid_mbz_path):
     _, expected_seqs, _ = _expected_counts(hybrid_olx_path)
     with tarfile.open(hybrid_mbz_path) as tar:
         actual = sum(1 for root in _iter_section_xmls(tar) if root.findtext("component") == "mod_subsection")
     assert actual == expected_seqs
 
-
+#NOTE: Double check that the number of html files in the OLX export (which is where content is stored)
 def test_page_count_parity(hybrid_olx_path, hybrid_mbz_path):
     _, _, expected_pages = _expected_counts(hybrid_olx_path)
     with tarfile.open(hybrid_mbz_path) as tar:

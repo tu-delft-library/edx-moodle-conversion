@@ -140,8 +140,7 @@ class Course:
                     root, url_name, vertical_name, sequential_name, chapter_name
                 )
             case tag if tag in self.excluded_tags:
-                # TODO: Should be debug only (add --debug flag)
-                log.info(
+                log.debug(
                     "Skipping unsupported component type '%s' (url_name='%s') in vertical '%s'",
                     child.tag,
                     url_name,
@@ -149,7 +148,6 @@ class Course:
                 )
                 return None
             case _:
-                # TODO: Should be debug only (add --debug flag)
                 log.warning(
                     "Unhandled OLX component tag '<%s>' in vertical '%s'",
                     child.tag,
