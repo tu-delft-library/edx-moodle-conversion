@@ -1,6 +1,7 @@
 import logging
 import mimetypes
 import os
+import re
 import shutil
 import tarfile
 import tempfile
@@ -10,9 +11,10 @@ from pathlib import Path
 from dotenv import load_dotenv
 
 from ocw import templates
+from ocw.converter.html import constrain_img_size, constrain_table_size, style_figcaption
 from ocw.converter.strategies import FlatSectionStrategy, NestedSectionStrategy
 from ocw.parser import Course
-from ocw.utils import _Counter, esc, sha1_of
+from ocw.utils import _Counter, esc, rewrite_static_urls, sha1_of
 
 load_dotenv()
 MOODLE_VERSION = os.getenv("MOODLE_VERSION", "2024042212")
@@ -45,14 +47,52 @@ class MBZBuilder:
         ts = int(time.time())
         c = self.course
 
+        overview = self._build_overview_section(c, ids)
+        section_offset = 1 if overview is not None else 0
+
         strategy = (
-            FlatSectionStrategy(c, ids)
+            FlatSectionStrategy(c, ids, section_offset)
             if self.sequential_sections
-            else NestedSectionStrategy(c, ids)
+            else NestedSectionStrategy(c, ids, section_offset)
         )
         all_sections, sub_mods, pages = strategy.build()
+        if overview is not None:
+            overview_section, syllabus_page = overview
+            all_sections.insert(0, overview_section)
+            pages.insert(0, syllabus_page)
+
         file_entries = self._build_file_entries(c, pages, ids)
         self._write_all(tmp, c, all_sections, sub_mods, pages, file_entries, ts)
+
+    def _build_overview_section(
+        self, c: Course, ids: _Counter
+    ) -> tuple[dict, dict] | None:
+        """Course-level "Overview" section holding the Syllabus page, prepended
+        ahead of the chapter sections — or None if no static_tab Syllabus was
+        configured in the OLX export."""
+        if c.syllabus_html is None:
+            return None
+        content = style_figcaption(
+            constrain_table_size(constrain_img_size(rewrite_static_urls(c.syllabus_html)))
+        )
+        sec_id, mod_id, ctx_id = ids.next(), ids.next(), ids.next()
+        overview_section = {
+            "id": sec_id,
+            "name": "Overview",
+            "number": 0,
+            "modules": [mod_id],
+        }
+        syllabus_page = {
+            "id": mod_id,
+            "ctx": ctx_id,
+            "sec_id": sec_id,
+            "sec_num": 0,
+            "name": c.syllabus_title,
+            "content": content,
+            "file_refs": re.findall(r'@@PLUGINFILE@@/([^"\'>\s]+)', content),
+            "file_ids": [],
+        }
+        return overview_section, syllabus_page
 
     def _build_file_entries(self, c: Course, pages: list[dict], ids: _Counter) -> list[dict]:
         """sha1 + mime metadata for files.xml — one entry per (page, filename) with correct ctx."""

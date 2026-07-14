@@ -7,7 +7,7 @@ import pytest
 
 from ocw.converter import MBZBuilder
 from ocw.parser import Course
-from tests.builders import Chapter, HtmlComponent, OLXFixtureBuilder, Sequential, Vertical
+from tests.builders import Chapter, HtmlComponent, OLXFixtureBuilder, Sequential, StaticTab, Vertical
 
 MINIMAL = Path(__file__).parent.parent / "fixtures" / "minimal"
 
@@ -357,3 +357,70 @@ def test_subsection_module_sectionnumber_matches_parent(multi_chapter_mbz):
             assert sec_num == section_number_by_id[sec_id], (
                 f"{n}: sectionnumber={sec_num} != section {sec_id}'s actual number={section_number_by_id[sec_id]}"
             )
+
+
+
+def _syllabus_builder(root):
+    b = OLXFixtureBuilder(root / "course")
+    b.chapters = [
+        Chapter(f"ch{i}", f"Chapter {i}", [
+            Sequential(f"ch{i}_s1", f"Ch{i} Seq1", [
+                Vertical(f"ch{i}_s1_v1", "V1", [HtmlComponent(f"ch{i}_s1_pg1", "Page 1")])
+            ])
+        ])
+        for i in range(2)
+    ]
+    b.static_tabs = [StaticTab("Syllabus", "syllabus-slug")]
+    b.tabs_files = {"syllabus-slug": "<p>Syllabus content</p>"}
+    return b
+
+
+@pytest.fixture(scope="module")
+def syllabus_nested_mbz(tmp_path_factory):
+    root = tmp_path_factory.mktemp("synmbz")
+    course = Course(_syllabus_builder(root).build())
+    course.parse()
+    out = root / "out.mbz"
+    MBZBuilder(course).build(out)
+    return out
+
+
+@pytest.fixture(scope="module")
+def syllabus_flat_mbz(tmp_path_factory):
+    root = tmp_path_factory.mktemp("syflmbz")
+    course = Course(_syllabus_builder(root).build())
+    course.parse()
+    out = root / "out.mbz"
+    MBZBuilder(course, sequential_sections=True).build(out)
+    return out
+
+
+def test_overview_section_present_and_numbered_zero(syllabus_nested_mbz):
+    sections = _section_xmls(syllabus_nested_mbz)
+    overview = [s for s in sections if s.findtext("name") == "Overview"]
+    assert len(overview) == 1
+    assert overview[0].findtext("number") == "0"
+
+
+def test_overview_sequence_has_one_module(syllabus_nested_mbz):
+    sections = _section_xmls(syllabus_nested_mbz)
+    overview = next(s for s in sections if s.findtext("name") == "Overview")
+    sequence = [m for m in (overview.findtext("sequence") or "").split(",") if m]
+    assert len(sequence) == 1
+
+
+def test_chapter_numbers_shift_past_overview_nested(syllabus_nested_mbz):
+    sections = _section_xmls(syllabus_nested_mbz)
+    non_overview_nums = [int(s.findtext("number")) for s in sections if s.findtext("name") != "Overview"]
+    assert min(non_overview_nums) == 1
+
+
+def test_chapter_numbers_shift_past_overview_flat(syllabus_flat_mbz):
+    sections = _section_xmls(syllabus_flat_mbz)
+    non_overview_nums = [int(s.findtext("number")) for s in sections if s.findtext("name") != "Overview"]
+    assert min(non_overview_nums) == 1
+
+
+def test_no_overview_section_without_syllabus(multi_chapter_mbz):
+    sections = _section_xmls(multi_chapter_mbz)
+    assert not any(s.findtext("name") == "Overview" for s in sections)

@@ -1,3 +1,4 @@
+import json
 import shutil
 import tarfile
 from dataclasses import dataclass, field
@@ -44,6 +45,13 @@ class Chapter:
     sequentials: list[Sequential] = field(default_factory=list)
 
 
+@dataclass
+class StaticTab:
+    """A policy.json static_tab entry (e.g. Syllabus)."""
+    name: str
+    url_slug: str
+
+
 class OLXFixtureBuilder:
     """Writes a valid OLX directory tree from a dataclass course description."""
 
@@ -55,8 +63,11 @@ class OLXFixtureBuilder:
         self.root = root
         self.course_id: str = "TEST101"
         self.course_name: str = "Test Course"
+        self.run_name: str = "run"
         self.chapters: list[Chapter] = []
         self.static_files: dict[str, bytes] = {}
+        self.static_tabs: list[StaticTab] = []
+        self.tabs_files: dict[str, str] = {}
 
     def build(self) -> Path:
         """Write the OLX tree to self.root and return it."""
@@ -69,6 +80,8 @@ class OLXFixtureBuilder:
             static = self.root / "static"
             static.mkdir(exist_ok=True)
             (static / name).write_bytes(data)
+        self._write_policy()
+        self._write_tabs()
         return self.root
 
     def as_tar(self, out: Path | None = None) -> Path:
@@ -83,12 +96,32 @@ class OLXFixtureBuilder:
         d = self.root / "course"
         d.mkdir(exist_ok=True)
         (d / "course.xml").write_text(
-            f'<course url_name="run" course="{self.course_id}" display_name="{self.course_name}"/>'
+            f'<course url_name="{self.run_name}" course="{self.course_id}" display_name="{self.course_name}"/>'
         )
         chapter_tags = "\n  ".join(f'<chapter url_name="{ch.url_name}"/>' for ch in self.chapters)
-        (d / "run.xml").write_text(
+        (d / f"{self.run_name}.xml").write_text(
             f'<course display_name="{self.course_name}" course="{self.course_id}">\n  {chapter_tags}\n</course>'
         )
+
+    def _write_policy(self) -> None:
+        if not self.static_tabs:
+            return
+        d = self.root / "policies" / self.run_name
+        d.mkdir(parents=True, exist_ok=True)
+        tabs = [
+            {"type": "static_tab", "name": tab.name, "url_slug": tab.url_slug}
+            for tab in self.static_tabs
+        ]
+        policy = {f"course/{self.run_name}": {"tabs": tabs}}
+        (d / "policy.json").write_text(json.dumps(policy))
+
+    def _write_tabs(self) -> None:
+        if not self.tabs_files:
+            return
+        d = self.root / "tabs"
+        d.mkdir(exist_ok=True)
+        for slug, content in self.tabs_files.items():
+            (d / f"{slug}.html").write_text(content)
 
     def _write_chapter(self, ch: Chapter) -> None:
         d = self.root / "chapter"

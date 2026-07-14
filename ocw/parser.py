@@ -1,3 +1,4 @@
+import json
 import logging
 import re
 from pathlib import Path
@@ -21,6 +22,8 @@ class Course:
         self.course_id: str = ""
         self.chapters: list[dict] = []
         self.static_files: dict[str, Path] = {}
+        self.syllabus_html: str | None = None
+        self.syllabus_title: str = "Syllabus"
         self._b64_tmp_dir: Path | None = None
         self.excluded_tags = frozenset(
             {"video", "problem", "discussion", "drag-and-drop", "advanced"}
@@ -56,6 +59,39 @@ class Course:
             self.chapters.append(
                 self._parse_chapter(self.root, ref.get("url_name", ""))
             )
+
+        self._parse_syllabus(url_name)
+
+    def _parse_syllabus(self, url_name: str) -> None:
+        """Populate syllabus_html/syllabus_title from policy.json's static_tab
+        entry, if one is configured. Any missing piece (policies dir,
+        policy.json, static_tab entry, url_slug, or the tabs/*.html file
+        itself) is a silent no-op — Syllabus is optional course chrome, not
+        required structure. Malformed JSON propagates, since that signals a
+        genuinely broken export. Returns raw HTML — the html-fixup pipeline
+        (rewrite_static_urls/constrain_img_size/etc.) is applied at build
+        time, same as vertical HTML, to avoid a circular import between
+        ocw.parser and ocw.converter.html.
+        """
+        policy_path = self.root / "policies" / url_name / "policy.json"
+        if not policy_path.exists():
+            return
+        policy = json.loads(policy_path.read_text(encoding="utf-8"))
+        course_policy = policy.get(f"course/{url_name}", {})
+        tab = next(
+            (t for t in course_policy.get("tabs", []) if t.get("type") == "static_tab"),
+            None,
+        )
+        if tab is None:
+            return
+        url_slug = tab.get("url_slug")
+        if not url_slug:
+            return
+        tab_path = self.root / "tabs" / f"{url_slug}.html"
+        if not tab_path.exists():
+            return
+        self.syllabus_html = tab_path.read_text(encoding="utf-8")
+        self.syllabus_title = tab.get("name") or "Syllabus"
 
     def _parse_chapter(self, root: Path, url_name: str) -> dict:
         path = root / "chapter" / f"{url_name}.xml"
