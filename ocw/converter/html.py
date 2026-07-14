@@ -1,5 +1,7 @@
 import re
 
+# TODO: This file mostly handles injecting inline styling to make the MBZ import look closer to the OLX export; would be nice if we could make this a bit more open
+
 
 def constrain_img_size(html: str) -> str:
     # OLX images (base64 or file-referenced) often carry hardcoded pixel width/height
@@ -11,7 +13,9 @@ def constrain_img_size(html: str) -> str:
         tag = m.group(0)
         if "style=" in tag:
             # prepend to existing style block
-            return re.sub(r'style="', 'style="max-width:100%;height:auto;', tag, count=1)
+            return re.sub(
+                r'style="', 'style="max-width:100%;height:auto;', tag, count=1
+            )
         # no style attr at all add one
         return tag.replace("<img ", '<img style="max-width:100%;height:auto;" ', 1)
 
@@ -51,4 +55,6 @@ def style_figcaption(html: str) -> str:
     def _style_captions(m: re.Match) -> str:
         return re.sub(r"<h[1-6]\b[^>]*>", _inject_heading_style, m.group(0))
 
-    return re.sub(r"<figcaption\b[^>]*>.*?</figcaption>", _style_captions, html, flags=re.DOTALL)
+    return re.sub(
+        r"<figcaption\b[^>]*>.*?</figcaption>", _style_captions, html, flags=re.DOTALL
+    )
