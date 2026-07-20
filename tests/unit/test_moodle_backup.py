@@ -416,9 +416,11 @@ def test_chapter_numbers_shift_past_overview_nested(syllabus_nested_mbz):
 
 
 def test_chapter_numbers_shift_past_overview_flat(syllabus_flat_mbz):
+    """Flat sections already number 1..n with no offset (unlike Nested's
+    0..n-1), so with a prepended Overview (offset=1) the first one is 2."""
     sections = _section_xmls(syllabus_flat_mbz)
     non_overview_nums = [int(s.findtext("number")) for s in sections if s.findtext("name") != "Overview"]
-    assert min(non_overview_nums) == 1
+    assert min(non_overview_nums) == 2
 
 
 def test_no_overview_section_without_syllabus(multi_chapter_mbz):
