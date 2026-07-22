@@ -14,6 +14,8 @@ from ocw import templates
 from ocw.converter.html import (
     constrain_img_size,
     constrain_table_size,
+    strip_blacklisted_classes,
+    strip_templated_iframes,
     style_figcaption,
 )
 from ocw.converter.strategies import FlatSectionStrategy, NestedSectionStrategy
@@ -110,7 +112,11 @@ class MBZBuilder:
             return None
         content = style_figcaption(
             constrain_table_size(
-                constrain_img_size(rewrite_static_urls(c.syllabus_html))
+                constrain_img_size(
+                    strip_templated_iframes(
+                        strip_blacklisted_classes(rewrite_static_urls(c.syllabus_html))
+                    )
+                )
             )
         )
         sec_id, mod_id, ctx_id = ids.next(), ids.next(), ids.next()

@@ -1,7 +1,13 @@
 import re
 from abc import ABC, abstractmethod
 
-from ocw.converter.html import constrain_img_size, constrain_table_size, style_figcaption
+from ocw.converter.html import (
+    constrain_img_size,
+    constrain_table_size,
+    strip_blacklisted_classes,
+    strip_templated_iframes,
+    style_figcaption,
+)
 from ocw.parser import Course
 from ocw.utils import _Counter, rewrite_static_urls
 
@@ -26,7 +32,13 @@ class SectionStrategy(ABC):
         """Shared: turn a vertical's html components into a page dict, or None if it has none."""
         html_parts = [
             style_figcaption(
-                constrain_table_size(constrain_img_size(rewrite_static_urls(comp["content"])))
+                constrain_table_size(
+                    constrain_img_size(
+                        strip_templated_iframes(
+                            strip_blacklisted_classes(rewrite_static_urls(comp["content"]))
+                        )
+                    )
+                )
             )
             + '<div style="clear:both"></div>'
             for comp in vert["components"]

@@ -109,7 +109,8 @@ COURSE_XML = """\
   <summaryformat>1</summaryformat>
   <format>topics</format>
   <showgrades>1</showgrades>
-  <newsitems>5</newsitems>
+  <!-- NOTE: use 1 if you want the Announcements tab to appear -->
+  <newsitems>0</newsitems>
   <startdate>{ts}</startdate>
   <enddate>0</enddate>
   <marker>0</marker>

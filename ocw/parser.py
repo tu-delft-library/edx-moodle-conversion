@@ -27,7 +27,16 @@ class Course:
         self.readings: list[dict] = []
         self._b64_tmp_dir: Path | None = None
         self.excluded_tags = frozenset(
-            {"video", "problem", "discussion", "drag-and-drop", "advanced"}
+            {
+                "video",
+                "problem",
+                "discussion",
+                "drag-and-drop",
+                "advanced",
+                "lti_consumer",
+                "word_cloud",
+                "openassessment",
+            }
         )
 
     def parse(self) -> None:

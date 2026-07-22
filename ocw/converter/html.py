@@ -2,6 +2,29 @@ import re
 
 # TODO: This file mostly handles injecting inline styling to make the MBZ import look closer to the OLX export; would be nice if we could make this a bit more open
 
+CLASS_BLACKLIST: list[str] = []  
+TUD_DOWNLOAD_BOX_CLASS = "tud-button"
+
+
+def strip_blacklisted_classes(html: str) -> str:
+    if not CLASS_BLACKLIST:
+        return html
+    pattern = re.compile(
+        r'<div\b[^>]*class="[^"]*\b(?:'
+        + "|".join(re.escape(c) for c in CLASS_BLACKLIST)
+        + r')\b[^"]*"[^>]*>.*?</div>',
+        re.DOTALL,
+    )
+    return pattern.sub("", html)
+
+
+def strip_templated_iframes(html: str) -> str:
+    def _drop(m: re.Match) -> str:
+        open_tag = m.group(1)
+        return "" if re.search(r'src="[^"]*%%[A-Z_]+%%[^"]*"', open_tag) else m.group(0)
+
+    return re.sub(r"(<iframe\b[^>]*>).*?</iframe>", _drop, html, flags=re.DOTALL)
+
 
 def constrain_img_size(html: str) -> str:
     # OLX images (base64 or file-referenced) often carry hardcoded pixel width/height
