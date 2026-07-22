@@ -24,6 +24,7 @@ class Course:
         self.static_files: dict[str, Path] = {}
         self.syllabus_html: str | None = None
         self.syllabus_title: str = "Syllabus"
+        self.readings: list[dict] = []
         self._b64_tmp_dir: Path | None = None
         self.excluded_tags = frozenset(
             {"video", "problem", "discussion", "drag-and-drop", "advanced"}
@@ -61,6 +62,7 @@ class Course:
             )
 
         self._parse_syllabus(url_name)
+        self._parse_readings(course)
 
     def _parse_syllabus(self, url_name: str) -> None:
         """Populate syllabus_html/syllabus_title from policy.json's static_tab
@@ -92,6 +94,35 @@ class Course:
             return
         self.syllabus_html = tab_path.read_text(encoding="utf-8")
         self.syllabus_title = tab.get("name") or "Syllabus"
+
+    def _parse_readings(self, course: ET.Element) -> None:
+        """Populate self.readings by flattening every pdf_textbooks[].chapters[]
+        entry on the course run XML root (the same element course_name/course_id
+        are already read from in parse()). Not policy.json-resident — see
+        findings_overview_policies.md §1, Pattern A. Missing attribute is a
+        silent no-op, same as syllabus: Readings is optional course chrome, not
+        required structure. A chapter entry whose PDF isn't found in
+        static_files is dropped (warned, not raised) rather than emitted with a
+        dangling reference — unlike prose HTML links, a Readings entry becomes
+        a whole mod_resource activity 1:1, so there's no sensible degraded
+        output for a resource with nothing to attach.
+        """
+        raw = course.get("pdf_textbooks")
+        if not raw:
+            return
+        for textbook in json.loads(raw):
+            for chapter in textbook.get("chapters", []):
+                url = chapter.get("url", "")
+                name = url.removeprefix("/static/")
+                if name not in self.static_files:
+                    log.warning(
+                        "Parsing OLX: Missing %s '%s' for Readings entry '%s'",
+                        static_file_kind(name),
+                        name,
+                        chapter.get("title", ""),
+                    )
+                    continue
+                self.readings.append({"title": chapter.get("title", ""), "name": name})
 
     def _parse_chapter(self, root: Path, url_name: str) -> dict:
         path = root / "chapter" / f"{url_name}.xml"

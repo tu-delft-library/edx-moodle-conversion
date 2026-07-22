@@ -1,5 +1,13 @@
 import pytest
-from tests.builders import Chapter, HtmlComponent, OLXFixtureBuilder, Sequential, StaticTab, Vertical
+from tests.builders import (
+    Chapter,
+    HtmlComponent,
+    OLXFixtureBuilder,
+    PdfTextbook,
+    Sequential,
+    StaticTab,
+    Vertical,
+)
 from ocw.parser import Course
 
 
@@ -74,3 +82,49 @@ def test_syllabus_none_when_tabs_file_missing(tmp_path):
     course = Course(b.build())
     course.parse()
     assert course.syllabus_html is None
+
+
+def test_readings_parsed_when_pdf_textbooks_configured(tmp_path):
+    b = _minimal_builder(tmp_path)
+    b.static_files = {"reading1.pdf": b"fake-pdf-bytes"}
+    b.pdf_textbooks = [
+        PdfTextbook("Readings", [{"title": "Reading One", "url": "/static/reading1.pdf"}])
+    ]
+    course = Course(b.build())
+    course.parse()
+    assert course.readings == [{"title": "Reading One", "name": "reading1.pdf"}]
+
+
+def test_readings_flattened_across_multiple_pdf_textbooks_entries(tmp_path):
+    """pdf_textbooks is schematically a list — merge every entry's chapters
+    into one flat list rather than one section per entry (plan.md decision)."""
+    b = _minimal_builder(tmp_path)
+    b.static_files = {"a.pdf": b"a", "b.pdf": b"b"}
+    b.pdf_textbooks = [
+        PdfTextbook("Readings", [{"title": "A", "url": "/static/a.pdf"}]),
+        PdfTextbook("Engineering Guidelines", [{"title": "B", "url": "/static/b.pdf"}]),
+    ]
+    course = Course(b.build())
+    course.parse()
+    assert course.readings == [
+        {"title": "A", "name": "a.pdf"},
+        {"title": "B", "name": "b.pdf"},
+    ]
+
+
+def test_readings_empty_when_no_pdf_textbooks(tmp_path):
+    course = Course(_minimal_builder(tmp_path).build())
+    course.parse()
+    assert course.readings == []
+
+
+def test_readings_entry_dropped_when_pdf_missing(tmp_path, caplog):
+    b = _minimal_builder(tmp_path)
+    b.pdf_textbooks = [
+        PdfTextbook("Readings", [{"title": "Missing", "url": "/static/missing.pdf"}])
+    ]
+    course = Course(b.build())
+    with caplog.at_level("WARNING"):
+        course.parse()
+    assert course.readings == []
+    assert "Missing" in caplog.text

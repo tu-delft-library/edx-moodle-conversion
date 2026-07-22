@@ -41,6 +41,16 @@ During conversion the parser emits warnings to stderr (and `ocw.log` with `--deb
 WARNING  Parser: Missing static file logo.png referenced in unit_abc123
 ```
 
+### Custom styling
+
+Go to Themes > Boost (click cog) -> Advanced Settings -> Paste under Initial SCSS.
+
+```css
+#resourceobject { height: 90vh !important; }
+```
+
+Forces PDF readers to take up the screen height for better readability.
+
 ---
 
 ## 2. Running Checks

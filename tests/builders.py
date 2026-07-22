@@ -1,3 +1,4 @@
+import html
 import json
 import shutil
 import tarfile
@@ -52,6 +53,14 @@ class StaticTab:
     url_slug: str
 
 
+@dataclass
+class PdfTextbook:
+    """A pdf_textbooks[] entry on the course run XML root (findings_overview_policies.md §1, Pattern A)."""
+    tab_title: str
+    chapters: list[dict]  # [{"title": ..., "url": "/static/..."}]
+    id: str = "9Readings"
+
+
 class OLXFixtureBuilder:
     """Writes a valid OLX directory tree from a dataclass course description."""
 
@@ -68,6 +77,7 @@ class OLXFixtureBuilder:
         self.static_files: dict[str, bytes] = {}
         self.static_tabs: list[StaticTab] = []
         self.tabs_files: dict[str, str] = {}
+        self.pdf_textbooks: list[PdfTextbook] = []
 
     def build(self) -> Path:
         """Write the OLX tree to self.root and return it."""
@@ -99,8 +109,15 @@ class OLXFixtureBuilder:
             f'<course url_name="{self.run_name}" course="{self.course_id}" display_name="{self.course_name}"/>'
         )
         chapter_tags = "\n  ".join(f'<chapter url_name="{ch.url_name}"/>' for ch in self.chapters)
+        pdf_textbooks_attr = ""
+        if self.pdf_textbooks:
+            payload = [
+                {"tab_title": t.tab_title, "chapters": t.chapters, "id": t.id}
+                for t in self.pdf_textbooks
+            ]
+            pdf_textbooks_attr = f' pdf_textbooks="{html.escape(json.dumps(payload), quote=True)}"'
         (d / f"{self.run_name}.xml").write_text(
-            f'<course display_name="{self.course_name}" course="{self.course_id}">\n  {chapter_tags}\n</course>'
+            f'<course display_name="{self.course_name}" course="{self.course_id}"{pdf_textbooks_attr}>\n  {chapter_tags}\n</course>'
         )
 
     def _write_policy(self) -> None:
