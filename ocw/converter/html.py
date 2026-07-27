@@ -54,12 +54,17 @@ def constrain_table_size(html: str) -> str:
     return re.sub(r"<table\b[^>]*>", _inject, html)
 
 
+def mark_hyperlinks_nomediaplugin(html: str) -> str:
+    def _inject(m: re.Match) -> str:
+        tag = m.group(0)
+        if "class=" in tag:
+            return re.sub(r'class="', 'class="nomediaplugin ', tag, count=1)
+        return tag.replace("<a ", '<a class="nomediaplugin" ', 1)
+
+    return re.sub(r"<a\b[^>]*>", _inject, html)
+
+
 def style_figcaption(html: str) -> str:
-    # OLX authors simulate an image caption with a bare heading tag inside
-    # <figcaption> (e.g. <figcaption><h6>...</h6></figcaption>); OpenEdX's theme
-    # silently shrinks headings nested in figcaption, but Moodle renders them at
-    # full heading size. Inside a shrink-to-fit floated <figure>, that larger
-    # caption text can out-grow the image and stretch the whole box.
     def _inject_heading_style(hm: re.Match) -> str:
         tag = hm.group(0)
         if "style=" in tag:

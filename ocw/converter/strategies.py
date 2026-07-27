@@ -4,6 +4,7 @@ from abc import ABC, abstractmethod
 from ocw.converter.html import (
     constrain_img_size,
     constrain_table_size,
+    mark_hyperlinks_nomediaplugin,
     strip_blacklisted_classes,
     strip_templated_iframes,
     style_figcaption,
@@ -30,25 +31,29 @@ class SectionStrategy(ABC):
     # NOTE: Whenever we append structural things i think it should always be in an auxillory function so that we keep a grasp on expected structure
     def _build_page(self, vert: dict, sec_id: int, sec_num: int) -> dict | None:
         """Shared: turn a vertical's html components into a page dict, or None if it has none."""
-        html_parts = [
-            style_figcaption(
-                constrain_table_size(
-                    constrain_img_size(
-                        strip_templated_iframes(
-                            strip_blacklisted_classes(rewrite_static_urls(comp["content"]))
+        parts = []
+        for comp in vert["components"]:
+            if comp["type"] == "html":
+                parts.append(
+                    style_figcaption(
+                        constrain_table_size(
+                            constrain_img_size(
+                                mark_hyperlinks_nomediaplugin(
+                                    strip_templated_iframes(
+                                        strip_blacklisted_classes(rewrite_static_urls(comp["content"]))
+                                    )
+                                )
+                            )
                         )
                     )
+                    + '<div style="clear:both"></div>'
                 )
-            )
-            + '<div style="clear:both"></div>'
-            for comp in vert["components"]
-            if comp["type"] == "html"
-        ]
-        if not html_parts:
+            elif comp["type"] == "video":
+                parts.append(f"<p>[[vid:{comp['vidkey']}]]</p>")
+        if not parts:
             return None
         mod_id, ctx_id = self.ids.next(), self.ids.next()
-        combined = "".join(html_parts)
-        # NOTE: So parses encodes all static files as php out the gate?
+        combined = "".join(parts)
         file_refs = re.findall(r'@@PLUGINFILE@@/([^"\'>\s]+)', combined)
         return {
             "id": mod_id,
