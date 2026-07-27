@@ -15,7 +15,9 @@ dump.md
 findings.md
 files/
 readme_tentative.md 
-course.mbz
+
+*.mbz
+
 findings_overview_policies.md
 mod_resource.md
 plan_plugin.md
@@ -23,3 +25,8 @@ findings_video.md
 NOTES.md
 RESTORE_HOOK_FINDINGS.md
 frontend_plan.md
+add_to_readme.md
+
+__pycache__/
+
+*.pyc
