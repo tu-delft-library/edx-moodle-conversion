@@ -9,6 +9,7 @@ from pathlib import Path
 @dataclass
 class HtmlComponent:
     """An OLX html component referencing an external .html file."""
+
     url_name: str
     display_name: str
     content: str = "<p>Test content</p>"
@@ -17,14 +18,18 @@ class HtmlComponent:
 @dataclass
 class VideoComponent:
     """An OLX video component with a YouTube ID."""
+
     url_name: str
     display_name: str
-    youtube_id: str = "dQw4w9WgXcQ"
+    youtube_id: str | None = "dQw4w9WgXcQ"
+    edx_video_id: str | None = None
+    legacy_youtube_attr: bool = False  # write youtube="1.00:{id}" instead of youtube_id_1_0
 
 
 @dataclass
 class Vertical:
     """An OLX vertical (unit) containing html/video components."""
+
     url_name: str
     display_name: str
     components: list[HtmlComponent | VideoComponent] = field(default_factory=list)
@@ -33,6 +38,7 @@ class Vertical:
 @dataclass
 class Sequential:
     """An OLX sequential (subsection) containing verticals."""
+
     url_name: str
     display_name: str
     verticals: list[Vertical] = field(default_factory=list)
@@ -41,6 +47,7 @@ class Sequential:
 @dataclass
 class Chapter:
     """An OLX chapter (section) containing sequentials."""
+
     url_name: str
     display_name: str
     sequentials: list[Sequential] = field(default_factory=list)
@@ -49,6 +56,7 @@ class Chapter:
 @dataclass
 class StaticTab:
     """A policy.json static_tab entry (e.g. Syllabus)."""
+
     name: str
     url_slug: str
 
@@ -56,6 +64,7 @@ class StaticTab:
 @dataclass
 class PdfTextbook:
     """A pdf_textbooks[] entry on the course run XML root (findings_overview_policies.md §1, Pattern A)."""
+
     tab_title: str
     chapters: list[dict]  # [{"title": ..., "url": "/static/..."}]
     id: str = "9Readings"
@@ -108,14 +117,18 @@ class OLXFixtureBuilder:
         (d / "course.xml").write_text(
             f'<course url_name="{self.run_name}" course="{self.course_id}" display_name="{self.course_name}"/>'
         )
-        chapter_tags = "\n  ".join(f'<chapter url_name="{ch.url_name}"/>' for ch in self.chapters)
+        chapter_tags = "\n  ".join(
+            f'<chapter url_name="{ch.url_name}"/>' for ch in self.chapters
+        )
         pdf_textbooks_attr = ""
         if self.pdf_textbooks:
             payload = [
                 {"tab_title": t.tab_title, "chapters": t.chapters, "id": t.id}
                 for t in self.pdf_textbooks
             ]
-            pdf_textbooks_attr = f' pdf_textbooks="{html.escape(json.dumps(payload), quote=True)}"'
+            pdf_textbooks_attr = (
+                f' pdf_textbooks="{html.escape(json.dumps(payload), quote=True)}"'
+            )
         (d / f"{self.run_name}.xml").write_text(
             f'<course display_name="{self.course_name}" course="{self.course_id}"{pdf_textbooks_attr}>\n  {chapter_tags}\n</course>'
         )
@@ -143,7 +156,9 @@ class OLXFixtureBuilder:
     def _write_chapter(self, ch: Chapter) -> None:
         d = self.root / "chapter"
         d.mkdir(exist_ok=True)
-        seq_tags = "\n  ".join(f'<sequential url_name="{s.url_name}"/>' for s in ch.sequentials)
+        seq_tags = "\n  ".join(
+            f'<sequential url_name="{s.url_name}"/>' for s in ch.sequentials
+        )
         (d / f"{ch.url_name}.xml").write_text(
             f'<chapter display_name="{ch.display_name}">\n  {seq_tags}\n</chapter>'
         )
@@ -153,7 +168,9 @@ class OLXFixtureBuilder:
     def _write_sequential(self, seq: Sequential) -> None:
         d = self.root / "sequential"
         d.mkdir(exist_ok=True)
-        vert_tags = "\n  ".join(f'<vertical url_name="{v.url_name}"/>' for v in seq.verticals)
+        vert_tags = "\n  ".join(
+            f'<vertical url_name="{v.url_name}"/>' for v in seq.verticals
+        )
         (d / f"{seq.url_name}.xml").write_text(
             f'<sequential display_name="{seq.display_name}">\n  {vert_tags}\n</sequential>'
         )
@@ -188,6 +205,12 @@ class OLXFixtureBuilder:
     def _write_video(self, c: VideoComponent) -> None:
         d = self.root / "video"
         d.mkdir(exist_ok=True)
-        (d / f"{c.url_name}.xml").write_text(
-            f'<video display_name="{c.display_name}" youtube_id_1_0="{c.youtube_id}"/>'
-        )
+        attrs = [f'display_name="{c.display_name}"']
+        if c.edx_video_id:
+            attrs.append(f'edx_video_id="{c.edx_video_id}"')
+        if c.youtube_id:
+            if c.legacy_youtube_attr:
+                attrs.append(f'youtube="1.00:{c.youtube_id}"')
+            else:
+                attrs.append(f'youtube_id_1_0="{c.youtube_id}"')
+        (d / f"{c.url_name}.xml").write_text(f'<video {" ".join(attrs)}/>')

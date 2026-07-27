@@ -136,7 +136,7 @@ COURSE_XML = """\
   </category>
   <tags/>
   <customfields/>
-</course>"""
+{plugin_vidrouter_block}</course>"""
 
 SECTION_XML = """\
 <?xml version="1.0" encoding="UTF-8"?>
