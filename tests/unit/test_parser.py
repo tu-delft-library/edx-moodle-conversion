@@ -7,6 +7,7 @@ from tests.builders import (
     Sequential,
     StaticTab,
     Vertical,
+    VideoComponent,
 )
 from ocw.parser import Course
 
@@ -128,3 +129,213 @@ def test_readings_entry_dropped_when_pdf_missing(tmp_path, caplog):
         course.parse()
     assert course.readings == []
     assert "Missing" in caplog.text
+
+
+def test_parse_video_vidkey_from_edx_video_id(tmp_path):
+    """vidkey/edxvideoid mirror edx_video_id when present; youtubeid comes
+    from youtube_id_1_0 (plan.md §1.3)."""
+    b = _minimal_builder(tmp_path)
+    b.chapters = [
+        Chapter(
+            "ch1",
+            "Ch 1",
+            [
+                Sequential(
+                    "s1",
+                    "S1",
+                    [
+                        Vertical(
+                            "v1",
+                            "V1",
+                            [
+                                VideoComponent(
+                                    "vid1",
+                                    "Video 1",
+                                    youtube_id="_tX7iFAJvZY",
+                                    edx_video_id="d54b76a4-c214-49ea-a4da-161e7f8520a3",
+                                )
+                            ],
+                        )
+                    ],
+                )
+            ],
+        )
+    ]
+    course = Course(b.build())
+    course.parse()
+    assert len(course.videos) == 1
+    video = course.videos[0]
+    assert video["vidkey"] == "d54b76a4-c214-49ea-a4da-161e7f8520a3"
+    assert video["edxvideoid"] == "d54b76a4-c214-49ea-a4da-161e7f8520a3"
+    assert video["youtubeid"] == "_tX7iFAJvZY"
+    assert video["urlname"] == "vid1"
+    assert video["videopagepath"] == "Ch 1 > S1 > V1"
+
+
+def test_parse_video_legacy_youtube_attribute(tmp_path):
+    """youtube="1.00:{id}" is a fallback when youtube_id_1_0 is absent."""
+    b = _minimal_builder(tmp_path)
+    b.chapters = [
+        Chapter(
+            "ch1",
+            "Ch 1",
+            [
+                Sequential(
+                    "s1",
+                    "S1",
+                    [
+                        Vertical(
+                            "v1",
+                            "V1",
+                            [
+                                VideoComponent(
+                                    "vid1",
+                                    "Video 1",
+                                    youtube_id="_tX7iFAJvZY",
+                                    legacy_youtube_attr=True,
+                                )
+                            ],
+                        )
+                    ],
+                )
+            ],
+        )
+    ]
+    course = Course(b.build())
+    course.parse()
+    assert course.videos[0]["youtubeid"] == "_tX7iFAJvZY"
+
+
+def test_parse_video_no_source_falls_back_to_url_name(tmp_path):
+    """No edx_video_id/youtube anywhere → vidkey falls back to url_name,
+    youtubeid stays None (findings_video.md §4.1 pattern 3, dead-end)."""
+    b = _minimal_builder(tmp_path)
+    b.chapters = [
+        Chapter(
+            "ch1",
+            "Ch 1",
+            [
+                Sequential(
+                    "s1",
+                    "S1",
+                    [Vertical("v1", "V1", [VideoComponent("vid1", "Video 1", youtube_id=None)])],
+                )
+            ],
+        )
+    ]
+    course = Course(b.build())
+    course.parse()
+    video = course.videos[0]
+    assert video["vidkey"] == "vid1"
+    assert video["youtubeid"] is None
+    assert video["edxvideoid"] is None
+
+
+def test_attach_video_download_ids_paired(tmp_path):
+    """One dframe + one video in the same vertical → paired positionally
+    (plan.md §1.4 sibling-scan)."""
+    b = _minimal_builder(tmp_path)
+    b.chapters = [
+        Chapter(
+            "ch1",
+            "Ch 1",
+            [
+                Sequential(
+                    "s1",
+                    "S1",
+                    [
+                        Vertical(
+                            "v1",
+                            "V1",
+                            [
+                                HtmlComponent(
+                                    "pg1",
+                                    "Page 1",
+                                    content='<iframe class="dframe" data-downloadid="NGI101x-3.1"></iframe>',
+                                ),
+                                VideoComponent("vid1", "Video 1"),
+                            ],
+                        )
+                    ],
+                )
+            ],
+        )
+    ]
+    course = Course(b.build())
+    course.parse()
+    assert course.videos[0]["tuddownloadid"] == "NGI101x-3.1"
+
+
+def test_attach_video_download_ids_ambiguous_multiple_dframes(tmp_path, caplog):
+    """More than one dframe candidate → ambiguous, logged, left unpaired."""
+    b = _minimal_builder(tmp_path)
+    b.chapters = [
+        Chapter(
+            "ch1",
+            "Ch 1",
+            [
+                Sequential(
+                    "s1",
+                    "S1",
+                    [
+                        Vertical(
+                            "v1",
+                            "V1",
+                            [
+                                HtmlComponent(
+                                    "pg1",
+                                    "Page 1",
+                                    content=(
+                                        '<iframe class="dframe" data-downloadid="a"></iframe>'
+                                        '<iframe class="dframe" data-downloadid="b"></iframe>'
+                                    ),
+                                ),
+                                VideoComponent("vid1", "Video 1"),
+                            ],
+                        )
+                    ],
+                )
+            ],
+        )
+    ]
+    course = Course(b.build())
+    with caplog.at_level("WARNING"):
+        course.parse()
+    assert course.videos[0]["tuddownloadid"] is None
+    assert "Ambiguous" in caplog.text
+
+
+def test_course_videos_flat_list_matches_video_components(tmp_path):
+    b = _minimal_builder(tmp_path)
+    b.chapters = [
+        Chapter(
+            "ch1",
+            "Ch 1",
+            [
+                Sequential(
+                    "s1",
+                    "S1",
+                    [
+                        Vertical(
+                            "v1",
+                            "V1",
+                            [VideoComponent("vid1", "Video 1"), VideoComponent("vid2", "Video 2")],
+                        ),
+                        Vertical("v2", "V2", [HtmlComponent("pg1", "Page 1")]),
+                    ],
+                )
+            ],
+        )
+    ]
+    course = Course(b.build())
+    course.parse()
+    total_video_components = sum(
+        1
+        for ch in course.chapters
+        for s in ch["sequentials"]
+        for v in s["verticals"]
+        for c in v["components"]
+        if c["type"] == "video"
+    )
+    assert len(course.videos) == 2
+    assert len(course.videos) == total_video_components
