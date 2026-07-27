@@ -18,7 +18,7 @@
  * Form for adding/editing video mappings
  *
  * @package    filter_vidrouter
- * @copyright  2024 TU Delft
+ * @copyright  2026 TU Delft
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 
@@ -27,9 +27,7 @@ defined('MOODLE_INTERNAL') || die();
 require_once($CFG->libdir . '/formslib.php');
 
 class filter_vidrouter_edit_form extends moodleform {
-    /**
-     * Define the form
-     */
+
     public function definition() {
         $mform = $this->_form;
 
@@ -84,9 +82,6 @@ class filter_vidrouter_edit_form extends moodleform {
         $this->add_action_buttons();
     }
 
-    /**
-     * Validate form data
-     */
     public function validation($data, $files) {
         $errors = parent::validation($data, $files);
 

@@ -18,14 +18,14 @@
  * Plugin version and other meta-information
  *
  * @package    filter_vidrouter
- * @copyright  2024 TU Delft
+ * @copyright  2026 TU Delft
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 
 defined('MOODLE_INTERNAL') || die();
 
-$plugin->version   = 2024070100;
+$plugin->version   = 2024070107;
 $plugin->requires  = 2022041900;
 $plugin->component = 'filter_vidrouter';
 $plugin->maturity  = MATURITY_BETA;
-$plugin->release   = '1.0.0 (Build: 2024070100)';
+$plugin->release   = '1.0.7 (Build: 2024070107)';

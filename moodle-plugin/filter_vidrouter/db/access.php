@@ -18,7 +18,7 @@
  * Capability definitions for filter_vidrouter
  *
  * @package    filter_vidrouter
- * @copyright  2024 TU Delft
+ * @copyright  2026 TU Delft
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 

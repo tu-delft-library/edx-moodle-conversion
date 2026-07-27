@@ -18,13 +18,16 @@
  * Admin page for managing video mappings
  *
  * @package    filter_vidrouter
- * @copyright  2024 TU Delft
+ * @copyright  2026 TU Delft
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 
 require_once(__DIR__ . '/../../config.php');
 require_once($CFG->libdir . '/tablelib.php');
 require_once($CFG->dirroot . '/filter/vidrouter/classes/form/edit_form.php');
+require_once($CFG->dirroot . '/filter/vidrouter/classes/form/import_form.php');
+
+use filter_vidrouter\bulk_import;
 
 $action = optional_param('action', '', PARAM_ALPHA);
 $id = optional_param('id', 0, PARAM_INT);
@@ -45,12 +48,11 @@ if ($delete) {
         require_sesskey();
         global $DB;
         $DB->delete_records('filter_vidrouter_map', array('id' => $delete));
-        // Invalidate cache.
+        // Invalidate cach
         $cache = cache::make('filter_vidrouter', 'map');
         $cache->delete('all_videos');
         redirect($PAGE->url, get_string('deletemapping', 'filter_vidrouter') . ' ' . get_string('deleted', 'moodle'), notification::NOTIFY_SUCCESS);
     } else {
-        // Show confirmation.
         echo $OUTPUT->header();
         echo $OUTPUT->confirm(
             get_string('confirmdeletemapping', 'filter_vidrouter'),
@@ -106,7 +108,7 @@ if ($action == 'edit' || $action == 'add') {
             $DB->insert_record('filter_vidrouter_map', $record);
         }
 
-        // Invalidate cache.
+        // Invalidate cache, important! 
         $cache = cache::make('filter_vidrouter', 'map');
         $cache->delete('all_videos');
 
@@ -129,20 +131,101 @@ if ($action == 'edit' || $action == 'add') {
     }
 }
 
-// Default: show listings table and controls.
+if ($action == 'import') {
+    $importconfirm = optional_param('importconfirm', 0, PARAM_INT);
+
+    if ($importconfirm) {
+        require_sesskey();
+        $matchfield = required_param('matchfield', PARAM_ALPHA);
+        $csvdata = required_param('csvdata', PARAM_RAW);
+
+        $parsed = bulk_import::parse_csv($csvdata);
+        $plan = bulk_import::plan($parsed['rows'], $matchfield);
+        $updated = bulk_import::apply($plan);
+        $counts = array_count_values(array_column($plan, 'status'));
+
+        $summary = get_string('import_summary', 'filter_vidrouter', (object)[
+            'updated' => $updated,
+            'unmatched' => $counts['unmatched'] ?? 0,
+            'ambiguous' => $counts['ambiguous'] ?? 0,
+        ]);
+        redirect($PAGE->url, $summary, null, notification::NOTIFY_SUCCESS);
+    }
+
+    $mform = new filter_vidrouter_import_form();
+
+    if ($mform->is_cancelled()) {
+        redirect($PAGE->url);
+    } else if ($data = $mform->get_data()) {
+        $parsed = bulk_import::parse_csv($data->csvdata);
+        $plan = bulk_import::plan($parsed['rows'], $data->matchfield);
+        $matched = count(array_filter($plan, fn($e) => $e['status'] === 'matched'));
+
+        echo $OUTPUT->header();
+        echo $OUTPUT->heading(get_string('import_preview', 'filter_vidrouter'));
+
+        $previewtable = new html_table();
+        $previewtable->head = [
+            get_string('import_matchfield', 'filter_vidrouter'),
+            get_string('import_status', 'filter_vidrouter'),
+            get_string('import_changes', 'filter_vidrouter'),
+        ];
+        foreach ($plan as $entry) {
+            $changesstr = [];
+            foreach ($entry['changes'] as $col => $val) {
+                $changesstr[] = s($col) . ' = ' . s($val);
+            }
+            $previewtable->data[] = [
+                s($entry['matchvalue']),
+                get_string('import_status_' . $entry['status'], 'filter_vidrouter'),
+                implode(', ', $changesstr),
+            ];
+        }
+        echo html_writer::table($previewtable);
+
+        $confirmattrs = ['type' => 'submit', 'class' => 'btn btn-primary'];
+        if ($matched === 0) {
+            $confirmattrs['disabled'] = 'disabled';
+        }
+
+        echo html_writer::start_tag('form', ['method' => 'post', 'action' => $PAGE->url]);
+        echo html_writer::empty_tag('input', ['type' => 'hidden', 'name' => 'action', 'value' => 'import']);
+        echo html_writer::empty_tag('input', ['type' => 'hidden', 'name' => 'importconfirm', 'value' => 1]);
+        echo html_writer::empty_tag('input', ['type' => 'hidden', 'name' => 'sesskey', 'value' => sesskey()]);
+        echo html_writer::empty_tag('input', ['type' => 'hidden', 'name' => 'matchfield', 'value' => $data->matchfield]);
+        echo html_writer::tag('textarea', $data->csvdata, ['name' => 'csvdata', 'hidden' => 'hidden']);
+        echo html_writer::tag('button', get_string('import_confirm', 'filter_vidrouter'), $confirmattrs);
+        echo ' ';
+        echo $OUTPUT->single_button($PAGE->url, get_string('cancel'), 'get');
+        echo html_writer::end_tag('form');
+
+        echo $OUTPUT->footer();
+        exit;
+    } else {
+        echo $OUTPUT->header();
+        echo $OUTPUT->heading(get_string('import_heading', 'filter_vidrouter'));
+        $mform->display();
+        echo $OUTPUT->footer();
+        exit;
+    }
+}
+
+// Show listings table and controls.
 echo $OUTPUT->header();
 echo $OUTPUT->heading(get_string('manage', 'filter_vidrouter'));
 
-// Add/Export buttons.
+// Add/Export/Import buttons
 $addurl = new moodle_url($PAGE->url, array('action' => 'add'));
 $exporturl = new moodle_url($PAGE->url, array('export' => 1, 'sesskey' => sesskey()));
+$importurl = new moodle_url($PAGE->url, array('action' => 'import'));
 
 echo '<div class="filter_vidrouter_controls">';
 echo $OUTPUT->single_button($addurl, get_string('addbuttontext', 'filter_vidrouter'), 'get');
 echo $OUTPUT->single_button($exporturl, get_string('export_json', 'filter_vidrouter'), 'get');
+echo $OUTPUT->single_button($importurl, get_string('importbuttontext', 'filter_vidrouter'), 'get');
 echo '</div>';
 
-// Show table.
+// Show table
 global $DB;
 $table = new flexible_table('filter_vidrouter_map');
 $table->define_columns(array('vidkey', 'title', 'courseid', 'timemodified', 'actions'));

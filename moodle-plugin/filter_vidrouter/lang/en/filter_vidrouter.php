@@ -18,7 +18,7 @@
  * Language strings for filter_vidrouter
  *
  * @package    filter_vidrouter
- * @copyright  2024 TU Delft
+ * @copyright  2026 TU Delft
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 
@@ -64,7 +64,37 @@ $string['deletebuttontext'] = 'Delete mapping';
 $string['export_json'] = 'Export as JSON';
 $string['export_json_desc'] = 'Download all mappings as a JSON file.';
 
+$string['importbuttontext'] = 'Bulk import';
+$string['import_heading'] = 'Bulk-assign values to existing mappings';
+$string['import_matchfield'] = 'Match on';
+$string['import_matchfield_help'] = 'Existing rows are looked up by this field. Only rows with exactly one match are updated.';
+$string['import_csvdata'] = 'CSV data';
+$string['import_csvdata_help'] = 'Paste CSV with a header row. The header must be made up of field names (e.g. youtubeid,edxvideoid). The "Match on" column\'s value is used to find the existing row; every other column present is written onto it. Existing values are only overwritten for columns you include — blank cells are left untouched.';
+$string['import_preview'] = 'Preview';
+$string['import_confirm'] = 'Apply changes';
+$string['import_status'] = 'Result';
+$string['import_changes'] = 'Changes';
+$string['import_status_matched'] = 'Will update';
+$string['import_status_unmatched'] = 'No matching row — skipped';
+$string['import_status_ambiguous'] = 'Matches more than one row — skipped';
+$string['import_status_invalid'] = 'Missing match value — skipped';
+$string['import_status_nochange'] = 'Matched, but no columns to change — skipped';
+$string['import_summary'] = '{$a->updated} row(s) updated, {$a->unmatched} unmatched, {$a->ambiguous} ambiguous.';
+$string['import_error_empty'] = 'No CSV data was provided.';
+$string['import_error_unknown_column'] = 'Unknown column name: "{$a}". Valid columns are: vidkey, youtubeid, edxvideoid, tuddownloadid, stlbaseid, urlname, courseid, title, videopagepath.';
+$string['import_error_duplicate_column'] = 'The header row contains the same column more than once.';
+
 $string['video_unavailable'] = 'Video unavailable. Please contact your course team.';
+$string['videourlmissing'] = '(video link missing)';
+
+$string['primarysource'] = 'Primary video source';
+$string['primarysource_desc'] = 'Which source field to render a video link from. Only sources with real, working implementations are listed here — edX and TU Delft download IDs are intentionally excluded (see project findings).';
+$string['source_youtube'] = 'YouTube';
+
+$string['embedstyle'] = 'Export embed style';
+$string['embedstyle_desc'] = 'How to render videos in the HTML baked into a course backup/export (used when duplicating or restoring a course) — independent of how videos render live on the site, which always uses the native YouTube iframe for captions. "Video" outputs a plain link and lets Moodle\'s media filter embed it (matches how OLX-exported videos were originally rendered), but YouTube captions are not available in that mode. "Iframe" matches the live rendering, with working captions.';
+$string['embedstyle_video'] = 'Video (matches OLX export, no captions)';
+$string['embedstyle_iframe'] = 'Iframe (matches live rendering, with captions)';
 
 $string['addmapping'] = 'Add mapping';
 $string['editmapping'] = 'Edit mapping';
