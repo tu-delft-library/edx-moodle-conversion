@@ -433,12 +433,57 @@ class MBZBuilder:
         ):
             (tmp / name).write_text(content, encoding="utf-8")
 
+    def _build_vidrouter_block(self, c: Course) -> str:
+        """Fields match restore_local_vidrouter_plugin.class.php's
+        process_plugin_local_vidrouter_video() exactly — no courseid, no html.
+        Data row, not an HTML5 tag; filter_vidrouter renders at request time.
+
+        Emitted as a 'local' plugin block (not 'filter') because Moodle's course-level
+        restore only scans format/theme/report/coursereport/plagiarism/local/tool plugin
+        types (restore_course_structure_step::define_structure()) — filter_ is never
+        scanned, so local_vidrouter owns the course-level restore hook. See
+        RESTORE_HOOK_FINDINGS.md.
+
+        Fields are child elements, not XML attributes: Moodle's SAX restore parser
+        only checks in at a path when it descends into a child, so an attribute-only
+        <video/> leaf never gets its own dispatch chunk, and repeated attribute-only
+        siblings get deduped down to one survivor before that. See findings.md #16.
+        """
+        if not c.videos:
+            return ""
+        videos_xml = "\n".join(
+            "    <video>\n"
+            "      <vidkey>{}</vidkey>\n"
+            "      <title>{}</title>\n"
+            "      <youtubeid>{}</youtubeid>\n"
+            "      <edxvideoid>{}</edxvideoid>\n"
+            "      <tuddownloadid>{}</tuddownloadid>\n"
+            "      <stlbaseid>{}</stlbaseid>\n"
+            "      <urlname>{}</urlname>\n"
+            "      <videopagepath>{}</videopagepath>\n"
+            "    </video>".format(
+                esc(v["vidkey"]),
+                esc(v["display_name"]),
+                esc(v["youtubeid"] or ""),
+                esc(v["edxvideoid"] or ""),
+                esc(v["tuddownloadid"] or ""),
+                esc(v["stlbaseid"] or ""),
+                esc(v["urlname"]),
+                esc(v["videopagepath"]),
+            )
+            for v in c.videos
+        )
+        return f"  <plugin_local_vidrouter_course>\n{videos_xml}\n  </plugin_local_vidrouter_course>\n"
+
     def _write_course_xml(self, tmp: Path, c: Course, ts: int) -> None:
         d = tmp / "course"
         d.mkdir(exist_ok=True)
         (d / "course.xml").write_text(
             templates.COURSE_XML.format(
-                course_id=esc(c.course_id), course_name=esc(c.course_name), ts=ts
+                course_id=esc(c.course_id),
+                course_name=esc(c.course_name),
+                ts=ts,
+                plugin_vidrouter_block=self._build_vidrouter_block(c),
             ),
             encoding="utf-8",
         )
