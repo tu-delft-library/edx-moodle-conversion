@@ -1,3 +1,4 @@
+import json
 import logging
 import re
 from pathlib import Path
@@ -7,8 +8,27 @@ from ocw.utils import static_file_kind
 
 log = logging.getLogger("ocw.parser")
 
+_VIDKEY_UNSAFE_RE = re.compile(r"[^A-Za-z0-9_-]")
+
+
+def _safe_vidkey(raw: str) -> str:
+    return _VIDKEY_UNSAFE_RE.sub("_", raw)
+
+
+def _find_dframe_downloadids(html: str) -> list[str]:
+    ids = []
+    for tag_match in Course._DFRAME_RE.finditer(html):
+        id_match = Course._DOWNLOADID_RE.search(tag_match.group(0))
+        if id_match:
+            ids.append(id_match.group(1))
+    return ids
+
 
 class Course:
+    _DFRAME_RE = re.compile(
+        r'<iframe\b[^>]*class="[^"]*\bdframe\b[^"]*"[^>]*>', re.IGNORECASE
+    )
+    _DOWNLOADID_RE = re.compile(r'data-downloadid="([^"]*)"')
     """Parses an OpenEdX OLX course export into a structured representation."""
 
     def __init__(self, root: Path) -> None:
@@ -21,9 +41,21 @@ class Course:
         self.course_id: str = ""
         self.chapters: list[dict] = []
         self.static_files: dict[str, Path] = {}
+        self.syllabus_html: str | None = None
+        self.syllabus_title: str = "Syllabus"
+        self.readings: list[dict] = []
+        self.videos: list[dict] = []
         self._b64_tmp_dir: Path | None = None
         self.excluded_tags = frozenset(
-            {"video", "problem", "discussion", "drag-and-drop", "advanced"}
+            {
+                "problem",
+                "discussion",
+                "drag-and-drop",
+                "advanced",
+                "lti_consumer",
+                "word_cloud",
+                "openassessment",
+            }
         )
 
     def parse(self) -> None:
@@ -56,6 +88,71 @@ class Course:
             self.chapters.append(
                 self._parse_chapter(self.root, ref.get("url_name", ""))
             )
+
+        self._parse_syllabus(url_name)
+        self._parse_readings(course)
+
+        self.videos = [
+            comp
+            for chapter in self.chapters
+            for sequential in chapter["sequentials"]
+            for vertical in sequential["verticals"]
+            for comp in vertical["components"]
+            if comp["type"] == "video"
+        ]
+
+    def _parse_syllabus(self, url_name: str) -> None:
+        """Populate syllabus_html/syllabus_title from policy.json's static_tab
+        entry, if one is configured. 
+        """
+        policy_path = self.root / "policies" / url_name / "policy.json"
+        if not policy_path.exists():
+            return
+        policy = json.loads(policy_path.read_text(encoding="utf-8"))
+        course_policy = policy.get(f"course/{url_name}", {})
+        tab = next(
+            (t for t in course_policy.get("tabs", []) if t.get("type") == "static_tab"),
+            None,
+        )
+        if tab is None:
+            return
+        url_slug = tab.get("url_slug")
+        if not url_slug:
+            return
+        tab_path = self.root / "tabs" / f"{url_slug}.html"
+        if not tab_path.exists():
+            return
+        self.syllabus_html = tab_path.read_text(encoding="utf-8")
+        self.syllabus_title = tab.get("name") or "Syllabus"
+
+    def _parse_readings(self, course: ET.Element) -> None:
+        """Populate self.readings by flattening every pdf_textbooks[].chapters[]
+        entry on the course run XML root (the same element course_name/course_id
+        are already read from in parse()). Not policy.json-resident — see
+        findings_overview_policies.md §1, Pattern A. Missing attribute is a
+        silent no-op, same as syllabus: Readings is optional course chrome, not
+        required structure. A chapter entry whose PDF isn't found in
+        static_files is dropped (warned, not raised) rather than emitted with a
+        dangling reference — unlike prose HTML links, a Readings entry becomes
+        a whole mod_resource activity 1:1, so there's no sensible degraded
+        output for a resource with nothing to attach.
+        """
+        raw = course.get("pdf_textbooks")
+        if not raw:
+            return
+        for textbook in json.loads(raw):
+            for chapter in textbook.get("chapters", []):
+                url = chapter.get("url", "")
+                name = url.removeprefix("/static/")
+                if name not in self.static_files:
+                    log.warning(
+                        "Parsing OLX: Missing %s '%s' for Readings entry '%s'",
+                        static_file_kind(name),
+                        name,
+                        chapter.get("title", ""),
+                    )
+                    continue
+                self.readings.append({"title": chapter.get("title", ""), "name": name})
 
     def _parse_chapter(self, root: Path, url_name: str) -> dict:
         path = root / "chapter" / f"{url_name}.xml"
@@ -119,11 +216,34 @@ class Course:
             )
             is not None
         ]
+        self._attach_video_download_ids(components, display_name)
         return {
             "url_name": url_name,
             "display_name": display_name,
             "components": components,
         }
+
+    def _attach_video_download_ids(
+        self, components: list[dict], vertical_name: str = ""
+    ) -> None:
+        downloadids = [
+            did
+            for comp in components
+            if comp["type"] == "html"
+            for did in _find_dframe_downloadids(comp["content"])
+        ]
+        videos = [c for c in components if c["type"] == "video"]
+        if not downloadids or not videos:
+            return
+        if len(downloadids) != 1 or len(videos) != 1:
+            log.warning(
+                "Ambiguous dframe/video pairing in vertical '%s': %d dframe(s), %d video(s) — skipping tuddownloadid",
+                vertical_name,
+                len(downloadids),
+                len(videos),
+            )
+            return
+        videos[0]["tuddownloadid"] = downloadids[0]
 
     def _parse_component(
         self,
@@ -137,6 +257,10 @@ class Course:
         match child.tag:
             case "html":
                 return self._parse_html(
+                    root, url_name, vertical_name, sequential_name, chapter_name
+                )
+            case "video":
+                return self._parse_video(
                     root, url_name, vertical_name, sequential_name, chapter_name
                 )
             case tag if tag in self.excluded_tags:
@@ -185,4 +309,38 @@ class Course:
             "url_name": url_name,
             "display_name": el.get("display_name", ""),
             "content": content,
+        }
+
+    def _parse_video(
+        self,
+        root: Path,
+        url_name: str,
+        vertical_name: str = "",
+        sequential_name: str = "",
+        chapter_name: str = "",
+    ) -> dict:
+        path = root / "video" / f"{url_name}.xml"
+        if not path.exists():
+            raise FileNotFoundError(f"Missing Video XML: {url_name}")
+        el = ET.parse(path).getroot()
+
+        edx_video_id = el.get("edx_video_id") or None
+        youtubeid = el.get("youtube_id_1_0") or None
+        if not youtubeid:
+            # Format: youtube="1.00:_tX7iFAJvZY"
+            youtube_attr = el.get("youtube", "")
+            if ":" in youtube_attr:
+                youtubeid = youtube_attr.rsplit(":", 1)[1] or None
+
+        return {
+            "type": "video",
+            "url_name": url_name,
+            "display_name": el.get("display_name", ""),
+            "vidkey": _safe_vidkey(edx_video_id or url_name),
+            "youtubeid": youtubeid,
+            "edxvideoid": edx_video_id,
+            "stlbaseid": edx_video_id,  
+            "tuddownloadid": None,  # filled in by _attach_video_download_ids
+            "urlname": url_name,
+            "videopagepath": f"{chapter_name} > {sequential_name} > {vertical_name}",
         }

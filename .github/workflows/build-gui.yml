@@ -1,0 +1,66 @@
+name: Build GUI binaries
+
+on:
+  push:
+    tags: ["v*"]
+
+jobs:
+  linux-appimage:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: pipx install poetry
+      - run: poetry install --with dev
+      - run: poetry run pyinstaller --onefile --windowed --name ocw-gui ocw/gui.py
+      - run: |
+          mkdir -p AppDir/usr/bin
+          cp dist/ocw-gui AppDir/usr/bin/
+          cp packaging/ocw-gui.desktop AppDir/
+          cp packaging/ocw-gui.png AppDir/
+          ln -s usr/bin/ocw-gui AppDir/AppRun
+          wget -q https://github.com/AppImage/appimagetool/releases/latest/download/appimagetool-x86_64.AppImage
+          chmod +x appimagetool-x86_64.AppImage
+          ./appimagetool-x86_64.AppImage AppDir OCW-GUI-x86_64.AppImage
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ocw-gui-linux
+          path: OCW-GUI-x86_64.AppImage
+
+  windows-exe:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: pipx install poetry
+      - run: poetry install --with dev
+      - run: poetry run pyinstaller --onefile --windowed --name ocw-gui ocw/gui.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ocw-gui-windows
+          path: dist/ocw-gui.exe
+
+  moodle-plugins:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: ./export_plugins.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: moodle-plugins
+          path: |
+            filter_vidrouter.zip
+            local_vidrouter.zip
+
+  release:
+    needs: [linux-appimage, windows-exe, moodle-plugins]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist-artifacts
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist-artifacts/ocw-gui-linux/OCW-GUI-x86_64.AppImage
+            dist-artifacts/ocw-gui-windows/ocw-gui.exe
+            dist-artifacts/moodle-plugins/filter_vidrouter.zip
+            dist-artifacts/moodle-plugins/local_vidrouter.zip

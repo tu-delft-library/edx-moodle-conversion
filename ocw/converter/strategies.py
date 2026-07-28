@@ -1,7 +1,14 @@
 import re
 from abc import ABC, abstractmethod
 
-from ocw.converter.html import constrain_img_size, constrain_table_size
+from ocw.converter.html import (
+    constrain_img_size,
+    constrain_table_size,
+    mark_hyperlinks_nomediaplugin,
+    strip_blacklisted_classes,
+    strip_templated_iframes,
+    style_figcaption,
+)
 from ocw.parser import Course
 from ocw.utils import _Counter, rewrite_static_urls
 
@@ -9,9 +16,13 @@ from ocw.utils import _Counter, rewrite_static_urls
 class SectionStrategy(ABC):
     """Turns a parsed Course into (all_sections, sub_mods, pages) for the MBZ writer."""
 
-    def __init__(self, course: Course, ids: _Counter) -> None:
+    def __init__(self, course: Course, ids: _Counter, section_offset: int = 0) -> None:
         self.c = course
         self.ids = ids
+        # NOTE: non-zero when an Overview section (Syllabus/Readings) is
+        # prepended ahead of these chapter-derived sections, so numbering
+        # starts after it instead of colliding with its <number>0</number>.
+        self.section_offset = section_offset
 
     @abstractmethod
     def build(self) -> tuple[list[dict], list[dict], list[dict]]:
@@ -20,17 +31,29 @@ class SectionStrategy(ABC):
     # NOTE: Whenever we append structural things i think it should always be in an auxillory function so that we keep a grasp on expected structure
     def _build_page(self, vert: dict, sec_id: int, sec_num: int) -> dict | None:
         """Shared: turn a vertical's html components into a page dict, or None if it has none."""
-        html_parts = [
-            constrain_table_size(constrain_img_size(rewrite_static_urls(comp["content"])))
-            + '<div style="clear:both"></div>'
-            for comp in vert["components"]
-            if comp["type"] == "html"
-        ]
-        if not html_parts:
+        parts = []
+        for comp in vert["components"]:
+            if comp["type"] == "html":
+                parts.append(
+                    style_figcaption(
+                        constrain_table_size(
+                            constrain_img_size(
+                                mark_hyperlinks_nomediaplugin(
+                                    strip_templated_iframes(
+                                        strip_blacklisted_classes(rewrite_static_urls(comp["content"]))
+                                    )
+                                )
+                            )
+                        )
+                    )
+                    + '<div style="clear:both"></div>'
+                )
+            elif comp["type"] == "video":
+                parts.append(f"<p>[[vid:{comp['vidkey']}]]</p>")
+        if not parts:
             return None
         mod_id, ctx_id = self.ids.next(), self.ids.next()
-        combined = "".join(html_parts)
-        # NOTE: So parses encodes all static files as php out the gate?
+        combined = "".join(parts)
         file_refs = re.findall(r'@@PLUGINFILE@@/([^"\'>\s]+)', combined)
         return {
             "id": mod_id,
@@ -58,6 +81,12 @@ class FlatSectionStrategy(SectionStrategy):
                         "id": self.ids.next(),
                         "name": f"{ch['display_name']} - {seq['display_name']}",
                         "modules": [],
+                        # explicit, offset-aware — must not rely on
+                        # _write_section's positional idx+1 fallback, which
+                        # would silently drift from sec_num below the moment
+                        # anything gets prepended to all_sections (e.g. an
+                        # Overview section)
+                        "number": len(sections) + 1 + self.section_offset,
                     }
                 )
 
@@ -67,7 +96,7 @@ class FlatSectionStrategy(SectionStrategy):
                 sec_idx = sec_idx_for[id(seq)]
                 sec = sections[sec_idx]
                 for vert in seq["verticals"]:
-                    page = self._build_page(vert, sec["id"], sec_idx + 1)
+                    page = self._build_page(vert, sec["id"], sec_idx + 1 + self.section_offset)
                     if page is None:
                         continue
                     pages.append(page)
@@ -119,12 +148,14 @@ class NestedSectionStrategy(SectionStrategy):
             all_sections.extend(sub["child_sec"] for sub in sub_mods[sub_cursor : sub_cursor + n])
             sub_cursor += n
 
-        # number parent chapters 0..n-1, child sections n..n+m-1 (matching Moodle's DB layout)
+        # number parent chapters offset..offset+n-1, child sections
+        # offset+n..offset+n+m-1 (matching Moodle's DB layout, shifted past
+        # any prepended Overview section)
         num_ch = len(ch_sections)
         for ch_i, ch_sec in enumerate(ch_sections):
-            ch_sec["number"] = ch_i
+            ch_sec["number"] = ch_i + self.section_offset
         for i, sub in enumerate(sub_mods):
-            sub["child_sec"]["number"] = num_ch + i
+            sub["child_sec"]["number"] = num_ch + i + self.section_offset
         sec_num = {s["id"]: s["number"] for s in all_sections}
         for sub in sub_mods:
             sub["parent_sec_num"] = sec_num[sub["parent_sec_id"]]

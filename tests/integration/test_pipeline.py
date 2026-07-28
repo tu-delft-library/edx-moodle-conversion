@@ -4,6 +4,7 @@ from xml.etree import ElementTree as ET
 
 from ocw.converter import MBZBuilder
 from ocw.parser import Course
+from tests.builders import Chapter, HtmlComponent, OLXFixtureBuilder, Sequential, StaticTab, Vertical
 
 
 # INFO: Check constructor works and generated path is valid
@@ -100,3 +101,38 @@ def test_backup_manifest_section_dirs_exist(minimal_fixture, tmp_path):
         assert any(n.startswith(d + "/") for n in names), (
             f"moodle_backup.xml lists '{d}' but dir doesn't exist"
         )
+
+_PNG = (
+    b'\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01'
+    b'\x08\x02\x00\x00\x00\x90wS\xde\x00\x00\x00\x0cIDATx\x9cc\xf8\x0f\x00'
+    b'\x00\x01\x01\x00\x05\x18\xd8N\x00\x00\x00\x00IEND\xaeB`\x82'
+)
+
+
+def test_syllabus_static_ref_rewritten_and_linked(tmp_path):
+    b = OLXFixtureBuilder(tmp_path / "course")
+    b.chapters = [Chapter("ch1", "Ch 1", [Sequential("s1", "S1", [Vertical("v1", "V1", [
+        HtmlComponent("pg1", "Page 1"),
+    ])])])]
+    b.static_tabs = [StaticTab("Syllabus", "syllabus-slug")]
+    b.tabs_files = {"syllabus-slug": '<img src="/static/syllabus.png"/>'}
+    b.static_files = {"syllabus.png": _PNG}
+    course = Course(b.build())
+    course.parse()
+    out = tmp_path / "course.mbz"
+    MBZBuilder(course).build(out)
+
+    with tarfile.open(out) as tar:
+        names = set(tar.getnames())
+        overview_page = next(
+            n for n in names
+            if re.match(r"activities/page_\d+/page\.xml", n)
+            and "syllabus.png" in tar.extractfile(n).read().decode()
+        )
+        page_xml = ET.parse(tar.extractfile(overview_page)).getroot().find("page")
+        assert "@@PLUGINFILE@@/syllabus.png" in page_xml.findtext("content")
+
+        files_xml = ET.parse(tar.extractfile("files.xml")).getroot()
+        file_entry = next(f for f in files_xml.findall("file") if f.findtext("filename") == "syllabus.png")
+        sha1 = file_entry.findtext("contenthash")
+        assert f"files/{sha1[:2]}/{sha1}" in names
