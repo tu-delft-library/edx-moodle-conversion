@@ -6,7 +6,7 @@ authors = [
     {name = "Kikis", email = "kikispcmr@gmail.com"}
 ]
 readme = "README.md"
-requires-python = ">=3.11"
+requires-python = ">=3.11,<3.16"
 dependencies = ["python-dotenv>=1.0"]
 
 [project.scripts]
@@ -20,6 +20,8 @@ build-backend = "poetry.core.masonry.api"
 pytest = ">=8"
 pytest-cov = "*"
 requests = ">=2.28"
+pyinstaller = "^6.21.0"
+deptry = "^0.25.1"
 
 [tool.pytest.ini_options]
 testpaths = ["tests/unit", "tests/integration"]

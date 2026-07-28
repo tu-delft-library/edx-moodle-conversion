@@ -109,7 +109,8 @@ COURSE_XML = """\
   <summaryformat>1</summaryformat>
   <format>topics</format>
   <showgrades>1</showgrades>
-  <newsitems>5</newsitems>
+  <!-- NOTE: use 1 if you want the Announcements tab to appear -->
+  <newsitems>0</newsitems>
   <startdate>{ts}</startdate>
   <enddate>0</enddate>
   <marker>0</marker>
@@ -135,7 +136,7 @@ COURSE_XML = """\
   </category>
   <tags/>
   <customfields/>
-</course>"""
+{plugin_vidrouter_block}</course>"""
 
 SECTION_XML = """\
 <?xml version="1.0" encoding="UTF-8"?>
@@ -308,9 +309,57 @@ PAGE_XML = """\
   </page>
 </activity>"""
 
+RESOURCE_XML = """\
+<?xml version="1.0" encoding="UTF-8"?>
+<activity id="{id}" moduleid="{id}" modulename="resource" contextid="{ctx}">
+  <resource id="{id}">
+    <name>{name}</name>
+    <intro/>
+    <introformat>1</introformat>
+    <tobemigrated>0</tobemigrated>
+    <legacyfiles>0</legacyfiles>
+    <legacyfileslast>$@NULL@$</legacyfileslast>
+    <display>1</display>
+    <displayoptions>a:1:{{s:10:"printintro";i:0;}}</displayoptions>
+    <filterfiles>0</filterfiles>
+    <revision>0</revision>
+    <timemodified>{ts}</timemodified>
+  </resource>
+</activity>"""
+
+RESOURCE_MODULE_XML = """\
+<?xml version="1.0" encoding="UTF-8"?>
+<module id="{id}" version="{moodle_version}">
+  <modulename>resource</modulename>
+  <sectionid>{sec_id}</sectionid>
+  <sectionnumber>{sec_num}</sectionnumber>
+  <idnumber>$@NULL@$</idnumber>
+  <added>{ts}</added>
+  <score>0</score>
+  <indent>0</indent>
+  <visible>1</visible>
+  <visibleoncoursepage>1</visibleoncoursepage>
+  <visibleold>1</visibleold>
+  <groupmode>0</groupmode>
+  <groupingid>0</groupingid>
+  <completion>0</completion>
+  <completiongradeitemnumber>$@NULL@$</completiongradeitemnumber>
+  <completionpassgrade>0</completionpassgrade>
+  <completionview>0</completionview>
+  <completionexpected>0</completionexpected>
+  <availability>$@NULL@$</availability>
+  <showdescription>0</showdescription>
+  <downloadcontent>1</downloadcontent>
+  <lang>$@NULL@$</lang>
+  <enableaitools>$@NULL@$</enableaitools>
+  <enabledaiactions>$@NULL@$</enabledaiactions>
+  <tags>
+  </tags>
+</module>"""
+
 FILE_ENTRY = (
     '  <file id="{id}"><contenthash>{sha1}</contenthash>'
-    "<contextid>{ctx}</contextid><component>mod_page</component>"
+    "<contextid>{ctx}</contextid><component>{component}</component>"
     "<filearea>content</filearea><itemid>0</itemid>"
     "<filepath>/</filepath><filename>{name}</filename>"
     "<filesize>{size}</filesize><mimetype>{mime}</mimetype>"

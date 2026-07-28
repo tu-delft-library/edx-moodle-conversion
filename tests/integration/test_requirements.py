@@ -1,7 +1,8 @@
 import logging
 import tarfile
+from xml.etree import ElementTree as ET
 
-from tests.builders import Chapter, HtmlComponent, OLXFixtureBuilder, Sequential, Vertical
+from tests.builders import Chapter, HtmlComponent, OLXFixtureBuilder, Sequential, Vertical, VideoComponent
 from ocw.converter import MBZBuilder
 from ocw.parser import Course
 
@@ -71,6 +72,58 @@ def test_cc3_image_rewrite_and_present(tmp_path):
         names = tar.getnames()
     assert "@@PLUGINFILE@@/test.png" in page_xml
     assert any("files/" in n for n in names)
+
+
+# CC4
+def test_cc4_video_shortcode_and_vidrouter_block(tmp_path):
+    b = OLXFixtureBuilder(tmp_path / "course")
+    b.chapters = [
+        Chapter(
+            "ch1",
+            "Ch 1",
+            [
+                Sequential(
+                    "s1",
+                    "S1",
+                    [
+                        Vertical(
+                            "v1",
+                            "V1",
+                            [
+                                HtmlComponent("pg1", "Page 1", content="<p>intro</p>"),
+                                VideoComponent(
+                                    "vid1",
+                                    "Video 1",
+                                    youtube_id="_tX7iFAJvZY",
+                                    edx_video_id="d54b76a4-c214-49ea-a4da-161e7f8520a3",
+                                ),
+                            ],
+                        )
+                    ],
+                )
+            ],
+        )
+    ]
+    course = Course(b.build())
+    course.parse()
+    out = tmp_path / "out.mbz"
+    MBZBuilder(course).build(out)
+
+    with tarfile.open(out) as tar:
+        course_xml = ET.parse(tar.extractfile("course/course.xml")).getroot()
+        page_xml = next(
+            tar.extractfile(m).read().decode()
+            for m in tar.getmembers()
+            if m.name.endswith("page.xml")
+        )
+
+    videos = course_xml.findall(".//plugin_local_vidrouter_course/video")
+    assert len(videos) == len(course.videos) == 1
+    assert videos[0].findtext("vidkey") == "d54b76a4-c214-49ea-a4da-161e7f8520a3"
+
+    assert "<p>intro</p>" in page_xml
+    assert "[[vid:d54b76a4-c214-49ea-a4da-161e7f8520a3]]" in page_xml
+    assert page_xml.index("intro") < page_xml.index("[[vid:")
 
 
 # SK1

@@ -7,7 +7,15 @@ import pytest
 
 from ocw.converter import MBZBuilder
 from ocw.parser import Course
-from tests.builders import Chapter, HtmlComponent, OLXFixtureBuilder, Sequential, Vertical
+from tests.builders import (
+    Chapter,
+    HtmlComponent,
+    OLXFixtureBuilder,
+    PdfTextbook,
+    Sequential,
+    StaticTab,
+    Vertical,
+)
 
 MINIMAL = Path(__file__).parent.parent / "fixtures" / "minimal"
 
@@ -357,3 +365,233 @@ def test_subsection_module_sectionnumber_matches_parent(multi_chapter_mbz):
             assert sec_num == section_number_by_id[sec_id], (
                 f"{n}: sectionnumber={sec_num} != section {sec_id}'s actual number={section_number_by_id[sec_id]}"
             )
+
+
+
+def _syllabus_builder(root):
+    b = OLXFixtureBuilder(root / "course")
+    b.chapters = [
+        Chapter(f"ch{i}", f"Chapter {i}", [
+            Sequential(f"ch{i}_s1", f"Ch{i} Seq1", [
+                Vertical(f"ch{i}_s1_v1", "V1", [HtmlComponent(f"ch{i}_s1_pg1", "Page 1")])
+            ])
+        ])
+        for i in range(2)
+    ]
+    b.static_tabs = [StaticTab("Syllabus", "syllabus-slug")]
+    b.tabs_files = {"syllabus-slug": "<p>Syllabus content</p>"}
+    return b
+
+
+@pytest.fixture(scope="module")
+def syllabus_nested_mbz(tmp_path_factory):
+    root = tmp_path_factory.mktemp("synmbz")
+    course = Course(_syllabus_builder(root).build())
+    course.parse()
+    out = root / "out.mbz"
+    MBZBuilder(course).build(out)
+    return out
+
+
+@pytest.fixture(scope="module")
+def syllabus_flat_mbz(tmp_path_factory):
+    root = tmp_path_factory.mktemp("syflmbz")
+    course = Course(_syllabus_builder(root).build())
+    course.parse()
+    out = root / "out.mbz"
+    MBZBuilder(course, sequential_sections=True).build(out)
+    return out
+
+
+def test_overview_section_present_and_numbered_zero(syllabus_nested_mbz):
+    sections = _section_xmls(syllabus_nested_mbz)
+    overview = [s for s in sections if s.findtext("name") == "Overview"]
+    assert len(overview) == 1
+    assert overview[0].findtext("number") == "0"
+
+
+def test_overview_sequence_has_one_module(syllabus_nested_mbz):
+    sections = _section_xmls(syllabus_nested_mbz)
+    overview = next(s for s in sections if s.findtext("name") == "Overview")
+    sequence = [m for m in (overview.findtext("sequence") or "").split(",") if m]
+    assert len(sequence) == 1
+
+
+def test_chapter_numbers_shift_past_overview_nested(syllabus_nested_mbz):
+    sections = _section_xmls(syllabus_nested_mbz)
+    non_overview_nums = [int(s.findtext("number")) for s in sections if s.findtext("name") != "Overview"]
+    assert min(non_overview_nums) == 1
+
+
+def test_chapter_numbers_shift_past_overview_flat(syllabus_flat_mbz):
+    """Flat sections already number 1..n with no offset (unlike Nested's
+    0..n-1), so with a prepended Overview (offset=1) the first one is 2."""
+    sections = _section_xmls(syllabus_flat_mbz)
+    non_overview_nums = [int(s.findtext("number")) for s in sections if s.findtext("name") != "Overview"]
+    assert min(non_overview_nums) == 2
+
+
+def test_no_overview_section_without_syllabus(multi_chapter_mbz):
+    sections = _section_xmls(multi_chapter_mbz)
+    assert not any(s.findtext("name") == "Overview" for s in sections)
+
+
+# ── G: Readings section (pdf_textbooks -> mod_resource) ──────────────────────
+
+def _readings_builder(root):
+    b = OLXFixtureBuilder(root / "course")
+    b.chapters = [
+        Chapter(f"ch{i}", f"Chapter {i}", [
+            Sequential(f"ch{i}_s1", f"Ch{i} Seq1", [
+                Vertical(f"ch{i}_s1_v1", "V1", [HtmlComponent(f"ch{i}_s1_pg1", "Page 1")])
+            ])
+        ])
+        for i in range(2)
+    ]
+    b.static_files = {"reading1.pdf": b"fake-pdf-bytes"}
+    b.pdf_textbooks = [
+        PdfTextbook("Readings", [{"title": "Reading One", "url": "/static/reading1.pdf"}])
+    ]
+    return b
+
+
+@pytest.fixture(scope="module")
+def readings_only_mbz(tmp_path_factory):
+    root = tmp_path_factory.mktemp("rdmbz")
+    course = Course(_readings_builder(root).build())
+    course.parse()
+    out = root / "out.mbz"
+    MBZBuilder(course).build(out)
+    return out
+
+
+@pytest.fixture(scope="module")
+def overview_and_readings_mbz(tmp_path_factory):
+    root = tmp_path_factory.mktemp("ovrdmbz")
+    b = _readings_builder(root)
+    b.static_tabs = [StaticTab("Syllabus", "syllabus-slug")]
+    b.tabs_files = {"syllabus-slug": "<p>Syllabus content</p>"}
+    course = Course(b.build())
+    course.parse()
+    out = root / "out.mbz"
+    MBZBuilder(course).build(out)
+    return out
+
+
+def _backup_xml(mbz_path) -> ET.Element:
+    with tarfile.open(mbz_path) as tar:
+        return ET.parse(tar.extractfile("moodle_backup.xml")).getroot()
+
+
+def test_readings_section_numbered_zero_without_overview(readings_only_mbz):
+    """No-Overview fallback: Readings stays a standalone top-level section,
+    not a mod_subsection — there's nothing to nest it into."""
+    sections = _section_xmls(readings_only_mbz)
+    readings = [s for s in sections if s.findtext("name") == "Readings"]
+    assert len(readings) == 1
+    assert readings[0].findtext("number") == "0"
+    assert readings[0].findtext("component") == "$@NULL@$"
+
+
+def test_readings_resource_insubsection_empty_without_overview(readings_only_mbz):
+    acts = _backup_xml(readings_only_mbz).findall(".//activities/activity")
+    resource_acts = [a for a in acts if a.findtext("modulename") == "resource"]
+    assert resource_acts
+    assert all(a.findtext("insubsection") == "" for a in resource_acts)
+
+
+def test_readings_nested_as_subsection_under_overview(overview_and_readings_mbz):
+    """With Overview present, Readings becomes a real mod_subsection delegate
+    nested inside it — same shape NestedSectionStrategy uses for
+    sequentials-under-chapters — not a second top-level section."""
+    sections = _section_xmls(overview_and_readings_mbz)
+    overview = next(s for s in sections if s.findtext("name") == "Overview")
+    readings = next(s for s in sections if s.findtext("name") == "Readings")
+    assert overview.findtext("number") == "0"
+    assert readings.findtext("component") == "mod_subsection"
+    assert readings.findtext("itemid") not in (None, "", "$@NULL@$")
+
+
+def test_readings_subsection_numbered_after_all_other_sections(overview_and_readings_mbz):
+    """Moodle requires every parent section number to sort below every child
+    section number, course-wide (test_parent_sections_numbered_before_children)
+    — the nested Readings child section must therefore be numbered after
+    every chapter *and* every sequential-derived child section."""
+    sections = _section_xmls(overview_and_readings_mbz)
+    readings = next(s for s in sections if s.findtext("name") == "Readings")
+    other_nums = [int(s.findtext("number")) for s in sections if s.findtext("name") != "Readings"]
+    assert int(readings.findtext("number")) > max(other_nums)
+
+
+def test_overview_sequence_includes_readings_subsection_module(overview_and_readings_mbz):
+    sections = _section_xmls(overview_and_readings_mbz)
+    overview = next(s for s in sections if s.findtext("name") == "Overview")
+    sequence = [m for m in (overview.findtext("sequence") or "").split(",") if m]
+    assert len(sequence) == 2  # syllabus page + readings subsection module
+
+
+def test_readings_subsection_activity_points_at_overview_section(overview_and_readings_mbz):
+    sections = _section_xmls(overview_and_readings_mbz)
+    overview_id = next(s for s in sections if s.findtext("name") == "Overview").get("id")
+    acts = _backup_xml(overview_and_readings_mbz).findall(".//activities/activity")
+    subsection_acts = [a for a in acts if a.findtext("title") == "Readings" and a.findtext("modulename") == "subsection"]
+    assert len(subsection_acts) == 1
+    assert subsection_acts[0].findtext("sectionid") == overview_id
+
+
+def test_readings_resource_insubsection_set_when_nested(overview_and_readings_mbz):
+    acts = _backup_xml(overview_and_readings_mbz).findall(".//activities/activity")
+    resource_acts = [a for a in acts if a.findtext("modulename") == "resource"]
+    assert resource_acts
+    assert all(a.findtext("insubsection") == "1" for a in resource_acts)
+
+
+def test_overview_syllabus_page_insubsection_stays_empty(overview_and_readings_mbz):
+    """Regression: insubsection used to be a single global flag set to "1"
+    whenever *any* sub_mods existed in the course, wrongly tagging the
+    Overview syllabus page (which sits in a plain top-level section) just
+    because chapters/Readings elsewhere use subsections."""
+    acts = _backup_xml(overview_and_readings_mbz).findall(".//activities/activity")
+    syllabus_act = next(a for a in acts if a.findtext("title") == "Syllabus")
+    assert syllabus_act.findtext("insubsection") == ""
+
+
+def test_chapter_numbers_shift_past_overview_only(overview_and_readings_mbz):
+    """Readings nests inside Overview rather than taking its own top-level
+    slot, so the offset is still 1 (Overview alone), same as the no-Readings
+    syllabus case — not 2."""
+    sections = _section_xmls(overview_and_readings_mbz)
+    chapter_nums = [
+        int(s.findtext("number"))
+        for s in sections
+        if s.findtext("name") not in ("Overview", "Readings") and s.findtext("component") != "mod_subsection"
+    ]
+    assert min(chapter_nums) == 1
+
+
+def test_readings_resource_written_with_correct_modulename(readings_only_mbz):
+    with tarfile.open(readings_only_mbz) as tar:
+        names = tar.getnames()
+        resource_modules = [n for n in names if re.match(r"activities/resource_\d+/module\.xml", n)]
+        assert len(resource_modules) == 1
+        root = ET.parse(tar.extractfile(resource_modules[0])).getroot()
+        assert root.findtext("modulename") == "resource"
+
+
+def test_readings_file_registered_under_mod_resource_component(readings_only_mbz):
+    """Regression check for the FILE_ENTRY hardcoded-mod_page bug caught while
+    planning this feature — a Readings PDF must not be misattributed to
+    mod_page in files.xml."""
+    with tarfile.open(readings_only_mbz) as tar:
+        files_xml = ET.parse(tar.extractfile("files.xml")).getroot()
+    entry = next(f for f in files_xml.findall("file") if f.findtext("filename") == "reading1.pdf")
+    assert entry.findtext("component") == "mod_resource"
+
+
+def test_readings_file_bytes_copied(readings_only_mbz):
+    with tarfile.open(readings_only_mbz) as tar:
+        names = set(tar.getnames())
+        files_xml = ET.parse(tar.extractfile("files.xml")).getroot()
+    entry = next(f for f in files_xml.findall("file") if f.findtext("filename") == "reading1.pdf")
+    sha1 = entry.findtext("contenthash")
+    assert f"files/{sha1[:2]}/{sha1}" in names

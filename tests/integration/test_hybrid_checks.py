@@ -16,7 +16,20 @@ def _expected_counts(olx_path):
         if any(c["type"] == "html" for c in vert["components"])
     )
     seqs = sum(len(ch["sequentials"]) for ch in course.chapters)
-    return len(course.chapters), seqs, pages
+    # Adds overview page to the count if it exists
+    overview = 1 if course.syllabus_html is not None else 0
+    # Readings nests as a mod_subsection under Overview when Overview exists
+    # (counts toward the subsection total), and only falls back to a
+    # standalone top-level section (chapter/section total) when there's no
+    # Overview to nest into.
+    has_readings = bool(course.readings)
+    readings_section = 1 if has_readings and not overview else 0
+    readings_subsection = 1 if has_readings and overview else 0
+    return (
+        len(course.chapters) + overview + readings_section,
+        seqs + readings_subsection,
+        pages + overview,
+    )
 
 
 def _iter_section_xmls(tar):
