@@ -24,10 +24,12 @@ class App:
         root.title("OLX to Moodle Converter")
         root.geometry("640x420")
 
-        self.mode = StringVar(value="single")
+        self.mode = StringVar(value="files")
         self.sequential_sections = BooleanVar(value=False)
+        self.input_paths: list[Path] = []
         self.input_var = StringVar(value="")
-        self.output_var = StringVar(value="")
+        self.output_dir = Path.cwd()
+        self.output_var = StringVar(value=str(self.output_dir))
         self._log_queue: queue.Queue[str] = queue.Queue()
 
         self._build_widgets()
@@ -40,11 +42,11 @@ class App:
         mode_frame = ttk.Frame(self.root)
         mode_frame.pack(fill="x", **pad)
         ttk.Radiobutton(
-            mode_frame, text="Single course", variable=self.mode, value="single",
+            mode_frame, text="Files (.tar.gz)", variable=self.mode, value="files",
             command=self._reset_input,
         ).pack(side="left")
         ttk.Radiobutton(
-            mode_frame, text="Bulk (folder of .tar.gz)", variable=self.mode, value="bulk",
+            mode_frame, text="Folder (all .tar.gz inside)", variable=self.mode, value="folder",
             command=self._reset_input,
         ).pack(side="left")
 
@@ -63,26 +65,37 @@ class App:
             variable=self.sequential_sections,
         ).pack(anchor="w", **pad)
 
-        self.convert_button = ttk.Button(self.root, text="Convert", command=self._start_convert)
-        self.convert_button.pack(fill="x", **pad)
+        button_frame = ttk.Frame(self.root)
+        button_frame.pack(fill="x", **pad)
+        self.convert_button = ttk.Button(button_frame, text="Convert", command=self._start_convert)
+        self.convert_button.pack(side="left", fill="x", expand=True)
+        ttk.Button(button_frame, text="Done", command=self.root.destroy).pack(side="left", fill="x", expand=True)
 
         self.log_box = ScrolledText(self.root, state="disabled", height=14)
         self.log_box.pack(fill="both", expand=True, **pad)
 
     def _reset_input(self) -> None:
-        """Clear the chosen input path when the mode switches."""
-        self.input_path = None
+        """Clear the chosen input paths when the mode switches."""
+        self.input_paths = []
         self.input_var.set("")
 
     def _choose_input(self) -> None:
-        """Prompt for a single .tar.gz file or a directory, depending on mode."""
-        if self.mode.get() == "single":
-            path = filedialog.askopenfilename(filetypes=[("OLX archive", "*.tar.gz"), ("All files", "*.*")])
+        """Prompt for one or more .tar.gz files, or a folder to glob them from."""
+        if self.mode.get() == "files":
+            paths = filedialog.askopenfilenames(filetypes=[("OLX archive", "*.tar.gz"), ("All files", "*.*")])
+            self.input_paths = [Path(p) for p in paths]
         else:
-            path = filedialog.askdirectory()
-        if path:
-            self.input_path = Path(path)
-            self.input_var.set(path)
+            folder = filedialog.askdirectory()
+            self.input_paths = sorted(Path(folder).glob("*.tar.gz")) if folder else []
+
+        if not self.input_paths:
+            return
+        summary = (
+            self.input_paths[0].name
+            if len(self.input_paths) == 1
+            else f"{len(self.input_paths)} files selected"
+        )
+        self.input_var.set(summary)
 
     def _choose_output(self) -> None:
         """Prompt for the output directory the .mbz file(s) get written to."""
@@ -97,7 +110,7 @@ class App:
 
     def _start_convert(self) -> None:
         """Validate selections and kick off the background conversion thread."""
-        if not getattr(self, "input_path", None) or not getattr(self, "output_dir", None):
+        if not self.input_paths or not self.output_dir:
             self._log("Pick an input and an output directory first.")
             return
         self.convert_button.state(["disabled"])
@@ -105,14 +118,7 @@ class App:
 
     def _convert_worker(self) -> None:
         """Run on a background thread: convert each course, isolating failures."""
-        if self.mode.get() == "single":
-            courses = [self.input_path]
-        else:
-            courses = sorted(self.input_path.glob("*.tar.gz"))
-            if not courses:
-                self._log(f"No .tar.gz files found in {self.input_path}")
-
-        for course_path in courses:
+        for course_path in self.input_paths:
             try:
                 out = self._convert_one(course_path)
                 self._log(f"OK: {course_path.name} -> {out.name}")
