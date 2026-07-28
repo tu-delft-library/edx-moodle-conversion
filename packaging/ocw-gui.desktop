@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=OCW GUI
+Comment=Convert OpenEdX OLX course exports to Moodle MBZ backups
+Exec=ocw-gui
+Icon=ocw-gui
+Categories=Utility;
+Terminal=false
