@@ -30,3 +30,4 @@ add_to_readme.md
 __pycache__/
 
 *.pyc
+*.zip
