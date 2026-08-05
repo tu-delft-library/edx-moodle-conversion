@@ -26,6 +26,7 @@ class App:
 
         self.mode = StringVar(value="files")
         self.sequential_sections = BooleanVar(value=False)
+        self.disable_custom_fields = BooleanVar(value=False)
         self.input_paths: list[Path] = []
         self.input_var = StringVar(value="")
         self.output_dir = Path.cwd()
@@ -63,6 +64,11 @@ class App:
         ttk.Checkbutton(
             self.root, text="Sequential sections (one section per sequential)",
             variable=self.sequential_sections,
+        ).pack(anchor="w", **pad)
+
+        ttk.Checkbutton(
+            self.root, text="Disable Wikiwijs custom fields (site not yet registered)",
+            variable=self.disable_custom_fields,
         ).pack(anchor="w", **pad)
 
         button_frame = ttk.Frame(self.root)
@@ -143,7 +149,11 @@ class App:
             course.parse()
             name = path.name.removesuffix(".tar.gz") if path.suffix == ".gz" else path.stem
             out = self.output_dir / f"{name}.mbz"
-            MBZBuilder(course, sequential_sections=self.sequential_sections.get()).build(out)
+            MBZBuilder(
+                course,
+                sequential_sections=self.sequential_sections.get(),
+                disable_custom_fields=self.disable_custom_fields.get(),
+            ).build(out)
             return out
         finally:
             if tmp:

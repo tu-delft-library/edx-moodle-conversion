@@ -191,3 +191,40 @@ def test_c1_warns_missing_static(tmp_path, caplog):
     with caplog.at_level(logging.WARNING, logger="ocw.parser"):
         Course(tmp_path / "course").parse()
     assert any("C1" in r.message and "missing.png" in r.message for r in caplog.records)
+
+
+# C3
+def test_c3_warns_missing_asset_v1_reference(tmp_path, caplog):
+    b = OLXFixtureBuilder(tmp_path / "course")
+    b.chapters = [
+        Chapter(
+            "ch1",
+            "Ch 1",
+            [
+                Sequential(
+                    "s1",
+                    "S1",
+                    [
+                        Vertical(
+                            "v1",
+                            "V1",
+                            [
+                                HtmlComponent(
+                                    "pg1",
+                                    "Page 1",
+                                    content=(
+                                        '<img src="asset-v1:Org+Course+Run+type@asset'
+                                        '+block@missing.png"/>'
+                                    ),
+                                )
+                            ],
+                        )
+                    ],
+                )
+            ],
+        )
+    ]
+    b.build()
+    with caplog.at_level(logging.WARNING, logger="ocw.parser"):
+        Course(tmp_path / "course").parse()
+    assert any("missing.png" in r.message for r in caplog.records)

@@ -21,7 +21,9 @@ class _ColourFormatter(logging.Formatter):
             record = logging.makeLogRecord(record.__dict__)
             record.levelname = f"{self._YELLOW}WARNING{self._RESET}"
             if record.args:
-                record.args = tuple(f"{self._YELLOW}{a}{self._RESET}" for a in record.args)
+                record.args = tuple(
+                    f"{self._YELLOW}{a}{self._RESET}" for a in record.args
+                )
         msg = super().format(record)
         return msg.replace("Parsing OLX:", f"{self._BLUE}Parsing OLX:{self._RESET}")
 
@@ -46,8 +48,16 @@ def main() -> None:
     ap.add_argument("olx_path", type=Path)
     ap.add_argument("--output", "-o", type=Path, default=Path("course.mbz"))
     ap.add_argument("--debug", action="store_true")
-    ap.add_argument("--sequential-sections", action="store_true",
-                    help="one Moodle section per sequential instead of per chapter")
+    ap.add_argument(
+        "--sequential-sections",
+        action="store_true",
+        help="one Moodle section per sequential instead of per chapter",
+    )
+    ap.add_argument(
+        "--disable-custom-fields",
+        action="store_true",
+        help="Skip populating custom fields",
+    )
     args = ap.parse_args()
     _setup_logging(args.debug, Path("ocw.log"))
 
@@ -62,10 +72,23 @@ def main() -> None:
 
         course = Course(olx_path)
         course.parse()
-        MBZBuilder(course, sequential_sections=args.sequential_sections).build(args.output)
+        MBZBuilder(
+            course,
+            sequential_sections=args.sequential_sections,
+            disable_custom_fields=args.disable_custom_fields,
+        ).build(args.output)
         subprocess.run(
-            ["poetry", "run", "pytest", "tests/integration/test_hybrid_checks.py",
-             "--olx-path", str(olx_path), "--mbz-path", str(args.output), "-v"],
+            [
+                "poetry",
+                "run",
+                "pytest",
+                "tests/integration/test_hybrid_checks.py",
+                "--olx-path",
+                str(olx_path),
+                "--mbz-path",
+                str(args.output),
+                "-v",
+            ],
             check=False,
         )
     except Exception as e:

@@ -20,7 +20,7 @@ from ocw.converter.html import (
 )
 from ocw.converter.strategies import FlatSectionStrategy, NestedSectionStrategy
 from ocw.parser import Course
-from ocw.utils import _Counter, esc, rewrite_static_urls, sha1_of
+from ocw.utils import _Counter, esc, normalise_license, rewrite_static_urls, sha1_of
 
 load_dotenv()
 MOODLE_VERSION = os.getenv("MOODLE_VERSION", "2024042212")
@@ -31,9 +31,12 @@ MOODLE_RELEASE = os.getenv("MOODLE_RELEASE", "5.1 (Build: 20251208)")
 class MBZBuilder:
     """Converts a parsed Course into a Moodle MBZ backup archive."""
 
-    def __init__(self, course: Course, *, sequential_sections: bool = False) -> None:
+    def __init__(
+        self, course: Course, *, sequential_sections: bool = False, disable_custom_fields: bool = False
+    ) -> None:
         self.course = course
         self.sequential_sections = sequential_sections
+        self.disable_custom_fields = disable_custom_fields
         self.log = logging.getLogger("ocw.converter")
 
     def build(self, out: Path) -> None:
@@ -99,7 +102,7 @@ class MBZBuilder:
 
         file_entries = self._build_file_entries(c, pages + resources, ids)
         self._write_all(
-            tmp, c, all_sections, sub_mods, pages, resources, file_entries, ts
+            tmp, c, all_sections, sub_mods, pages, resources, file_entries, ts, ids
         )
 
     def _build_overview_section(
@@ -263,10 +266,11 @@ class MBZBuilder:
         resources: list[dict],
         file_entries: list[dict],
         ts: int,
+        ids: _Counter,
     ) -> None:
         self._write_moodle_backup(tmp, c, all_sections, sub_mods, pages, resources, ts)
         self._write_static_manifests(tmp)
-        self._write_course_xml(tmp, c, ts)
+        self._write_course_xml(tmp, c, ts, ids)
         for idx, sec in enumerate(all_sections):
             self._write_section(tmp, sec, sec.get("number", idx + 1), ts)
         for sub in sub_mods:
@@ -475,13 +479,47 @@ class MBZBuilder:
         )
         return f"  <plugin_local_vidrouter_course>\n{videos_xml}\n  </plugin_local_vidrouter_course>\n"
 
-    def _write_course_xml(self, tmp: Path, c: Course, ts: int) -> None:
+    def _build_customfields_block(self, c: Course, ids: _Counter) -> str:
+        """Emits <customfield> elements for the 4 auto-fillable Wikiwijs fields
+        (Uitgever/Taal/Toegang/Gebruiksrecht). Matched on restore by shortname+type
+        (core_course\\customfield\\course_handler::restore_instance_data_from_backup) —
+        a target site missing the one-off registration script (PLAN.md §5) just
+        silently drops non-matching blocks, no error. type is 'text' for all four,
+        not 'select' — see PLAN.md §9.2 for why (select's backed-up value is an
+        option-list index, not the string we'd be writing here).
+        """
+        if self.disable_custom_fields:
+            return ""
+        fields = [
+            ("publisher", c.org),
+            ("language", c.language),
+            ("access", "open access"),
+            ("license", normalise_license(c.license)),
+        ]
+        lines = [
+            (
+                '    <customfield id="{}">\n'
+                "      <shortname>{}</shortname>\n"
+                "      <type>text</type>\n"
+                "      <value>{}</value>\n"
+                "      <valueformat>0</valueformat>\n"
+                "      <valuetrust>1</valuetrust>\n"
+                "    </customfield>"
+            ).format(ids.next(), esc(shortname), esc(value))
+            for shortname, value in fields
+            if value
+        ]
+        return "\n".join(lines) + ("\n" if lines else "")
+
+    def _write_course_xml(self, tmp: Path, c: Course, ts: int, ids: _Counter) -> None:
         d = tmp / "course"
         d.mkdir(exist_ok=True)
         (d / "course.xml").write_text(
             templates.COURSE_XML.format(
                 course_id=esc(c.course_id),
                 course_name=esc(c.course_name),
+                summary=esc(c.summary_html or ""),
+                customfields_block=self._build_customfields_block(c, ids),
                 ts=ts,
                 plugin_vidrouter_block=self._build_vidrouter_block(c),
             ),

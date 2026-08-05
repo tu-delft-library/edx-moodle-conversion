@@ -105,7 +105,7 @@ COURSE_XML = """\
   <shortname>{course_id}</shortname>
   <fullname>{course_name}</fullname>
   <idnumber></idnumber>
-  <summary></summary>
+  <summary>{summary}</summary>
   <summaryformat>1</summaryformat>
   <format>topics</format>
   <showgrades>1</showgrades>
@@ -135,7 +135,8 @@ COURSE_XML = """\
     <description></description>
   </category>
   <tags/>
-  <customfields/>
+  <customfields>
+{customfields_block}  </customfields>
 {plugin_vidrouter_block}</course>"""
 
 SECTION_XML = """\
