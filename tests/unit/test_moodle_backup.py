@@ -640,3 +640,86 @@ def test_course_xml_customfields_empty_when_disabled(tmp_path):
     with tarfile.open(out) as tar:
         xml = ET.parse(tar.extractfile("course/course.xml")).getroot()
     assert xml.find("customfields").findall("customfield") == []
+
+
+
+
+def test_warn_external_edx_urls_fires_for_page_with_edx_link(tmp_path, caplog):
+    """A page html component pointing at a real edX-hosted host (survey table,
+    plan_2.md) must trigger the warning during full conversion, not just when
+    calling warn_external_edx_urls directly."""
+    b = OLXFixtureBuilder(tmp_path / "course")
+    b.chapters = [
+        Chapter(
+            "ch1",
+            "Ch 1",
+            [
+                Sequential(
+                    "s1",
+                    "S1",
+                    [
+                        Vertical(
+                            "v1",
+                            "V1",
+                            [
+                                HtmlComponent(
+                                    "pg1",
+                                    "Page 1",
+                                    content='<a href="https://courses.edx.org/asset-v1:x.png">link</a>',
+                                )
+                            ],
+                        )
+                    ],
+                )
+            ],
+        )
+    ]
+    course = Course(b.build())
+    course.parse()
+    out = tmp_path / "out.mbz"
+    with caplog.at_level("WARNING", logger="ocw.converter"):
+        MBZBuilder(course).build(out)
+    assert "still hosted on edX" in caplog.text
+    assert "courses.edx.org" in caplog.text
+
+
+def test_warn_external_edx_urls_silent_for_page_with_local_link(tmp_path, caplog):
+    b = OLXFixtureBuilder(tmp_path / "course")
+    b.chapters = [
+        Chapter(
+            "ch1",
+            "Ch 1",
+            [
+                Sequential(
+                    "s1",
+                    "S1",
+                    [Vertical("v1", "V1", [HtmlComponent("pg1", "Page 1", content='<img src="/static/x.png"/>')])],
+                )
+            ],
+        )
+    ]
+    course = Course(b.build())
+    course.parse()
+    out = tmp_path / "out.mbz"
+    with caplog.at_level("WARNING", logger="ocw.converter"):
+        MBZBuilder(course).build(out)
+    assert "still hosted on edX" not in caplog.text
+
+
+def test_warn_external_edx_urls_fires_for_syllabus_with_edx_link(tmp_path, caplog):
+    """Syllabus content goes through a separate call site
+    (builder.py's _build_overview_section) from page components — needs its
+    own coverage, not just the page-level one above."""
+    b = OLXFixtureBuilder(tmp_path / "course")
+    b.chapters = [Chapter("ch1", "Ch 1", [Sequential("s1", "S1", [Vertical("v1", "V1", [HtmlComponent("pg1", "Page 1")])])])]
+    b.static_tabs = [StaticTab("Syllabus", "syllabus-slug")]
+    b.tabs_files = {
+        "syllabus-slug": '<a href="https://learning.edx.org/course/x">still on edx</a>'
+    }
+    course = Course(b.build())
+    course.parse()
+    out = tmp_path / "out.mbz"
+    with caplog.at_level("WARNING", logger="ocw.converter"):
+        MBZBuilder(course).build(out)
+    assert "still hosted on edX" in caplog.text
+    assert "learning.edx.org" in caplog.text

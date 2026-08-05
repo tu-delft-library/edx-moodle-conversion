@@ -1,6 +1,14 @@
 import pytest
 
-from ocw.utils import _Counter, esc, normalise_license, rewrite_static_urls, sha1_of
+from ocw.utils import (
+    _Counter,
+    _EDX_HOST_RE,
+    esc,
+    normalise_license,
+    rewrite_static_urls,
+    sha1_of,
+    warn_external_edx_urls,
+)
 
 
 def test_esc_encodes_html_special_chars():
@@ -54,3 +62,21 @@ def test_normalise_license_cc_token_order_independent(raw):
     subagent scan) — normalise_license must land on the same canonical slug
     regardless of the order edX happened to write the tokens in."""
     assert normalise_license(raw) == "cc-by-nc-sa"
+
+
+def test_warn_external_edx_urls_logs_on_edx_host(caplog):
+    with caplog.at_level("WARNING", logger="ocw.converter"):
+        warn_external_edx_urls('<img src="https://courses.edx.org/asset-v1:x.png"/>')
+    assert "still hosted on edX" in caplog.text
+
+
+def test_warn_external_edx_urls_silent_on_www_edx_org():
+    """www.edx.org is deliberately excluded — generic marketing/FAQ links,
+    not asset dependencies (plan_2.md "Survey findings")."""
+    assert _EDX_HOST_RE.findall('<a href="https://www.edx.org/about">') == []
+
+
+def test_warn_external_edx_urls_silent_on_local_content(caplog):
+    with caplog.at_level("WARNING", logger="ocw.converter"):
+        warn_external_edx_urls('<img src="@@PLUGINFILE@@/x.png"/>')
+    assert caplog.text == ""

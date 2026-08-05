@@ -20,7 +20,14 @@ from ocw.converter.html import (
 )
 from ocw.converter.strategies import FlatSectionStrategy, NestedSectionStrategy
 from ocw.parser import Course
-from ocw.utils import _Counter, esc, normalise_license, rewrite_static_urls, sha1_of
+from ocw.utils import (
+    _Counter,
+    esc,
+    normalise_license,
+    rewrite_static_urls,
+    sha1_of,
+    warn_external_edx_urls,
+)
 
 load_dotenv()
 MOODLE_VERSION = os.getenv("MOODLE_VERSION", "2024042212")
@@ -113,6 +120,7 @@ class MBZBuilder:
         configured in the OLX export."""
         if c.syllabus_html is None:
             return None
+        warn_external_edx_urls(c.syllabus_html, context="Syllabus")
         content = style_figcaption(
             constrain_table_size(
                 constrain_img_size(

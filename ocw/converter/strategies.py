@@ -10,7 +10,7 @@ from ocw.converter.html import (
     style_figcaption,
 )
 from ocw.parser import Course
-from ocw.utils import _Counter, rewrite_static_urls
+from ocw.utils import _Counter, rewrite_static_urls, warn_external_edx_urls
 
 
 class SectionStrategy(ABC):
@@ -34,6 +34,7 @@ class SectionStrategy(ABC):
         parts = []
         for comp in vert["components"]:
             if comp["type"] == "html":
+                warn_external_edx_urls(comp["content"], context=vert.get("display_name", ""))
                 parts.append(
                     style_figcaption(
                         constrain_table_size(

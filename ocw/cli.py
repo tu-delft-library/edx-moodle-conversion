@@ -1,7 +1,6 @@
 import argparse
 import logging
 import shutil
-import subprocess
 import sys
 import tarfile
 import tempfile
@@ -9,6 +8,7 @@ from pathlib import Path
 
 from ocw.converter import MBZBuilder
 from ocw.parser import Course
+from ocw.utils import run_hybrid_checks
 
 
 class _ColourFormatter(logging.Formatter):
@@ -77,20 +77,7 @@ def main() -> None:
             sequential_sections=args.sequential_sections,
             disable_custom_fields=args.disable_custom_fields,
         ).build(args.output)
-        subprocess.run(
-            [
-                "poetry",
-                "run",
-                "pytest",
-                "tests/integration/test_hybrid_checks.py",
-                "--olx-path",
-                str(olx_path),
-                "--mbz-path",
-                str(args.output),
-                "-v",
-            ],
-            check=False,
-        )
+        run_hybrid_checks(olx_path, args.output)
     except Exception as e:
         print(f"error: {e}", file=sys.stderr)
         sys.exit(1)
