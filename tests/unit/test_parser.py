@@ -61,6 +61,25 @@ def test_static_files_indexed_by_sanitized_name(tmp_path, real_name, sanitized_n
     assert course.static_files[sanitized_name].name == real_name
 
 
+def test_metadata_fields_populated(tmp_path):
+    """org/language/license come off course.xml/run.xml attrs (plan.md §2),
+    summary_html from about/short_description.html, instructors from
+    policy.json's instructor_info (plan.md §1)."""
+    b = _minimal_builder(tmp_path)
+    b.org = "TUDelftX"
+    b.language = "en"
+    b.license = "creative-commons: ver=4.0 BY NC SA"
+    b.summary_html = "<p>Course summary</p>"
+    b.instructors = [{"name": "Dr. Jane Doe", "title": "Professor"}]
+    course = Course(b.build())
+    course.parse()
+    assert course.org == "TUDelftX"
+    assert course.language == "en"
+    assert course.license == "creative-commons: ver=4.0 BY NC SA"
+    assert course.summary_html == "<p>Course summary</p>"
+    assert course.instructors == [{"name": "Dr. Jane Doe", "title": "Professor"}]
+
+
 def test_syllabus_parsed_when_static_tab_configured(tmp_path):
     b = _minimal_builder(tmp_path)
     b.static_tabs = [StaticTab("Syllabus", "syllabus-slug")]

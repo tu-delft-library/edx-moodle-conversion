@@ -595,3 +595,48 @@ def test_readings_file_bytes_copied(readings_only_mbz):
     entry = next(f for f in files_xml.findall("file") if f.findtext("filename") == "reading1.pdf")
     sha1 = entry.findtext("contenthash")
     assert f"files/{sha1[:2]}/{sha1}" in names
+
+
+# ── D: Wikiwijs metadata (summary + customfields, plan.md §10) ─────────────────
+
+
+def _metadata_builder(root) -> OLXFixtureBuilder:
+    b = OLXFixtureBuilder(root / "course")
+    b.chapters = [Chapter("ch1", "Ch 1", [Sequential("s1", "S1", [Vertical("v1", "V1", [HtmlComponent("pg1", "Page 1")])])])]
+    b.org = "TUDelftX"
+    b.language = "en"
+    b.license = "creative-commons: ver=4.0 BY NC SA"
+    b.summary_html = "<p>Course summary</p>"
+    return b
+
+
+@pytest.fixture(scope="module")
+def metadata_mbz(tmp_path_factory):
+    root = tmp_path_factory.mktemp("meta")
+    course = Course(_metadata_builder(root).build())
+    course.parse()
+    out = root / "out.mbz"
+    MBZBuilder(course).build(out)
+    with tarfile.open(out) as tar:
+        return ET.parse(tar.extractfile("course/course.xml")).getroot()
+
+
+def test_course_xml_summary_populated(metadata_mbz):
+    assert metadata_mbz.findtext("summary") == "<p>Course summary</p>"
+
+
+def test_course_xml_customfields_present_when_enabled(metadata_mbz):
+    customfields = metadata_mbz.find("customfields").findall("customfield")
+    assert 2 <= len(customfields) <= 4
+    shortnames = {cf.findtext("shortname") for cf in customfields}
+    assert {"access", "license"} <= shortnames
+
+
+def test_course_xml_customfields_empty_when_disabled(tmp_path):
+    course = Course(_metadata_builder(tmp_path).build())
+    course.parse()
+    out = tmp_path / "out.mbz"
+    MBZBuilder(course, disable_custom_fields=True).build(out)
+    with tarfile.open(out) as tar:
+        xml = ET.parse(tar.extractfile("course/course.xml")).getroot()
+    assert xml.find("customfields").findall("customfield") == []
