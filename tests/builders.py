@@ -87,6 +87,11 @@ class OLXFixtureBuilder:
         self.static_tabs: list[StaticTab] = []
         self.tabs_files: dict[str, str] = {}
         self.pdf_textbooks: list[PdfTextbook] = []
+        self.org: str = ""
+        self.language: str = ""
+        self.license: str = ""
+        self.summary_html: str | None = None
+        self.instructors: list[dict] = []
 
     def build(self) -> Path:
         """Write the OLX tree to self.root and return it."""
@@ -101,6 +106,7 @@ class OLXFixtureBuilder:
             (static / name).write_bytes(data)
         self._write_policy()
         self._write_tabs()
+        self._write_about()
         return self.root
 
     def as_tar(self, out: Path | None = None) -> Path:
@@ -115,7 +121,8 @@ class OLXFixtureBuilder:
         d = self.root / "course"
         d.mkdir(exist_ok=True)
         (d / "course.xml").write_text(
-            f'<course url_name="{self.run_name}" course="{self.course_id}" display_name="{self.course_name}"/>'
+            f'<course url_name="{self.run_name}" course="{self.course_id}" '
+            f'display_name="{self.course_name}" org="{self.org}"/>'
         )
         chapter_tags = "\n  ".join(
             f'<chapter url_name="{ch.url_name}"/>' for ch in self.chapters
@@ -130,11 +137,13 @@ class OLXFixtureBuilder:
                 f' pdf_textbooks="{html.escape(json.dumps(payload), quote=True)}"'
             )
         (d / f"{self.run_name}.xml").write_text(
-            f'<course display_name="{self.course_name}" course="{self.course_id}"{pdf_textbooks_attr}>\n  {chapter_tags}\n</course>'
+            f'<course display_name="{self.course_name}" course="{self.course_id}" '
+            f'language="{self.language}" license="{self.license}"'
+            f'{pdf_textbooks_attr}>\n  {chapter_tags}\n</course>'
         )
 
     def _write_policy(self) -> None:
-        if not self.static_tabs:
+        if not self.static_tabs and not self.instructors:
             return
         d = self.root / "policies" / self.run_name
         d.mkdir(parents=True, exist_ok=True)
@@ -142,8 +151,18 @@ class OLXFixtureBuilder:
             {"type": "static_tab", "name": tab.name, "url_slug": tab.url_slug}
             for tab in self.static_tabs
         ]
-        policy = {f"course/{self.run_name}": {"tabs": tabs}}
+        course_policy = {"tabs": tabs}
+        if self.instructors:
+            course_policy["instructor_info"] = {"instructors": self.instructors}
+        policy = {f"course/{self.run_name}": course_policy}
         (d / "policy.json").write_text(json.dumps(policy))
+
+    def _write_about(self) -> None:
+        if self.summary_html is None:
+            return
+        d = self.root / "about"
+        d.mkdir(parents=True, exist_ok=True)
+        (d / "short_description.html").write_text(self.summary_html)
 
     def _write_tabs(self) -> None:
         if not self.tabs_files:
