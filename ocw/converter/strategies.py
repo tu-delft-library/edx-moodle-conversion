@@ -1,3 +1,4 @@
+import logging
 import re
 from abc import ABC, abstractmethod
 
@@ -11,6 +12,8 @@ from ocw.converter.html import (
 )
 from ocw.parser import Course
 from ocw.utils import _Counter, rewrite_static_urls, warn_external_edx_urls
+
+log = logging.getLogger("ocw.converter")
 
 
 class SectionStrategy(ABC):
@@ -51,6 +54,11 @@ class SectionStrategy(ABC):
                 )
             elif comp["type"] == "video":
                 parts.append(f"<p>[[vid:{comp['vidkey']}]]</p>")
+            else:
+                log.debug(
+                    "Dropping component type '%s' in vertical '%s'",
+                    comp["type"], vert.get("display_name", ""),
+                )
         if not parts:
             return None
         mod_id, ctx_id = self.ids.next(), self.ids.next()
