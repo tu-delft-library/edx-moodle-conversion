@@ -7,7 +7,7 @@ authors = [
 ]
 readme = "README.md"
 requires-python = ">=3.11,<3.16"
-dependencies = ["python-dotenv>=1.0"]
+dependencies = ["python-dotenv>=1.0", "requests>=2.28"]
 
 [project.scripts]
 ocw = "ocw.cli:main"
@@ -19,7 +19,6 @@ build-backend = "poetry.core.masonry.api"
 [tool.poetry.group.dev.dependencies]
 pytest = ">=8"
 pytest-cov = "*"
-requests = ">=2.28"
 pyinstaller = "^6.21.0"
 deptry = "^0.25.1"
 
