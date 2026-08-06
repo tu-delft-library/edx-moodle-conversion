@@ -3,6 +3,7 @@ import logging
 import re
 import subprocess
 from pathlib import Path
+from urllib.parse import urlparse
 
 from ocw._version import __version__
 
@@ -58,9 +59,46 @@ def static_file_kind(filename: str) -> str:
             return "file"
 
 
-def rewrite_static_urls(html: str) -> str:
-    """Replace /static/<name> with @@PLUGINFILE@@/<name> for Moodle file embedding."""
-    return re.sub(r'/static/([^"\'>\s]+)', r"@@PLUGINFILE@@/\1", html)
+_ABSOLUTE_ASSET_RE = re.compile(
+    r'https?://(?:[\w-]+\.)*edx\.org[^"\'>\s]*?'
+    r'(?:asset-v1:[^"\'>\s]*?type@asset\+block@|/c4x/[^"\'>\s]*/asset/)([^"\'>\s]+)'
+)
+
+# Same asset-v1/c4x addressing, but the bare relative form OLX also emits (no host at
+# all, e.g. src="/asset-v1:Org+Course+Run+type@asset+block@name.png") — distinct from
+# _ABSOLUTE_ASSET_RE, which requires an edx.org host to avoid mistaking this for one.
+_RELATIVE_ASSET_RE = re.compile(
+    r'(?:asset-v1:[^"\'>\s]*?type@asset\+block@|/c4x/[^"\'>\s]*/asset/)([^"\'>\s]+)'
+)
+
+
+def resolve_asset_name(url: str) -> str:
+    """Bare filename an asset reference should resolve to in static_files, regardless of
+    whether url is a /static/-relative path or an absolute edX asset URL. Falls back to
+    the URL's last path segment for an absolute URL that doesn't match the recognized
+    asset-addressing pattern — display-only, not a signal that url is fetchable."""
+    if url.startswith("http"):
+        match = _ABSOLUTE_ASSET_RE.search(url)
+        return match.group(1) if match else (Path(urlparse(url).path).name or url)
+    return url.removeprefix("/static/")
+
+
+def rewrite_static_urls(html: str, static_files: dict[str, Path] | None = None) -> str:
+    """Replace /static/<name> with @@PLUGINFILE@@/<name> for Moodle file embedding, and
+    the same for an edX asset-v1/c4x reference — absolute (with an edx.org host) or the
+    bare relative form OLX also emits — whose resolved name is in static_files (i.e. it
+    was fetched or otherwise resolved locally). An unresolved reference is left as-is
+    rather than rewritten into a dangling @@PLUGINFILE@@ link."""
+    html = re.sub(r'/static/([^"\'>\s]+)', r"@@PLUGINFILE@@/\1", html)
+    if not static_files:
+        return html
+
+    def _rewrite_asset(m: re.Match) -> str:
+        name = m.group(1)
+        return f"@@PLUGINFILE@@/{name}" if name in static_files else m.group(0)
+
+    html = _ABSOLUTE_ASSET_RE.sub(_rewrite_asset, html)
+    return _RELATIVE_ASSET_RE.sub(_rewrite_asset, html)
 
 
 # Confirmed against 26 real course exports in files/OLX/ (see PLAN_2.md "Survey findings").
@@ -80,9 +118,16 @@ _EDX_HOST_RE = re.compile(
 )
 
 
-def warn_external_edx_urls(html: str, context: str = "") -> None:
-    """Warn on any absolute URL still pointing at edX-hosted infrastructure."""
+def warn_external_edx_urls(
+    html: str, context: str = "", static_files: dict[str, Path] | None = None
+) -> None:
+    """Warn on any absolute URL still pointing at edX-hosted infrastructure — skips a URL
+    whose resolved asset name is already in static_files (bundled locally, or fetched),
+    since rewrite_static_urls rewrites that one to a local file at build time instead of
+    leaving it external."""
     for match in _EDX_HOST_RE.findall(html):
+        if static_files and resolve_asset_name(match) in static_files:
+            continue
         log.warning(
             "Content still hosted on edX%s: '%s'",
             f" on page '{context}'" if context else "",

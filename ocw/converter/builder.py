@@ -121,12 +121,14 @@ class MBZBuilder:
         configured in the OLX export."""
         if c.syllabus_html is None:
             return None
-        warn_external_edx_urls(c.syllabus_html, context="Syllabus")
+        warn_external_edx_urls(c.syllabus_html, context="Syllabus", static_files=c.static_files)
         content = style_figcaption(
             constrain_table_size(
                 constrain_img_size(
                     strip_templated_iframes(
-                        strip_blacklisted_classes(rewrite_static_urls(c.syllabus_html))
+                        strip_blacklisted_classes(
+                            rewrite_static_urls(c.syllabus_html, c.static_files)
+                        )
                     )
                 )
             )
