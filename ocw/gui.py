@@ -16,6 +16,7 @@ from tkinter.scrolledtext import ScrolledText
 
 from ocw._version import __version__
 from ocw.converter import MBZBuilder
+from ocw.fetcher import AssetFetcher
 from ocw.parser import Course
 from ocw.utils import run_hybrid_checks, versioned_output_path
 
@@ -53,6 +54,7 @@ class App:
         self.sequential_sections = BooleanVar(value=False)
         self.enable_custom_fields = BooleanVar(value=False)
         self.debug = BooleanVar(value=False)
+        self.fetch_external_assets = BooleanVar(value=True)
         self.input_paths: list[Path] = []
         self.input_var = StringVar(value="")
         self.output_dir = Path.cwd()
@@ -142,6 +144,12 @@ class App:
             variable=self.debug,
         ).pack(anchor="w", **pad)
 
+        ttk.Checkbutton(
+            self.root,
+            text="Fetch PDFs still hosted on edX",
+            variable=self.fetch_external_assets,
+        ).pack(anchor="w", **pad)
+
         button_frame = ttk.Frame(self.root)
         button_frame.pack(fill="x", **pad)
         self.convert_button = ttk.Button(
@@ -172,6 +180,7 @@ class App:
         self.log_box.tag_configure("yellow", foreground="#f9a825")
         self.log_box.tag_configure("black", foreground="black")
         self.log_box.tag_configure("gray", foreground="gray")
+        self.log_box.tag_configure("blue", foreground="#1565c0")
 
         sidebar_frame = ttk.Frame(content_frame, width=180)
         sidebar_frame.pack(side="right", fill="y")
@@ -318,6 +327,7 @@ class App:
     def _convert_one(self, path: Path) -> Path:
         """Parse and build a single course, extracting the .tar.gz first if needed."""
         tmp = None
+        fetch_tmp = None
         try:
             olx_path = path
             if path.suffix == ".gz":
@@ -326,7 +336,12 @@ class App:
                     tar.extractall(tmp)
                 olx_path = next(p for p in tmp.iterdir() if p.is_dir())
 
-            course = Course(olx_path)
+            fetcher = None
+            if self.fetch_external_assets.get():
+                fetch_tmp = Path(tempfile.mkdtemp())
+                fetcher = AssetFetcher(fetch_tmp)
+
+            course = Course(olx_path, fetcher=fetcher)
             course.parse()
             name = (
                 path.name.removesuffix(".tar.gz") if path.suffix == ".gz" else path.stem
@@ -342,6 +357,8 @@ class App:
         finally:
             if tmp:
                 shutil.rmtree(tmp, ignore_errors=True)
+            if fetch_tmp:
+                shutil.rmtree(fetch_tmp, ignore_errors=True)
 
     def _drain_log_queue(self) -> None:
         """Poll the log queue on the main thread and apply each item in order.
@@ -400,8 +417,8 @@ class App:
             print(f"[jump] yview'd to index {self.log_box.index(key)}", file=sys.stderr)
 
     def _insert_log_line(self, message: str) -> None:
-        """Colour a queued line: OK green, FAILED/ERROR red, WARNING yellow,
-        message text black, timestamp/level decorations gray."""
+        """Colour a queued line: OK green, FAILED/ERROR red, WARNING yellow, DOWNLOAD:
+        blue, message text black, timestamp/level decorations gray."""
         match = _LOG_LINE_RE.match(message)
         if match:
             ts, level, body = match.groups()
@@ -415,7 +432,11 @@ class App:
             self.log_box.insert("end", f"{ts} [", "gray")
             self.log_box.insert("end", level, level_tag)
             self.log_box.insert("end", "] ", "gray")
-            self.log_box.insert("end", body + "\n", "black")
+            if body.startswith("DOWNLOAD:"):
+                self.log_box.insert("end", "DOWNLOAD:", "blue")
+                self.log_box.insert("end", body.removeprefix("DOWNLOAD:") + "\n", "black")
+            else:
+                self.log_box.insert("end", body + "\n", "black")
             return
         if message.startswith("OK:"):
             self.log_box.insert("end", message + "\n", "green")

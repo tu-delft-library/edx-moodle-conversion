@@ -8,6 +8,7 @@ from pathlib import Path
 
 from ocw._version import __version__
 from ocw.converter import MBZBuilder
+from ocw.fetcher import AssetFetcher
 from ocw.parser import Course
 from ocw.utils import run_hybrid_checks, versioned_output_path
 
@@ -26,7 +27,8 @@ class _ColourFormatter(logging.Formatter):
                     f"{self._YELLOW}{a}{self._RESET}" for a in record.args
                 )
         msg = super().format(record)
-        return msg.replace("Parsing OLX:", f"{self._BLUE}Parsing OLX:{self._RESET}")
+        msg = msg.replace("Parsing OLX:", f"{self._BLUE}Parsing OLX:{self._RESET}")
+        return msg.replace("DOWNLOAD:", f"{self._BLUE}DOWNLOAD:{self._RESET}")
 
 
 def _setup_logging(debug: bool, log_path: Path) -> None:
@@ -60,12 +62,19 @@ def main() -> None:
         action="store_true",
         help="Skip populating custom fields",
     )
+    ap.add_argument(
+        "--fetch-external-assets",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Download PDFs still hosted on edX instead of just warning (default: on)",
+    )
     args = ap.parse_args()
     _setup_logging(args.debug, Path("ocw.log"))
     log = logging.getLogger("ocw")
     log.info("ocw %s", __version__)
 
     tmp = None
+    fetch_tmp = None
     try:
         olx_path = args.olx_path
         if olx_path.suffix == ".gz":
@@ -74,7 +83,12 @@ def main() -> None:
                 tar.extractall(tmp)
             olx_path = next(p for p in tmp.iterdir() if p.is_dir())
 
-        course = Course(olx_path)
+        fetcher = None
+        if args.fetch_external_assets:
+            fetch_tmp = Path(tempfile.mkdtemp())
+            fetcher = AssetFetcher(fetch_tmp)
+
+        course = Course(olx_path, fetcher=fetcher)
         course.parse()
         output = versioned_output_path(args.output)
         MBZBuilder(
@@ -89,3 +103,5 @@ def main() -> None:
     finally:
         if tmp:
             shutil.rmtree(tmp, ignore_errors=True)
+        if fetch_tmp:
+            shutil.rmtree(fetch_tmp, ignore_errors=True)
