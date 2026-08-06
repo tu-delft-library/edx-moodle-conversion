@@ -12,9 +12,10 @@ from pathlib import Path
 from tkinter import BooleanVar, StringVar, Tk, filedialog, ttk
 from tkinter.scrolledtext import ScrolledText
 
+from ocw._version import __version__
 from ocw.converter import MBZBuilder
 from ocw.parser import Course
-from ocw.utils import run_hybrid_checks
+from ocw.utils import run_hybrid_checks, versioned_output_path
 
 if sys.platform.startswith("linux"):
     os.environ.setdefault("TK_USE_PORTAL", "1")
@@ -42,7 +43,7 @@ class App:
     def __init__(self, root: Tk) -> None:
         """Set up state vars and build the window."""
         self.root = root
-        root.title("OLX to Moodle Converter")
+        root.title(f"OLX to Moodle Converter ({__version__})")
         root.geometry("640x420")
 
         self.mode = StringVar(value="files")
@@ -244,7 +245,7 @@ class App:
             name = (
                 path.name.removesuffix(".tar.gz") if path.suffix == ".gz" else path.stem
             )
-            out = self.output_dir / f"{name}.mbz"
+            out = versioned_output_path(self.output_dir / f"{name}.mbz")
             MBZBuilder(
                 course,
                 sequential_sections=self.sequential_sections.get(),

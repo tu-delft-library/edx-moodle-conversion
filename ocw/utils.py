@@ -4,7 +4,14 @@ import re
 import subprocess
 from pathlib import Path
 
+from ocw._version import __version__
+
 log = logging.getLogger("ocw.converter")
+
+
+def versioned_output_path(path: Path) -> Path:
+    """Insert the ocw version into an output filename: course.mbz -> course_v1.2.3.mbz."""
+    return path.with_name(f"{path.stem}_{__version__}{path.suffix}")
 
 
 # INFO: This helps keep track of each unique XML element when parsing and reconstructing
