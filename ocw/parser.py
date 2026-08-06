@@ -26,11 +26,32 @@ def _find_dframe_downloadids(html: str) -> list[str]:
 
 
 class Course:
+    """Parses an OpenEdX OLX course export into a structured representation."""
+
     _DFRAME_RE = re.compile(
         r'<iframe\b[^>]*class="[^"]*\bdframe\b[^"]*"[^>]*>', re.IGNORECASE
     )
     _DOWNLOADID_RE = re.compile(r'data-downloadid="([^"]*)"')
-    """Parses an OpenEdX OLX course export into a structured representation."""
+
+    # Tags the parser actively converts into page content.
+    _WHITELISTED_TAGS = frozenset({"html", "video"})
+
+    # Known tags with no sane Moodle equivalent — dropped silently (debug only).
+    _BLACKLISTED_TAGS = frozenset(
+        {
+            "problem",
+            "discussion",
+            "drag-and-drop",
+            "drag-and-drop-v2",
+            "advanced",
+            "lti_consumer",
+            "word_cloud",
+            "openassessment",
+            "poll",
+            "survey",
+            "freetextresponse",
+        }
+    )
 
     def __init__(self, root: Path) -> None:
         """
@@ -52,17 +73,6 @@ class Course:
         self.summary_html: str | None = None
         self.instructors: list[dict] = []
         self._b64_tmp_dir: Path | None = None
-        self.excluded_tags = frozenset(
-            {
-                "problem",
-                "discussion",
-                "drag-and-drop",
-                "advanced",
-                "lti_consumer",
-                "word_cloud",
-                "openassessment",
-            }
-        )
 
     def parse(self) -> None:
         """Populate course metadata, chapters, and static_files from the OLX tree.
@@ -282,7 +292,7 @@ class Course:
                 return self._parse_video(
                     root, url_name, vertical_name, sequential_name, chapter_name
                 )
-            case tag if tag in self.excluded_tags:
+            case tag if tag in self._BLACKLISTED_TAGS:
                 log.debug(
                     "Skipping unsupported component type '%s' (url_name='%s') in vertical '%s'",
                     child.tag,
