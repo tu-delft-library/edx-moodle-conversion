@@ -12,6 +12,7 @@ _VIDKEY_UNSAFE_RE = re.compile(r"[^A-Za-z0-9_-]")
 
 
 def _safe_vidkey(raw: str) -> str:
+    log.debug("hi")
     return _VIDKEY_UNSAFE_RE.sub("_", raw)
 
 
@@ -25,11 +26,32 @@ def _find_dframe_downloadids(html: str) -> list[str]:
 
 
 class Course:
+    """Parses an OpenEdX OLX course export into a structured representation."""
+
     _DFRAME_RE = re.compile(
         r'<iframe\b[^>]*class="[^"]*\bdframe\b[^"]*"[^>]*>', re.IGNORECASE
     )
     _DOWNLOADID_RE = re.compile(r'data-downloadid="([^"]*)"')
-    """Parses an OpenEdX OLX course export into a structured representation."""
+
+    # Tags the parser actively converts into page content.
+    _WHITELISTED_TAGS = frozenset({"html", "video"})
+
+    # Known tags with no sane Moodle equivalent — dropped silently (debug only).
+    _BLACKLISTED_TAGS = frozenset(
+        {
+            "problem",
+            "discussion",
+            "drag-and-drop",
+            "drag-and-drop-v2",
+            "advanced",
+            "lti_consumer",
+            "word_cloud",
+            "openassessment",
+            "poll",
+            "survey",
+            "freetextresponse",
+        }
+    )
 
     def __init__(self, root: Path) -> None:
         """
@@ -45,18 +67,12 @@ class Course:
         self.syllabus_title: str = "Syllabus"
         self.readings: list[dict] = []
         self.videos: list[dict] = []
+        self.org: str = ""
+        self.language: str = ""
+        self.license: str = ""
+        self.summary_html: str | None = None
+        self.instructors: list[dict] = []
         self._b64_tmp_dir: Path | None = None
-        self.excluded_tags = frozenset(
-            {
-                "problem",
-                "discussion",
-                "drag-and-drop",
-                "advanced",
-                "lti_consumer",
-                "word_cloud",
-                "openassessment",
-            }
-        )
 
     def parse(self) -> None:
         """Populate course metadata, chapters, and static_files from the OLX tree.
@@ -73,6 +89,10 @@ class Course:
 
         course = ET.parse(self.root / "course" / f"{url_name}.xml").getroot()
         self.course_name = course.get("display_name", "")
+        self.org = stub.get("org", "")
+        self.language = course.get("language", "")
+        self.license = course.get("license", "")
+        self._parse_summary()
 
         static_dir = self.root / "static"
 
@@ -101,15 +121,24 @@ class Course:
             if comp["type"] == "video"
         ]
 
+    def _parse_summary(self) -> None:
+        """Populate summary_html from about/short_description.html, falling back to overview.html."""
+        for name in ("short_description.html", "overview.html"):
+            path = self.root / "about" / name
+            if path.exists() and path.read_text(encoding="utf-8").strip():
+                self.summary_html = path.read_text(encoding="utf-8")
+                return
+
     def _parse_syllabus(self, url_name: str) -> None:
         """Populate syllabus_html/syllabus_title from policy.json's static_tab
-        entry, if one is configured. 
+        entry, if one is configured, and instructors from instructor_info.
         """
         policy_path = self.root / "policies" / url_name / "policy.json"
         if not policy_path.exists():
             return
         policy = json.loads(policy_path.read_text(encoding="utf-8"))
         course_policy = policy.get(f"course/{url_name}", {})
+        self.instructors = course_policy.get("instructor_info", {}).get("instructors", [])
         tab = next(
             (t for t in course_policy.get("tabs", []) if t.get("type") == "static_tab"),
             None,
@@ -263,7 +292,7 @@ class Course:
                 return self._parse_video(
                     root, url_name, vertical_name, sequential_name, chapter_name
                 )
-            case tag if tag in self.excluded_tags:
+            case tag if tag in self._BLACKLISTED_TAGS:
                 log.debug(
                     "Skipping unsupported component type '%s' (url_name='%s') in vertical '%s'",
                     child.tag,
@@ -294,7 +323,8 @@ class Course:
         filename = el.get("filename", url_name)
         html_path = root / "html" / f"{filename}.html"
         content = html_path.read_text(encoding="utf-8") if html_path.exists() else ""
-        for match in re.findall(r'/static/([^"\'>\s]+)', content):
+        asset_ref_re = r'(?:/static/|asset-v1:[^"\'>\s]*?type@asset\+block@|/c4x/[^"\'>\s]*/asset/)([^"\'>\s]+)'
+        for match in re.findall(asset_ref_re, content):
             if match not in self.static_files:
                 log.warning(
                     "Parsing OLX: Missing %s '%s' at chapter '%s', sequential '%s', on page '%s'",
