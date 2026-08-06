@@ -37,14 +37,19 @@ class SectionStrategy(ABC):
         parts = []
         for comp in vert["components"]:
             if comp["type"] == "html":
-                warn_external_edx_urls(comp["content"], context=vert.get("display_name", ""))
+                warn_external_edx_urls(
+                    comp["content"], context=vert.get("display_name", ""),
+                    static_files=self.c.static_files,
+                )
                 parts.append(
                     style_figcaption(
                         constrain_table_size(
                             constrain_img_size(
                                 mark_hyperlinks_nomediaplugin(
                                     strip_templated_iframes(
-                                        strip_blacklisted_classes(rewrite_static_urls(comp["content"]))
+                                        strip_blacklisted_classes(
+                                            rewrite_static_urls(comp["content"], self.c.static_files)
+                                        )
                                     )
                                 )
                             )

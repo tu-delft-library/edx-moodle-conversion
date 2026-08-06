@@ -4,7 +4,8 @@ import re
 from pathlib import Path
 from xml.etree import ElementTree as ET
 
-from ocw.utils import static_file_kind
+from ocw.fetcher import AssetFetcher
+from ocw.utils import _ABSOLUTE_ASSET_RE, resolve_asset_name, static_file_kind
 
 log = logging.getLogger("ocw.parser")
 
@@ -53,12 +54,16 @@ class Course:
         }
     )
 
-    def __init__(self, root: Path) -> None:
+    def __init__(self, root: Path, fetcher: AssetFetcher | None = None) -> None:
         """
         Args:
             root: Path to the extracted OLX directory or a .tar.gz archive.
+            fetcher: Optional AssetFetcher — when set, PDFs referenced by an absolute
+                edX asset URL (still hosted live, not bundled in this export) are
+                downloaded and treated as local. Off (None) unless the caller opts in.
         """
         self.root = root
+        self.fetcher = fetcher
         self.course_name: str = ""
         self.course_id: str = ""
         self.chapters: list[dict] = []
@@ -172,15 +177,21 @@ class Course:
         for textbook in json.loads(raw):
             for chapter in textbook.get("chapters", []):
                 url = chapter.get("url", "")
-                name = url.removeprefix("/static/")
+                name = resolve_asset_name(url)
                 if name not in self.static_files:
-                    log.warning(
-                        "Parsing OLX: Missing %s '%s' for Readings entry '%s'",
-                        static_file_kind(name),
-                        name,
-                        chapter.get("title", ""),
-                    )
-                    continue
+                    fetched = None
+                    if self.fetcher and _ABSOLUTE_ASSET_RE.search(url):
+                        fetched = self.fetcher.fetch(url)
+                    if fetched is not None:
+                        self.static_files[name] = fetched
+                    else:
+                        log.warning(
+                            "Parsing OLX: Missing %s '%s' for Readings entry '%s'",
+                            static_file_kind(name),
+                            name,
+                            chapter.get("title", ""),
+                        )
+                        continue
                 self.readings.append({"title": chapter.get("title", ""), "name": name})
 
     def _parse_chapter(self, root: Path, url_name: str) -> dict:
@@ -323,6 +334,24 @@ class Course:
         filename = el.get("filename", url_name)
         html_path = root / "html" / f"{filename}.html"
         content = html_path.read_text(encoding="utf-8") if html_path.exists() else ""
+
+        for match in _ABSOLUTE_ASSET_RE.finditer(content):
+            absolute_url, name = match.group(0), match.group(1)
+            if name in self.static_files:
+                continue
+            fetched = self.fetcher.fetch(absolute_url) if self.fetcher else None
+            if fetched is not None:
+                self.static_files[name] = fetched
+                continue
+            log.warning(
+                "Parsing OLX: Missing %s '%s' at chapter '%s', sequential '%s', on page '%s'",
+                static_file_kind(name),
+                name,
+                chapter_name,
+                sequential_name or url_name,
+                vertical_name or url_name,
+            )
+
         asset_ref_re = r'(?:/static/|asset-v1:[^"\'>\s]*?type@asset\+block@|/c4x/[^"\'>\s]*/asset/)([^"\'>\s]+)'
         for match in re.findall(asset_ref_re, content):
             if match not in self.static_files:
