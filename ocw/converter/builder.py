@@ -11,6 +11,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 
 from ocw import templates
+from ocw._version import __version__
 from ocw.converter.html import (
     constrain_img_size,
     constrain_table_size,
@@ -429,6 +430,7 @@ class MBZBuilder:
             acts=acts,
             secs=secs,
             settings=settings,
+            ocw_version=__version__,
         )
         (tmp / "moodle_backup.xml").write_text(xml, encoding="utf-8")
 
