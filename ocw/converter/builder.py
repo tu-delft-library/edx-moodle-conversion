@@ -556,6 +556,7 @@ class MBZBuilder:
             id=sec["id"],
             number=idx,
             name=esc(sec["name"]),
+            summary=esc(sec.get("summary", "")),
             sequence=",".join(str(m) for m in sec["modules"]),
             itemid=sec.get("itemid", ""),
             ts=ts,
