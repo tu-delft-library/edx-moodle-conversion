@@ -145,7 +145,7 @@ SECTION_XML = """\
 <section id="{id}">
   <number>{number}</number>
   <name>{name}</name>
-  <summary/>
+  <summary>{summary}</summary>
   <summaryformat>1</summaryformat>
   <sequence>{sequence}</sequence>
   <visible>1</visible>
@@ -283,7 +283,7 @@ CHILD_SECTION_XML = """\
 <section id="{id}">
   <number>{number}</number>
   <name>{name}</name>
-  <summary/>
+  <summary>{summary}</summary>
   <summaryformat>1</summaryformat>
   <sequence>{sequence}</sequence>
   <visible>1</visible>
