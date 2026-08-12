@@ -5,16 +5,10 @@ from pathlib import Path
 from xml.etree import ElementTree as ET
 
 from ocw.fetcher import AssetFetcher
-from ocw.utils import _ABSOLUTE_ASSET_RE, resolve_asset_name, static_file_kind
+from ocw.parser_base import BaseParser
+from ocw.utils import _ABSOLUTE_ASSET_RE, resolve_asset_name, safe_vidkey, static_file_kind
 
 log = logging.getLogger("ocw.parser")
-
-_VIDKEY_UNSAFE_RE = re.compile(r"[^A-Za-z0-9_-]")
-
-
-def _safe_vidkey(raw: str) -> str:
-    log.debug("hi")
-    return _VIDKEY_UNSAFE_RE.sub("_", raw)
 
 
 def _find_dframe_downloadids(html: str) -> list[str]:
@@ -26,7 +20,7 @@ def _find_dframe_downloadids(html: str) -> list[str]:
     return ids
 
 
-class Course:
+class Course(BaseParser):
     """Parses an OpenEdX OLX course export into a structured representation."""
 
     _DFRAME_RE = re.compile(
@@ -62,21 +56,8 @@ class Course:
                 edX asset URL (still hosted live, not bundled in this export) are
                 downloaded and treated as local. Off (None) unless the caller opts in.
         """
-        self.root = root
-        self.fetcher = fetcher
-        self.course_name: str = ""
-        self.course_id: str = ""
-        self.chapters: list[dict] = []
-        self.static_files: dict[str, Path] = {}
-        self.syllabus_html: str | None = None
-        self.syllabus_title: str = "Syllabus"
-        self.readings: list[dict] = []
-        self.videos: list[dict] = []
-        self.org: str = ""
-        self.language: str = ""
-        self.license: str = ""
-        self.summary_html: str | None = None
-        self.instructors: list[dict] = []
+        super().__init__(root, fetcher)
+        self.root: Path = root
         self._b64_tmp_dir: Path | None = None
 
     def parse(self) -> None:
@@ -395,7 +376,7 @@ class Course:
             "type": "video",
             "url_name": url_name,
             "display_name": el.get("display_name", ""),
-            "vidkey": _safe_vidkey(edx_video_id or url_name),
+            "vidkey": safe_vidkey(edx_video_id or url_name),
             "youtubeid": youtubeid,
             "edxvideoid": edx_video_id,
             "stlbaseid": edx_video_id,  
