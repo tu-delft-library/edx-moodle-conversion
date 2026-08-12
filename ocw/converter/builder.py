@@ -20,7 +20,7 @@ from ocw.converter.html import (
     style_figcaption,
 )
 from ocw.converter.strategies import FlatSectionStrategy, NestedSectionStrategy
-from ocw.parser import Course
+from ocw.parser_base import BaseParser
 from ocw.utils import (
     _Counter,
     esc,
@@ -40,7 +40,7 @@ class MBZBuilder:
     """Converts a parsed Course into a Moodle MBZ backup archive."""
 
     def __init__(
-        self, course: Course, *, sequential_sections: bool = False, disable_custom_fields: bool = False
+        self, course: BaseParser, *, sequential_sections: bool = False, disable_custom_fields: bool = False
     ) -> None:
         self.course = course
         self.sequential_sections = sequential_sections
@@ -114,7 +114,7 @@ class MBZBuilder:
         )
 
     def _build_overview_section(
-        self, c: Course, ids: _Counter
+        self, c: BaseParser, ids: _Counter
     ) -> tuple[dict, dict] | None:
         """Course-level "Overview" section holding the Syllabus page, prepended
         ahead of the chapter sections — or None if no static_tab Syllabus was
@@ -153,7 +153,7 @@ class MBZBuilder:
         return overview_section, syllabus_page
 
     def _build_readings_section(
-        self, c: Course, ids: _Counter
+        self, c: BaseParser, ids: _Counter
     ) -> tuple[dict, list[dict]] | None:
         """Course-level "Readings" section holding one mod_resource per
         pdf_textbooks chapter, inserted right after Overview (or at the front
@@ -189,7 +189,7 @@ class MBZBuilder:
         return readings_section, resources
 
     def _build_readings_subsection(
-        self, c: Course, ids: _Counter, overview_section: dict
+        self, c: BaseParser, ids: _Counter, overview_section: dict
     ) -> tuple[dict, list[dict]]:
         """Readings resources nested inside Overview as a mod_subsection — same
         sub_mods/child_sec shape NestedSectionStrategy uses for sequentials-
@@ -240,7 +240,7 @@ class MBZBuilder:
         return subsection, resources
 
     def _build_file_entries(
-        self, c: Course, pages: list[dict], ids: _Counter
+        self, c: BaseParser, pages: list[dict], ids: _Counter
     ) -> list[dict]:
         """sha1 + mime metadata for files.xml — one entry per (page, filename) with correct ctx."""
         file_entries: list[dict] = []
@@ -270,7 +270,7 @@ class MBZBuilder:
     def _write_all(
         self,
         tmp: Path,
-        c: Course,
+        c: BaseParser,
         all_sections: list[dict],
         sub_mods: list[dict],
         pages: list[dict],
@@ -352,7 +352,7 @@ class MBZBuilder:
 
     def _setting_lines(
         self,
-        c: Course,
+        c: BaseParser,
         sections: list[dict],
         sub_mods: list[dict],
         pages: list[dict],
@@ -411,7 +411,7 @@ class MBZBuilder:
     def _write_moodle_backup(
         self,
         tmp: Path,
-        c: Course,
+        c: BaseParser,
         sections: list,
         sub_mods: list,
         pages: list,
@@ -449,7 +449,7 @@ class MBZBuilder:
         ):
             (tmp / name).write_text(content, encoding="utf-8")
 
-    def _build_vidrouter_block(self, c: Course) -> str:
+    def _build_vidrouter_block(self, c: BaseParser) -> str:
         """Fields match restore_local_vidrouter_plugin.class.php's
         process_plugin_local_vidrouter_video() exactly — no courseid, no html.
         Data row, not an HTML5 tag; filter_vidrouter renders at request time.
@@ -491,7 +491,7 @@ class MBZBuilder:
         )
         return f"  <plugin_local_vidrouter_course>\n{videos_xml}\n  </plugin_local_vidrouter_course>\n"
 
-    def _build_customfields_block(self, c: Course, ids: _Counter) -> str:
+    def _build_customfields_block(self, c: BaseParser, ids: _Counter) -> str:
         """Emits <customfield> elements for the 4 auto-fillable Wikiwijs fields
         (Uitgever/Taal/Toegang/Gebruiksrecht). Matched on restore by shortname+type
         (core_course\\customfield\\course_handler::restore_instance_data_from_backup) —
@@ -523,7 +523,7 @@ class MBZBuilder:
         ]
         return "\n".join(lines) + ("\n" if lines else "")
 
-    def _write_course_xml(self, tmp: Path, c: Course, ts: int, ids: _Counter) -> None:
+    def _write_course_xml(self, tmp: Path, c: BaseParser, ts: int, ids: _Counter) -> None:
         d = tmp / "course"
         d.mkdir(exist_ok=True)
         (d / "course.xml").write_text(

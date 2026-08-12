@@ -10,7 +10,7 @@ from ocw.converter.html import (
     strip_templated_iframes,
     style_figcaption,
 )
-from ocw.parser import Course
+from ocw.parser_base import BaseParser
 from ocw.utils import _Counter, rewrite_static_urls, warn_external_edx_urls
 
 log = logging.getLogger("ocw.converter")
@@ -19,7 +19,7 @@ log = logging.getLogger("ocw.converter")
 class SectionStrategy(ABC):
     """Turns a parsed Course into (all_sections, sub_mods, pages) for the MBZ writer."""
 
-    def __init__(self, course: Course, ids: _Counter, section_offset: int = 0) -> None:
+    def __init__(self, course: BaseParser, ids: _Counter, section_offset: int = 0) -> None:
         self.c = course
         self.ids = ids
         # NOTE: non-zero when an Overview section (Syllabus/Readings) is
