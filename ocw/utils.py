@@ -29,6 +29,15 @@ class _Counter:
         return v
 
 
+_VIDKEY_UNSAFE_RE = re.compile(r"[^A-Za-z0-9_-]")
+
+
+def safe_vidkey(raw: str) -> str:
+    """Sanitize a video source id/slug down to the charset the vidrouter
+    placeholder ([[vid:{key}]]) and its DB lookup key can safely contain."""
+    return _VIDKEY_UNSAFE_RE.sub("_", raw)
+
+
 def esc(s: str) -> str:
     """XML-escape a string, treating None as empty."""
     return (
