@@ -11,7 +11,7 @@ import threading
 import traceback
 from pathlib import Path
 from typing import Any
-from tkinter import BooleanVar, StringVar, Tk, filedialog, ttk
+from tkinter import BooleanVar, StringVar, Tk, filedialog, simpledialog, ttk
 from tkinter.scrolledtext import ScrolledText
 
 from ocw._version import __version__
@@ -19,12 +19,18 @@ from ocw.converter import MBZBuilder
 from ocw.fetcher import AssetFetcher
 from ocw.parser import Course
 from ocw.utils import run_hybrid_checks, versioned_output_path
+from ocw.wp_parser import WPCourse
 
 if sys.platform.startswith("linux"):
     os.environ.setdefault("TK_USE_PORTAL", "1")
 
 _LOG_LINE_RE = re.compile(r"^(\d{2}:\d{2}:\d{2}) \[(\w+)\] (.*)$")
 _gui_log = logging.getLogger("ocw.gui")
+
+
+def _input_label(path: Path | str) -> str:
+    """Short display name for an input entry, whether it's a local file or a URL."""
+    return path.name if isinstance(path, Path) else path.rstrip("/").rsplit("/", 1)[-1]
 
 
 class _QueueLogHandler(logging.Handler):
@@ -51,11 +57,12 @@ class App:
         root.geometry("860x460")
 
         self.mode = StringVar(value="files")
+        self.source_format = StringVar(value="olx")
         self.sequential_sections = BooleanVar(value=False)
         self.enable_custom_fields = BooleanVar(value=False)
         self.debug = BooleanVar(value=False)
         self.fetch_external_assets = BooleanVar(value=True)
-        self.input_paths: list[Path] = []
+        self.input_paths: list[Path | str] = []
         self.input_var = StringVar(value="")
         self.output_dir = Path.cwd()
         self.output_var = StringVar(value=str(self.output_dir))
@@ -94,6 +101,23 @@ class App:
     def _build_widgets(self) -> None:
         """Lay out mode/input/output/convert widgets and the log box."""
         pad = {"padx": 8, "pady": 4}
+
+        format_frame = ttk.Frame(self.root)
+        format_frame.pack(fill="x", **pad)
+        ttk.Radiobutton(
+            format_frame,
+            text="OLX export",
+            variable=self.source_format,
+            value="olx",
+            command=self._reset_input,
+        ).pack(side="left")
+        ttk.Radiobutton(
+            format_frame,
+            text="WordPress site",
+            variable=self.source_format,
+            value="wp",
+            command=self._reset_input,
+        ).pack(side="left")
 
         mode_frame = ttk.Frame(self.root)
         mode_frame.pack(fill="x", **pad)
@@ -207,8 +231,16 @@ class App:
         self.input_var.set("")
 
     def _choose_input(self) -> None:
-        """Prompt for one or more .tar.gz files, or a folder to glob them from."""
-        if self.mode.get() == "files":
+        """Prompt for one or more .tar.gz files, a folder to glob them from, or
+        (WordPress source) one or more course home page URLs."""
+        if self.source_format.get() == "wp":
+            raw = simpledialog.askstring(
+                "WordPress course URLs",
+                "Course home page URL(s), one per line:",
+                parent=self.root,
+            )
+            self.input_paths = [line.strip() for line in (raw or "").splitlines() if line.strip()]
+        elif self.mode.get() == "files":
             paths = filedialog.askopenfilenames(
                 filetypes=[("OLX archive", "*.tar.gz"), ("All files", "*.*")]
             )
@@ -220,9 +252,9 @@ class App:
         if not self.input_paths:
             return
         summary = (
-            self.input_paths[0].name
+            _input_label(self.input_paths[0])
             if len(self.input_paths) == 1
-            else f"{len(self.input_paths)} files selected"
+            else f"{len(self.input_paths)} courses selected"
         )
         self.input_var.set(summary)
         self._populate_sidebar()
@@ -258,7 +290,7 @@ class App:
                 "",
                 "end",
                 iid=f"course_{idx}",
-                text=path.name,
+                text=_input_label(path),
                 values=("Pending",),
                 tags=("pending",),
             )
@@ -313,10 +345,10 @@ class App:
             self._mark_course(key)
             try:
                 out = self._convert_one(course_path)
-                self._log(f"OK: {course_path.name} -> {out.name}")
+                self._log(f"OK: {_input_label(course_path)} -> {out.name}")
                 self._set_course_status(key, "OK")
             except Exception:
-                self._log(f"FAILED: {course_path.name}\n{traceback.format_exc()}")
+                self._log(f"FAILED: {_input_label(course_path)}\n{traceback.format_exc()}")
                 self._set_course_status(key, "Failed")
             self.root.after(0, self._advance_progress)
             self._log("")  # blank line between files — keeps bulk-mode output readable
@@ -324,35 +356,43 @@ class App:
         self._log("Done.")
         self.root.after(0, lambda: self.convert_button.state(["!disabled"]))
 
-    def _convert_one(self, path: Path) -> Path:
-        """Parse and build a single course, extracting the .tar.gz first if needed."""
+    def _convert_one(self, path: Path | str) -> Path:
+        """Parse and build a single course. path is an OLX .tar.gz/folder for the
+        "olx" source format, or a course home page URL for "wp"."""
         tmp = None
         fetch_tmp = None
         try:
-            olx_path = path
-            if path.suffix == ".gz":
-                tmp = Path(tempfile.mkdtemp())
-                with tarfile.open(path) as tar:
-                    tar.extractall(tmp)
-                olx_path = next(p for p in tmp.iterdir() if p.is_dir())
-
             fetcher = None
             if self.fetch_external_assets.get():
                 fetch_tmp = Path(tempfile.mkdtemp())
                 fetcher = AssetFetcher(fetch_tmp)
 
-            course = Course(olx_path, fetcher=fetcher)
-            course.parse()
-            name = (
-                path.name.removesuffix(".tar.gz") if path.suffix == ".gz" else path.stem
-            )
+            olx_path = None
+            if self.source_format.get() == "wp":
+                course = WPCourse(str(path), fetcher=fetcher)
+                course.parse()
+                name = _input_label(path)
+            else:
+                olx_path = path
+                if path.suffix == ".gz":
+                    tmp = Path(tempfile.mkdtemp())
+                    with tarfile.open(path) as tar:
+                        tar.extractall(tmp)
+                    olx_path = next(p for p in tmp.iterdir() if p.is_dir())
+                course = Course(olx_path, fetcher=fetcher)
+                course.parse()
+                name = (
+                    path.name.removesuffix(".tar.gz") if path.suffix == ".gz" else path.stem
+                )
+
             out = versioned_output_path(self.output_dir / f"{name}.mbz")
             MBZBuilder(
                 course,
                 sequential_sections=self.sequential_sections.get(),
                 disable_custom_fields=not self.enable_custom_fields.get(),
             ).build(out)
-            run_hybrid_checks(olx_path, out)
+            if olx_path is not None:
+                run_hybrid_checks(olx_path, out)
             return out
         finally:
             if tmp:
