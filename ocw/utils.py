@@ -1,7 +1,6 @@
 import hashlib
 import logging
 import re
-import subprocess
 from pathlib import Path
 from urllib.parse import urlparse
 
@@ -146,33 +145,6 @@ def warn_external_edx_urls(
 
 _CC_TOKEN_RE = re.compile(r"\b(BY|SA|NC|ND)\b", re.IGNORECASE)
 _CC_PRIORITY = ["by", "nc", "nd", "sa"]
-
-
-def run_hybrid_checks(olx_path: Path, mbz_path: Path) -> None:
-    """Run the OLX<->MBZ hybrid integration checks and route their output
-    through logging. A bare subprocess.run() inherits stdout/stderr straight
-    to the terminal, bypassing logging entirely — neither the CLI's ocw.log
-    file handler nor the GUI's log box ever see it that way.
-    """
-    result = subprocess.run(
-        [
-            "poetry",
-            "run",
-            "pytest",
-            "tests/integration/test_hybrid_checks.py",
-            "--olx-path",
-            str(olx_path),
-            "--mbz-path",
-            str(mbz_path),
-            "-v",
-        ],
-        check=False,
-        capture_output=True,
-        text=True,
-    )
-    level = logging.INFO if result.returncode == 0 else logging.WARNING
-    for line in (result.stdout + result.stderr).splitlines():
-        log.log(level, line)
 
 
 def normalise_license(raw: str) -> str:
