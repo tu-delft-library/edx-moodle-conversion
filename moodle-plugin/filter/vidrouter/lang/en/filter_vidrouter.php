@@ -57,8 +57,8 @@ $string['form_collegeramaid'] = 'Collegerama ID';
 $string['form_collegeramaid_help'] = 'TU Delft Collegerama (Mediasite) play ID (optional). '
     . 'Captured from WordPress-sourced courses\' Collegerama iframe embeds. Used as a live-site '
     . 'playback fallback when no YouTube ID is set; see "Primary video source" above.';
-$string['form_stlbaseid'] = 'STL Base ID';
-$string['form_stlbaseid_help'] = 'STL file base URL (optional, unverified).';
+$string['form_srtbaseid'] = 'SRT Base ID';
+$string['form_srtbaseid_help'] = 'SRT file base URL (optional, unverified).';
 $string['form_videopagepath'] = 'Video Page Path';
 $string['form_videopagepath_help'] = 'Path in course structure: "Chapter > Subsection > Unit". Populated at migration time.';
 
@@ -87,7 +87,7 @@ $string['import_status_invalid'] = 'Missing match value — skipped';
 $string['import_status_nochange'] = 'Matched, but no columns to change — skipped';
 $string['import_summary'] = '{$a->updated} row(s) updated, {$a->unmatched} unmatched, {$a->ambiguous} ambiguous.';
 $string['import_error_empty'] = 'No CSV data was provided.';
-$string['import_error_unknown_column'] = 'Unknown column name: "{$a}". Valid columns are: vidkey, youtubeid, edxvideoid, tuddownloadid, collegeramaid, stlbaseid, urlname, courseid, title, videopagepath.';
+$string['import_error_unknown_column'] = 'Unknown column name: "{$a}". Valid columns are: vidkey, youtubeid, edxvideoid, tuddownloadid, collegeramaid, srtbaseid, urlname, courseid, title, videopagepath.';
 $string['import_error_duplicate_column'] = 'The header row contains the same column more than once.';
 
 $string['video_unavailable'] = 'Video unavailable. Please contact your course team.';

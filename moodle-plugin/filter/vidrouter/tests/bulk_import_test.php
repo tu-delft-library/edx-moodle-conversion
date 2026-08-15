@@ -36,7 +36,7 @@ final class bulk_import_test extends \advanced_testcase {
             'youtubeid' => null,
             'edxvideoid' => null,
             'tuddownloadid' => null,
-            'stlbaseid' => null,
+            'srtbaseid' => null,
             'urlname' => null,
             'courseid' => null,
             'title' => null,
