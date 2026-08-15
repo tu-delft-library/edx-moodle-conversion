@@ -171,7 +171,8 @@ def test_collegerama_lecture_becomes_video_component():
     course._fetch_page = lambda url: BeautifulSoup(LECTURE_COLLEGERAMA, "lxml")
     result = course._parse_lecture("https://x/lec2/", "Lecture 2", "Ch 1", "Seq 1")
     video = next(c for c in result["components"] if c["type"] == "video")
-    assert video["tuddownloadid"] == "xyz789"
+    assert video["collegeramaid"] == "xyz789"
+    assert video["tuddownloadid"] is None
     assert video["youtubeid"] is None
     assert video["vidkey"] == "lec2"
 

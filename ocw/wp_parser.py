@@ -150,11 +150,11 @@ class WPCourse(BaseParser):
                         )
                     )
                 elif "collegerama.tudelft.nl" in src:
-                    tuddownloadid = src.rstrip("/").split("/")[-1]
+                    collegeramaid = src.rstrip("/").split("/")[-1]
                     components.append(
                         self._video_component(
                             url, title, chapter_name, sequential_name,
-                            tuddownloadid=tuddownloadid,
+                            collegeramaid=collegeramaid,
                         )
                     )
                 continue
@@ -183,12 +183,15 @@ class WPCourse(BaseParser):
         sequential_name: str,
         *,
         youtubeid: str | None = None,
-        tuddownloadid: str | None = None,
+        collegeramaid: str | None = None,
     ) -> dict:
         """Build a video component in the shape the vidrouter block/[[vid:{key}]]
         placeholder scheme expects (see ocw.parser.Course._parse_video). WP has no
         edX video id, so edxvideoid/stlbaseid are always empty here; vidkey is
-        derived from the lecture page's URL slug instead."""
+        derived from the lecture page's URL slug instead. tuddownloadid is an
+        OLX-only concept (a download-system id, not embeddable) and is always
+        empty here too — collegeramaid is WP's distinct, embeddable Mediasite
+        Play id."""
         slug = url.rstrip("/").rsplit("/", 1)[-1]
         return {
             "type": "video",
@@ -197,7 +200,8 @@ class WPCourse(BaseParser):
             "youtubeid": youtubeid,
             "edxvideoid": None,
             "stlbaseid": None,
-            "tuddownloadid": tuddownloadid,
+            "tuddownloadid": None,
+            "collegeramaid": collegeramaid,
             "urlname": slug,
             "videopagepath": f"{chapter_name} > {sequential_name} > {title}",
         }

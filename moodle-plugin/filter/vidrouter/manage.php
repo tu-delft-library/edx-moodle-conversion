@@ -93,6 +93,7 @@ if ($action == 'edit' || $action == 'add') {
         $record->youtubeid = $data->youtubeid ?? null;
         $record->edxvideoid = $data->edxvideoid ?? null;
         $record->tuddownloadid = $data->tuddownloadid ?? null;
+        $record->collegeramaid = $data->collegeramaid ?? null;
         $record->stlbaseid = $data->stlbaseid ?? null;
         $record->urlname = $data->urlname ?? null;
         $record->courseid = $data->courseid ?? null;

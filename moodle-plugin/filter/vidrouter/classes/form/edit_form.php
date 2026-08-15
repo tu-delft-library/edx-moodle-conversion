@@ -68,6 +68,11 @@ class filter_vidrouter_edit_form extends moodleform {
         $mform->setType('tuddownloadid', PARAM_TEXT);
         $mform->addHelpButton('tuddownloadid', 'form_tuddownloadid', 'filter_vidrouter');
 
+        // Collegerama ID.
+        $mform->addElement('text', 'collegeramaid', get_string('form_collegeramaid', 'filter_vidrouter'));
+        $mform->setType('collegeramaid', PARAM_TEXT);
+        $mform->addHelpButton('collegeramaid', 'form_collegeramaid', 'filter_vidrouter');
+
         // STL Base ID.
         $mform->addElement('text', 'stlbaseid', get_string('form_stlbaseid', 'filter_vidrouter'));
         $mform->setType('stlbaseid', PARAM_TEXT);

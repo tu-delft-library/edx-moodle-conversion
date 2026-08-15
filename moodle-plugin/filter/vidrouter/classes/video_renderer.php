@@ -38,6 +38,7 @@ class video_renderer
     public static function render(\stdClass $record): string
     {
         $primarysource = get_config('filter_vidrouter', 'primarysource') ?: 'youtube';
+        $fallbacksource = get_config('filter_vidrouter', 'fallbacksource') ?: 'collegeramaid';
         $label = s($record->title ?: $record->urlname);
 
         switch ($primarysource) {
@@ -46,6 +47,10 @@ class video_renderer
                     return self::render_youtube_iframe($record->youtubeid, $label);
                 }
                 break;
+        }
+
+        if ($fallbacksource === 'collegeramaid' && !empty($record->collegeramaid)) {
+            return self::render_collegerama_iframe($record->collegeramaid, $label);
         }
 
         return \html_writer::link('', $label . ' ' . get_string('videourlmissing', 'filter_vidrouter'));
@@ -71,6 +76,7 @@ class video_renderer
         }
 
         $primarysource = get_config('filter_vidrouter', 'primarysource') ?: 'youtube';
+        $fallbacksource = get_config('filter_vidrouter', 'fallbacksource') ?: 'collegeramaid';
         $label = s($record->title ?: $record->urlname);
 
         switch ($primarysource) {
@@ -82,6 +88,13 @@ class video_renderer
                     );
                 }
                 break;
+        }
+
+        if ($fallbacksource === 'collegeramaid' && !empty($record->collegeramaid)) {
+            return \html_writer::link(
+                'https://collegerama.tudelft.nl/Mediasite/Play/' . $record->collegeramaid,
+                $label
+            );
         }
 
         return \html_writer::link('', $label . ' ' . get_string('videourlmissing', 'filter_vidrouter'));
@@ -103,6 +116,24 @@ class video_renderer
             'allowfullscreen' => 'allowfullscreen',
         ]);
         return \html_writer::div($iframe, 'filter_vidrouter_youtube');
+    }
+
+    /**
+     * Build the Collegerama (TU Delft Mediasite) iframe embed for a play id. Used as the
+     * fallback when the primary source (youtube) has no id — see the 'fallbacksource' setting.
+     *
+     * @param string $collegeramaid
+     * @param string $label already-escaped title/label text
+     * @return string HTML markup
+     */
+    private static function render_collegerama_iframe(string $collegeramaid, string $label): string
+    {
+        $iframe = \html_writer::tag('iframe', '', [
+            'src' => 'https://collegerama.tudelft.nl/Mediasite/Play/' . $collegeramaid,
+            'title' => $label,
+            'allowfullscreen' => 'allowfullscreen',
+        ]);
+        return \html_writer::div($iframe, 'filter_vidrouter_collegerama');
     }
 
     /**
