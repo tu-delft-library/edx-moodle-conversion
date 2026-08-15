@@ -475,7 +475,7 @@ class MBZBuilder:
             "      <edxvideoid>{}</edxvideoid>\n"
             "      <tuddownloadid>{}</tuddownloadid>\n"
             "      <collegeramaid>{}</collegeramaid>\n"
-            "      <stlbaseid>{}</stlbaseid>\n"
+            "      <srtbaseid>{}</srtbaseid>\n"
             "      <urlname>{}</urlname>\n"
             "      <videopagepath>{}</videopagepath>\n"
             "    </video>".format(
@@ -485,7 +485,7 @@ class MBZBuilder:
                 esc(v["edxvideoid"] or ""),
                 esc(v["tuddownloadid"] or ""),
                 esc(v["collegeramaid"] or ""),
-                esc(v["stlbaseid"] or ""),
+                esc(v["srtbaseid"] or ""),
                 esc(v["urlname"]),
                 esc(v["videopagepath"]),
             )

@@ -187,7 +187,7 @@ class WPCourse(BaseParser):
     ) -> dict:
         """Build a video component in the shape the vidrouter block/[[vid:{key}]]
         placeholder scheme expects (see ocw.parser.Course._parse_video). WP has no
-        edX video id, so edxvideoid/stlbaseid are always empty here; vidkey is
+        edX video id, so edxvideoid/srtbaseid are always empty here; vidkey is
         derived from the lecture page's URL slug instead. tuddownloadid is an
         OLX-only concept (a download-system id, not embeddable) and is always
         empty here too — collegeramaid is WP's distinct, embeddable Mediasite
@@ -199,7 +199,7 @@ class WPCourse(BaseParser):
             "vidkey": safe_vidkey(slug),
             "youtubeid": youtubeid,
             "edxvideoid": None,
-            "stlbaseid": None,
+            "srtbaseid": None,
             "tuddownloadid": None,
             "collegeramaid": collegeramaid,
             "urlname": slug,
