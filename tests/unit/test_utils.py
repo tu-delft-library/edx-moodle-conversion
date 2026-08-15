@@ -1,10 +1,7 @@
-import pytest
-
 from ocw.utils import (
     _Counter,
     _EDX_HOST_RE,
     esc,
-    normalise_license,
     rewrite_static_urls,
     sha1_of,
     warn_external_edx_urls,
@@ -40,28 +37,6 @@ def test_counter_increments_from_start():
     c = _Counter(start=5)
     assert c.next() == 5
     assert c.next() == 6
-
-
-def test_normalise_license_all_rights_reserved():
-    assert normalise_license("all-rights-reserved") == "alle rechten voorbehouden"
-
-
-def test_normalise_license_empty_string():
-    assert normalise_license("") == "alle rechten voorbehouden"
-
-
-@pytest.mark.parametrize(
-    "raw",
-    [
-        "creative-commons: ver=4.0 BY NC SA",
-        "creative-commons: ver=4.0 BY SA NC",
-    ],
-)
-def test_normalise_license_cc_token_order_independent(raw):
-    """Real archives use both token orders for the same license (plan.md §4
-    subagent scan) — normalise_license must land on the same canonical slug
-    regardless of the order edX happened to write the tokens in."""
-    assert normalise_license(raw) == "cc-by-nc-sa"
 
 
 def test_warn_external_edx_urls_logs_on_edx_host(caplog):

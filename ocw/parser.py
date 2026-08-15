@@ -108,8 +108,15 @@ class Course(BaseParser):
         ]
 
     def _parse_summary(self) -> None:
-        """Populate summary_html from about/short_description.html, falling back to overview.html."""
-        for name in ("short_description.html", "overview.html"):
+        """Populate summary_html from about/short_description.html.
+
+        overview.html fallback disabled for now — too often still contains edX Studio's
+        unedited default boilerplate ("Include your long course description here...").
+        """
+        for name in (
+            "short_description.html",
+            # "overview.html",
+        ):
             path = self.root / "about" / name
             if path.exists() and path.read_text(encoding="utf-8").strip():
                 self.summary_html = path.read_text(encoding="utf-8")
