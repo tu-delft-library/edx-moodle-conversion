@@ -474,6 +474,7 @@ class MBZBuilder:
             "      <youtubeid>{}</youtubeid>\n"
             "      <edxvideoid>{}</edxvideoid>\n"
             "      <tuddownloadid>{}</tuddownloadid>\n"
+            "      <collegeramaid>{}</collegeramaid>\n"
             "      <stlbaseid>{}</stlbaseid>\n"
             "      <urlname>{}</urlname>\n"
             "      <videopagepath>{}</videopagepath>\n"
@@ -483,6 +484,7 @@ class MBZBuilder:
                 esc(v["youtubeid"] or ""),
                 esc(v["edxvideoid"] or ""),
                 esc(v["tuddownloadid"] or ""),
+                esc(v["collegeramaid"] or ""),
                 esc(v["stlbaseid"] or ""),
                 esc(v["urlname"]),
                 esc(v["videopagepath"]),

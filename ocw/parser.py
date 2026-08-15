@@ -379,8 +379,9 @@ class Course(BaseParser):
             "vidkey": safe_vidkey(edx_video_id or url_name),
             "youtubeid": youtubeid,
             "edxvideoid": edx_video_id,
-            "stlbaseid": edx_video_id,  
+            "stlbaseid": edx_video_id,
             "tuddownloadid": None,  # filled in by _attach_video_download_ids
+            "collegeramaid": None,  # OLX has no Collegerama source
             "urlname": url_name,
             "videopagepath": f"{chapter_name} > {sequential_name} > {vertical_name}",
         }

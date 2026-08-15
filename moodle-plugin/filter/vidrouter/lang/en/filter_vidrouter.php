@@ -50,7 +50,13 @@ $string['form_youtubeid_help'] = 'YouTube video ID (optional). 11-character code
 $string['form_edxvideoid'] = 'edX Video ID';
 $string['form_edxvideoid_help'] = 'edX CDN UUID (optional). Used as join key for transcripts.';
 $string['form_tuddownloadid'] = 'TU Delft Download ID';
-$string['form_tuddownloadid_help'] = 'TU Delft data-downloadid path or URL (optional).';
+$string['form_tuddownloadid_help'] = 'TU Delft data-downloadid path or URL (optional). '
+    . 'Captured from OLX-sourced courses only: a download-system identifier, not a playable '
+    . 'Collegerama link (see form_collegeramaid for that).';
+$string['form_collegeramaid'] = 'Collegerama ID';
+$string['form_collegeramaid_help'] = 'TU Delft Collegerama (Mediasite) play ID (optional). '
+    . 'Captured from WordPress-sourced courses\' Collegerama iframe embeds. Used as a live-site '
+    . 'playback fallback when no YouTube ID is set; see "Primary video source" above.';
 $string['form_stlbaseid'] = 'STL Base ID';
 $string['form_stlbaseid_help'] = 'STL file base URL (optional, unverified).';
 $string['form_videopagepath'] = 'Video Page Path';
@@ -81,15 +87,19 @@ $string['import_status_invalid'] = 'Missing match value — skipped';
 $string['import_status_nochange'] = 'Matched, but no columns to change — skipped';
 $string['import_summary'] = '{$a->updated} row(s) updated, {$a->unmatched} unmatched, {$a->ambiguous} ambiguous.';
 $string['import_error_empty'] = 'No CSV data was provided.';
-$string['import_error_unknown_column'] = 'Unknown column name: "{$a}". Valid columns are: vidkey, youtubeid, edxvideoid, tuddownloadid, stlbaseid, urlname, courseid, title, videopagepath.';
+$string['import_error_unknown_column'] = 'Unknown column name: "{$a}". Valid columns are: vidkey, youtubeid, edxvideoid, tuddownloadid, collegeramaid, stlbaseid, urlname, courseid, title, videopagepath.';
 $string['import_error_duplicate_column'] = 'The header row contains the same column more than once.';
 
 $string['video_unavailable'] = 'Video unavailable. Please contact your course team.';
 $string['videourlmissing'] = '(video link missing)';
 
 $string['primarysource'] = 'Primary video source';
-$string['primarysource_desc'] = 'Which source field to render a video link from. Only sources with real, working implementations are listed here — edX and TU Delft download IDs are intentionally excluded (see project findings).';
+$string['primarysource_desc'] = 'Which source field to render a video link from if available; Collegerama is used as an automatic fallback when the primary source has no ID for a video (see "Primary source fallback" below). Only sources with real, working implementations are listed here; edX and TU Delft download IDs are intentionally excluded (see project findings).';
 $string['source_youtube'] = 'YouTube';
+
+$string['fallbacksource'] = 'Primary source fallback';
+$string['fallbacksource_desc'] = 'Source used to render a video when the primary source above has no ID for it. Currently only Collegerama; surfaced here so it\'s visible what happens rather than being an invisible hardcoded behaviour.';
+$string['source_collegerama'] = 'Collegerama';
 
 $string['embedstyle'] = 'Export embed style';
 $string['embedstyle_desc'] = 'How to render videos in the HTML baked into a course backup/export (used when duplicating or restoring a course) — independent of how videos render live on the site, which always uses the native YouTube iframe for captions. "Video" outputs a plain link and lets Moodle\'s media filter embed it (matches how OLX-exported videos were originally rendered), but YouTube captions are not available in that mode. "Iframe" matches the live rendering, with working captions.';

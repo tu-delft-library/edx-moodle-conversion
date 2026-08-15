@@ -187,6 +187,7 @@ def test_parse_video_vidkey_from_edx_video_id(tmp_path):
     assert video["vidkey"] == "d54b76a4-c214-49ea-a4da-161e7f8520a3"
     assert video["edxvideoid"] == "d54b76a4-c214-49ea-a4da-161e7f8520a3"
     assert video["youtubeid"] == "_tX7iFAJvZY"
+    assert video["collegeramaid"] is None
     assert video["urlname"] == "vid1"
     assert video["videopagepath"] == "Ch 1 > S1 > V1"
 

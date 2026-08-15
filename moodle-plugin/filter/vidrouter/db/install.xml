@@ -8,6 +8,7 @@
         <FIELD NAME="youtubeid" TYPE="char" LENGTH="20" NOTNULL="false"/>
         <FIELD NAME="edxvideoid" TYPE="char" LENGTH="64" NOTNULL="false"/>
         <FIELD NAME="tuddownloadid" TYPE="char" LENGTH="255" NOTNULL="false"/>
+        <FIELD NAME="collegeramaid" TYPE="char" LENGTH="255" NOTNULL="false"/>
         <FIELD NAME="stlbaseid" TYPE="char" LENGTH="64" NOTNULL="false"/>
         <FIELD NAME="urlname" TYPE="char" LENGTH="255" NOTNULL="false"/>
         <FIELD NAME="courseid" TYPE="char" LENGTH="64" NOTNULL="false"/>
