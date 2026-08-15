@@ -24,7 +24,6 @@ from ocw.parser_base import BaseParser
 from ocw.utils import (
     _Counter,
     esc,
-    normalise_license,
     rewrite_static_urls,
     sha1_of,
     warn_external_edx_urls,
@@ -501,6 +500,8 @@ class MBZBuilder:
         silently drops non-matching blocks, no error. type is 'text' for all four,
         not 'select' — see PLAN.md §9.2 for why (select's backed-up value is an
         option-list index, not the string we'd be writing here).
+
+        Values are passed through as-is from OLX — no normalisation/translation.
         """
         if self.disable_custom_fields:
             return ""
@@ -508,7 +509,7 @@ class MBZBuilder:
             ("publisher", c.org),
             ("language", c.language),
             ("access", "open access"),
-            ("license", normalise_license(c.license)),
+            ("license", c.license),
         ]
         lines = [
             (

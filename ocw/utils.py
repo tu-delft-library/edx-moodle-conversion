@@ -143,19 +143,3 @@ def warn_external_edx_urls(
         )
 
 
-_CC_TOKEN_RE = re.compile(r"\b(BY|SA|NC|ND)\b", re.IGNORECASE)
-_CC_PRIORITY = ["by", "nc", "nd", "sa"]
-
-
-def normalise_license(raw: str) -> str:
-    """
-    Map an edX `license` attribute to a Wikiwijs Gebruiksrecht dropdown value.
-    """
-    raw = raw.strip()
-    if not raw or raw.lower() == "all-rights-reserved":
-        return "alle rechten voorbehouden"
-    if not raw.lower().startswith("creative-commons"):
-        return "alle rechten voorbehouden"
-    tokens = {m.group(1).lower() for m in _CC_TOKEN_RE.finditer(raw)}
-    ordered = [t for t in _CC_PRIORITY if t in tokens]
-    return f"cc-{'-'.join(ordered)}" if ordered else "cc0"
