@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=OCW WP GUI
+Comment=Convert WordPress-hosted course sites to Moodle MBZ backups
+Exec=ocw-gui-wp
+Icon=ocw-gui-wp
+Categories=Utility;
+Terminal=false

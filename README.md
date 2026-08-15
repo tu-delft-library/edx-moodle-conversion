@@ -18,14 +18,39 @@ From a `.tar.gz` archive:
 poetry run python main.py path/to/course.tar.gz -o output.mbz
 ```
 
+Or via the installed entry point (same thing, no `main.py` needed):
+
+```bash
+poetry run ocw path/to/olx_course/ -o output.mbz
+```
+
+### From a WordPress course site
+
+```bash
+poetry run ocw-wp https://example.edu/course-home-page/ -o output.mbz
+```
+
 The output `.mbz` can then be imported into Moodle via **Site Administration → Restore Course → Restore as a new course**.
+
+### GUI
+
+Desktop app, same conversion logic as the CLI, no flags to remember:
+
+```bash
+poetry run python -m ocw.gui.olx   # OLX GUI
+poetry run python -m ocw.gui.wp    # WordPress GUI
+```
+
+Packaged binaries (`ocw-gui`, `ocw-gui-wp`) are also built per release — see the GitHub Releases page.
 
 ### Options
 
-| Flag                    | Default | Description                                                                              |
-| ----------------------- | ------- | ---------------------------------------------------------------------------------------- |
-| `--sequential-sections` | off     | one Moodle section per sequential instead of per chapter, named `"Chapter - Sequential"` |
-| `--debug`               | off     | verbose logging to stderr and `ocw.log`                                                  |
+| Flag                                            | Default | Description                                                                              |
+| ------------------------------------------------ | ------- | ---------------------------------------------------------------------------------------- |
+| `--sequential-sections`                         | off     | one Moodle section per sequential instead of per chapter, named `"Chapter - Sequential"` |
+| `--disable-custom-fields`                       | off     | skip populating Edusources custom fields                                                 |
+| `--fetch-external-assets` / `--no-fetch-...`    | on      | download PDFs still hosted on edX instead of just warning (`ocw-wp`: PDFs linked from the site) |
+| `--debug`                                       | off     | verbose logging to stderr and `ocw.log`                                                  |
 
 Example with sequential sections:
 
