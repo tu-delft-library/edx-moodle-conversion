@@ -69,7 +69,9 @@ jobs:
           MOODLE_BRANCH: ${{ matrix.moodle-branch }}
 
       - name: PHPUnit
-        run: moodle-plugin-ci phpunit --fail-on-warning --coverage-text --coverage-clover
+        run: >
+          moodle-plugin-ci phpunit --fail-on-warning --coverage-text --coverage-clover
+          ./plugin-filter/moodle-plugin/filter/vidrouter
 
       - uses: actions/upload-artifact@v4
         with:
@@ -81,6 +83,6 @@ jobs:
         uses: slavcodev/coverage-monitor-action@v1
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
-          clover_file: coverage.xml
+          coverage_path: coverage.xml
           threshold_alert: 50
           threshold_warning: 75
