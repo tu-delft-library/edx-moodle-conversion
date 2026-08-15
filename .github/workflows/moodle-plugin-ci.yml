@@ -69,7 +69,7 @@ jobs:
           MOODLE_BRANCH: ${{ matrix.moodle-branch }}
 
       - name: PHPUnit
-        run: moodle-plugin-ci phpunit --fail-on-warning --coverage-text --coverage-clover=coverage.xml
+        run: moodle-plugin-ci phpunit --fail-on-warning --coverage-text --coverage-clover
 
       - uses: actions/upload-artifact@v4
         with:
