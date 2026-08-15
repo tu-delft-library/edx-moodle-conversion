@@ -17,8 +17,9 @@ from tkinter.scrolledtext import ScrolledText
 from ocw._version import __version__
 from ocw.converter import MBZBuilder
 from ocw.fetcher import AssetFetcher
+from ocw.hybrid_checks import log_hybrid_checks
 from ocw.parser import Course
-from ocw.utils import run_hybrid_checks, versioned_output_path
+from ocw.utils import versioned_output_path
 from ocw.wp_parser import WPCourse
 
 if sys.platform.startswith("linux"):
@@ -392,7 +393,7 @@ class App:
                 disable_custom_fields=not self.enable_custom_fields.get(),
             ).build(out)
             if olx_path is not None:
-                run_hybrid_checks(olx_path, out)
+                log_hybrid_checks(olx_path, out, logging.getLogger("ocw"))
             return out
         finally:
             if tmp:

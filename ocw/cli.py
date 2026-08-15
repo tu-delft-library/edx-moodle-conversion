@@ -9,9 +9,10 @@ from pathlib import Path
 from ocw._version import __version__
 from ocw.converter import MBZBuilder
 from ocw.fetcher import AssetFetcher
+from ocw.hybrid_checks import log_hybrid_checks
 from ocw.logging_setup import setup_cli_logging
 from ocw.parser import Course
-from ocw.utils import run_hybrid_checks, versioned_output_path
+from ocw.utils import versioned_output_path
 
 
 def main() -> None:
@@ -65,7 +66,7 @@ def main() -> None:
             sequential_sections=args.sequential_sections,
             disable_custom_fields=args.disable_custom_fields,
         ).build(output)
-        run_hybrid_checks(olx_path, output)
+        log_hybrid_checks(olx_path, output, log)
     except Exception as e:
         print(f"error: {e}", file=sys.stderr)
         sys.exit(1)
