@@ -1,12 +1,13 @@
 name: CI
 
-# on:
-#   push:
-#     branches: [main]
-#   pull_request:
-#     branches: [main]
 on:
+  pull_request:
+    branches: [main]
   workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: write
 
 jobs:
   test:
@@ -22,4 +23,21 @@ jobs:
 
       - run: poetry install --with dev
 
-      - run: poetry run pytest -v
+      - name: Run tests with coverage
+        run: >
+          poetry run pytest -v --cov=ocw --cov-report=term-missing --cov-report=xml
+          --junitxml=pytest.xml | tee pytest-coverage.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: python-coverage
+          path: |
+            coverage.xml
+            pytest-coverage.txt
+
+      - name: Comment coverage on PR
+        if: github.event_name == 'pull_request'
+        uses: MishaKav/pytest-coverage-comment@main
+        with:
+          pytest-coverage-path: ./pytest-coverage.txt
+          junitxml-path: ./pytest.xml

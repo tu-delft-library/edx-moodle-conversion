@@ -2,6 +2,7 @@ name: Build GUI binaries
 
 on:
   push:
+    branches: [main]
     tags: ["v*"]
   workflow_dispatch:
 
@@ -15,7 +16,8 @@ jobs:
       - run: poetry install --with dev
       - name: Stamp version from tag
         run: echo "__version__ = \"${GITHUB_REF_NAME}\"" > ocw/_version.py
-      - run: poetry run pyinstaller --onefile --windowed --name ocw-gui ocw/gui.py
+      - run: poetry run pyinstaller --onefile --windowed --name ocw-gui ocw/gui/olx.py
+      - run: poetry run pyinstaller --onefile --windowed --name ocw-gui-wp ocw/gui/wp.py
       - run: |
           mkdir -p AppDir/usr/bin
           cp dist/ocw-gui AppDir/usr/bin/
@@ -25,10 +27,21 @@ jobs:
           wget -q https://github.com/AppImage/appimagetool/releases/latest/download/appimagetool-x86_64.AppImage
           chmod +x appimagetool-x86_64.AppImage
           ./appimagetool-x86_64.AppImage AppDir OCW-GUI-x86_64.AppImage
+      - run: |
+          mkdir -p AppDir-wp/usr/bin
+          cp dist/ocw-gui-wp AppDir-wp/usr/bin/
+          cp packaging/ocw-gui-wp.desktop AppDir-wp/
+          cp packaging/ocw-gui-wp.png AppDir-wp/
+          ln -s usr/bin/ocw-gui-wp AppDir-wp/AppRun
+          ./appimagetool-x86_64.AppImage AppDir-wp OCW-WP-GUI-x86_64.AppImage
       - uses: actions/upload-artifact@v4
         with:
           name: ocw-gui-linux
           path: OCW-GUI-x86_64.AppImage
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ocw-gui-wp-linux
+          path: OCW-WP-GUI-x86_64.AppImage
 
   windows-exe:
     runs-on: windows-latest
@@ -39,11 +52,16 @@ jobs:
       - name: Stamp version from tag
         shell: bash
         run: echo "__version__ = \"${GITHUB_REF_NAME}\"" > ocw/_version.py
-      - run: poetry run pyinstaller --onefile --windowed --name ocw-gui ocw/gui.py
+      - run: poetry run pyinstaller --onefile --windowed --name ocw-gui ocw/gui/olx.py
+      - run: poetry run pyinstaller --onefile --windowed --name ocw-gui-wp ocw/gui/wp.py
       - uses: actions/upload-artifact@v4
         with:
           name: ocw-gui-windows
           path: dist/ocw-gui.exe
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ocw-gui-wp-windows
+          path: dist/ocw-gui-wp.exe
 
   moodle-plugins:
     runs-on: ubuntu-latest
@@ -73,5 +91,7 @@ jobs:
           files: |
             dist-artifacts/ocw-gui-linux/OCW-GUI-x86_64.AppImage
             dist-artifacts/ocw-gui-windows/ocw-gui.exe
+            dist-artifacts/ocw-gui-wp-linux/OCW-WP-GUI-x86_64.AppImage
+            dist-artifacts/ocw-gui-wp-windows/ocw-gui-wp.exe
             dist-artifacts/moodle-plugins/filter_vidrouter.zip
             dist-artifacts/moodle-plugins/local_vidrouter.zip

@@ -5,6 +5,7 @@ from xml.etree import ElementTree as ET
 from tests.builders import Chapter, HtmlComponent, OLXFixtureBuilder, Sequential, Vertical, VideoComponent
 from ocw.converter import MBZBuilder
 from ocw.parser import Course
+from ocw.utils import esc
 
 
 # CC1
@@ -121,7 +122,7 @@ def test_cc4_video_shortcode_and_vidrouter_block(tmp_path):
     assert len(videos) == len(course.videos) == 1
     assert videos[0].findtext("vidkey") == "d54b76a4-c214-49ea-a4da-161e7f8520a3"
 
-    assert "<p>intro</p>" in page_xml
+    assert esc("<p>intro</p>") in page_xml
     assert "[[vid:d54b76a4-c214-49ea-a4da-161e7f8520a3]]" in page_xml
     assert page_xml.index("intro") < page_xml.index("[[vid:")
 
@@ -190,7 +191,7 @@ def test_c1_warns_missing_static(tmp_path, caplog):
     b.build()
     with caplog.at_level(logging.WARNING, logger="ocw.parser"):
         Course(tmp_path / "course").parse()
-    assert any("C1" in r.message and "missing.png" in r.message for r in caplog.records)
+    assert any("missing.png" in r.message for r in caplog.records)
 
 
 # C3

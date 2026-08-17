@@ -1,7 +1,6 @@
 import hashlib
 import logging
 import re
-import subprocess
 from pathlib import Path
 from urllib.parse import urlparse
 
@@ -27,6 +26,15 @@ class _Counter:
         v = self._n
         self._n += 1
         return v
+
+
+_VIDKEY_UNSAFE_RE = re.compile(r"[^A-Za-z0-9_-]")
+
+
+def safe_vidkey(raw: str) -> str:
+    """Sanitize a video source id/slug down to the charset the vidrouter
+    placeholder ([[vid:{key}]]) and its DB lookup key can safely contain."""
+    return _VIDKEY_UNSAFE_RE.sub("_", raw)
 
 
 def esc(s: str) -> str:
@@ -135,46 +143,3 @@ def warn_external_edx_urls(
         )
 
 
-_CC_TOKEN_RE = re.compile(r"\b(BY|SA|NC|ND)\b", re.IGNORECASE)
-_CC_PRIORITY = ["by", "nc", "nd", "sa"]
-
-
-def run_hybrid_checks(olx_path: Path, mbz_path: Path) -> None:
-    """Run the OLX<->MBZ hybrid integration checks and route their output
-    through logging. A bare subprocess.run() inherits stdout/stderr straight
-    to the terminal, bypassing logging entirely — neither the CLI's ocw.log
-    file handler nor the GUI's log box ever see it that way.
-    """
-    result = subprocess.run(
-        [
-            "poetry",
-            "run",
-            "pytest",
-            "tests/integration/test_hybrid_checks.py",
-            "--olx-path",
-            str(olx_path),
-            "--mbz-path",
-            str(mbz_path),
-            "-v",
-        ],
-        check=False,
-        capture_output=True,
-        text=True,
-    )
-    level = logging.INFO if result.returncode == 0 else logging.WARNING
-    for line in (result.stdout + result.stderr).splitlines():
-        log.log(level, line)
-
-
-def normalise_license(raw: str) -> str:
-    """
-    Map an edX `license` attribute to a Wikiwijs Gebruiksrecht dropdown value.
-    """
-    raw = raw.strip()
-    if not raw or raw.lower() == "all-rights-reserved":
-        return "alle rechten voorbehouden"
-    if not raw.lower().startswith("creative-commons"):
-        return "alle rechten voorbehouden"
-    tokens = {m.group(1).lower() for m in _CC_TOKEN_RE.finditer(raw)}
-    ordered = [t for t in _CC_PRIORITY if t in tokens]
-    return f"cc-{'-'.join(ordered)}" if ordered else "cc0"

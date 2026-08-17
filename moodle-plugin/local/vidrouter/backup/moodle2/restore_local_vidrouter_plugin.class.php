@@ -47,7 +47,8 @@ class restore_local_vidrouter_plugin extends restore_local_plugin
      *
      * Expects <video> elements per row, with child elements.
      * - vidkey (required)
-     * - title, youtubeid, edxvideoid, tuddownloadid, stlbaseid, urlname, videopagepath (optional)
+     * - title, youtubeid, edxvideoid, tuddownloadid, collegeramaid, srtbaseid, urlname,
+     *   videopagepath (optional)
      * - html (optional, for frozen HTML from backup side)
      *
      * @return array of restore_path_element
@@ -101,7 +102,8 @@ class restore_local_vidrouter_plugin extends restore_local_plugin
         $record->youtubeid = $data->youtubeid ?? null;
         $record->edxvideoid = $data->edxvideoid ?? null;
         $record->tuddownloadid = $data->tuddownloadid ?? null;
-        $record->stlbaseid = $data->stlbaseid ?? null;
+        $record->collegeramaid = $data->collegeramaid ?? null;
+        $record->srtbaseid = $data->srtbaseid ?? null;
         $record->urlname = $data->urlname ?? null;
         $record->videopagepath = $data->videopagepath ?? null;
         $record->courseid = $this->get_task()->get_courseid();

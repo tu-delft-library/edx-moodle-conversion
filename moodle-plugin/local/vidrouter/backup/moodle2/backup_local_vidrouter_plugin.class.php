@@ -45,8 +45,8 @@ class backup_local_vidrouter_plugin extends backup_local_plugin {
         $plugin->add_child($pluginwrapper);
 
         $video = new backup_nested_element('video', null, [
-            'vidkey', 'title', 'youtubeid', 'edxvideoid', 'tuddownloadid',
-            'stlbaseid', 'urlname', 'videopagepath', 'html',
+            'vidkey', 'title', 'youtubeid', 'edxvideoid', 'tuddownloadid', 'collegeramaid',
+            'srtbaseid', 'urlname', 'videopagepath', 'html',
         ]);
         $pluginwrapper->add_child($video);
 
@@ -88,7 +88,8 @@ class backup_local_vidrouter_plugin extends backup_local_plugin {
                 'youtubeid' => $record->youtubeid,
                 'edxvideoid' => $record->edxvideoid,
                 'tuddownloadid' => $record->tuddownloadid,
-                'stlbaseid' => $record->stlbaseid,
+                'collegeramaid' => $record->collegeramaid,
+                'srtbaseid' => $record->srtbaseid,
                 'urlname' => $record->urlname,
                 'videopagepath' => $record->videopagepath,
                 'html' => \filter_vidrouter\video_renderer::render_for_export($record),

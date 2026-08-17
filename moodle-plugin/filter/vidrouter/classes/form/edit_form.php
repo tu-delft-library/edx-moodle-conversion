@@ -68,10 +68,15 @@ class filter_vidrouter_edit_form extends moodleform {
         $mform->setType('tuddownloadid', PARAM_TEXT);
         $mform->addHelpButton('tuddownloadid', 'form_tuddownloadid', 'filter_vidrouter');
 
-        // STL Base ID.
-        $mform->addElement('text', 'stlbaseid', get_string('form_stlbaseid', 'filter_vidrouter'));
-        $mform->setType('stlbaseid', PARAM_TEXT);
-        $mform->addHelpButton('stlbaseid', 'form_stlbaseid', 'filter_vidrouter');
+        // Collegerama ID.
+        $mform->addElement('text', 'collegeramaid', get_string('form_collegeramaid', 'filter_vidrouter'));
+        $mform->setType('collegeramaid', PARAM_TEXT);
+        $mform->addHelpButton('collegeramaid', 'form_collegeramaid', 'filter_vidrouter');
+
+        // SRT Base ID.
+        $mform->addElement('text', 'srtbaseid', get_string('form_srtbaseid', 'filter_vidrouter'));
+        $mform->setType('srtbaseid', PARAM_TEXT);
+        $mform->addHelpButton('srtbaseid', 'form_srtbaseid', 'filter_vidrouter');
 
         // Video page path (textarea).
         $mform->addElement('textarea', 'videopagepath', get_string('form_videopagepath', 'filter_vidrouter'));

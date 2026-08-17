@@ -27,11 +27,11 @@
 
 defined('MOODLE_INTERNAL') || die();
 
-$plugin->version      = 2024070107;
+$plugin->version      = 2026081500;
 $plugin->requires     = 2022041900;
 $plugin->component    = 'local_vidrouter';
 $plugin->maturity     = MATURITY_BETA;
-$plugin->release      = '1.0.7 (Build: 2024070107)';
+$plugin->release      = '1.0.8 (Build: 2026081500)';
 $plugin->dependencies = array(
     'filter_vidrouter' => ANY_VERSION,
 );

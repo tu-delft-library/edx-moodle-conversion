@@ -10,7 +10,7 @@ from ocw.converter.html import (
     strip_templated_iframes,
     style_figcaption,
 )
-from ocw.parser import Course
+from ocw.parser_base import BaseParser
 from ocw.utils import _Counter, rewrite_static_urls, warn_external_edx_urls
 
 log = logging.getLogger("ocw.converter")
@@ -19,7 +19,7 @@ log = logging.getLogger("ocw.converter")
 class SectionStrategy(ABC):
     """Turns a parsed Course into (all_sections, sub_mods, pages) for the MBZ writer."""
 
-    def __init__(self, course: Course, ids: _Counter, section_offset: int = 0) -> None:
+    def __init__(self, course: BaseParser, ids: _Counter, section_offset: int = 0) -> None:
         self.c = course
         self.ids = ids
         # NOTE: non-zero when an Overview section (Syllabus/Readings) is
@@ -31,32 +31,33 @@ class SectionStrategy(ABC):
     def build(self) -> tuple[list[dict], list[dict], list[dict]]:
         """Returns (all_sections, sub_mods, pages)."""
 
+    def _process_html(self, content: str, context: str = "") -> str:
+        """Run raw scraped/authored HTML through the same rewrite/sanitize chain
+        used for page body content, so summaries and page components get
+        identical treatment."""
+        warn_external_edx_urls(content, context=context, static_files=self.c.static_files)
+        return style_figcaption(
+            constrain_table_size(
+                constrain_img_size(
+                    mark_hyperlinks_nomediaplugin(
+                        strip_templated_iframes(
+                            strip_blacklisted_classes(
+                                rewrite_static_urls(content, self.c.static_files)
+                            )
+                        )
+                    )
+                )
+            )
+        )
+
     # NOTE: Whenever we append structural things i think it should always be in an auxillory function so that we keep a grasp on expected structure
     def _build_page(self, vert: dict, sec_id: int, sec_num: int) -> dict | None:
         """Shared: turn a vertical's html components into a page dict, or None if it has none."""
         parts = []
         for comp in vert["components"]:
             if comp["type"] == "html":
-                warn_external_edx_urls(
-                    comp["content"], context=vert.get("display_name", ""),
-                    static_files=self.c.static_files,
-                )
-                parts.append(
-                    style_figcaption(
-                        constrain_table_size(
-                            constrain_img_size(
-                                mark_hyperlinks_nomediaplugin(
-                                    strip_templated_iframes(
-                                        strip_blacklisted_classes(
-                                            rewrite_static_urls(comp["content"], self.c.static_files)
-                                        )
-                                    )
-                                )
-                            )
-                        )
-                    )
-                    + '<div style="clear:both"></div>'
-                )
+                processed = self._process_html(comp["content"], context=vert.get("display_name", ""))
+                parts.append(processed + '<div style="clear:both"></div>')
             elif comp["type"] == "video":
                 parts.append(f"<p>[[vid:{comp['vidkey']}]]</p>")
             else:
@@ -88,21 +89,24 @@ class FlatSectionStrategy(SectionStrategy):
         sections: list[dict] = []
         sec_idx_for: dict[int, int] = {}
         for ch in self.c.chapters:
-            for seq in ch["sequentials"]:
+            for i, seq in enumerate(ch["sequentials"]):
                 sec_idx_for[id(seq)] = len(sections)
-                sections.append(
-                    {
-                        "id": self.ids.next(),
-                        "name": f"{ch['display_name']} - {seq['display_name']}",
-                        "modules": [],
-                        # explicit, offset-aware — must not rely on
-                        # _write_section's positional idx+1 fallback, which
-                        # would silently drift from sec_num below the moment
-                        # anything gets prepended to all_sections (e.g. an
-                        # Overview section)
-                        "number": len(sections) + 1 + self.section_offset,
-                    }
-                )
+                sec = {
+                    "id": self.ids.next(),
+                    "name": f"{ch['display_name']} - {seq['display_name']}",
+                    "modules": [],
+                    # explicit, offset-aware — must not rely on
+                    # _write_section's positional idx+1 fallback, which
+                    # would silently drift from sec_num below the moment
+                    # anything gets prepended to all_sections (e.g. an
+                    # Overview section)
+                    "number": len(sections) + 1 + self.section_offset,
+                }
+                # chapter summary only goes on the chapter's first section here,
+                # since sequential_sections mode has no single section per chapter
+                if i == 0 and ch.get("summary_html"):
+                    sec["summary"] = self._process_html(ch["summary_html"], context=ch["display_name"])
+                sections.append(sec)
 
         pages: list[dict] = []
         for ch in self.c.chapters:
@@ -127,6 +131,8 @@ class NestedSectionStrategy(SectionStrategy):
         ch_sections: list[dict] = []
         for ch in self.c.chapters:
             ch_sec = {"id": self.ids.next(), "name": ch["display_name"], "modules": []}
+            if ch.get("summary_html"):
+                ch_sec["summary"] = self._process_html(ch["summary_html"], context=ch["display_name"])
             ch_sections.append(ch_sec)
             for seq in ch["sequentials"]:
                 sub_mod_id, sub_ctx_id, sub_int_id = (

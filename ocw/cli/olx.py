@@ -9,40 +9,10 @@ from pathlib import Path
 from ocw._version import __version__
 from ocw.converter import MBZBuilder
 from ocw.fetcher import AssetFetcher
+from ocw.hybrid_checks import log_hybrid_checks
+from ocw.logging_setup import setup_cli_logging
 from ocw.parser import Course
-from ocw.utils import run_hybrid_checks, versioned_output_path
-
-
-class _ColourFormatter(logging.Formatter):
-    _YELLOW = "\033[33m"
-    _BLUE = "\033[34m"
-    _RESET = "\033[0m"
-
-    def format(self, record: logging.LogRecord) -> str:
-        if record.levelno == logging.WARNING:
-            record = logging.makeLogRecord(record.__dict__)
-            record.levelname = f"{self._YELLOW}WARNING{self._RESET}"
-            if record.args:
-                record.args = tuple(
-                    f"{self._YELLOW}{a}{self._RESET}" for a in record.args
-                )
-        msg = super().format(record)
-        msg = msg.replace("Parsing OLX:", f"{self._BLUE}Parsing OLX:{self._RESET}")
-        return msg.replace("DOWNLOAD:", f"{self._BLUE}DOWNLOAD:{self._RESET}")
-
-
-def _setup_logging(debug: bool, log_path: Path) -> None:
-    """Attach stderr and file handlers to the root ocw logger."""
-    log = logging.getLogger("ocw")
-    log.setLevel(logging.DEBUG if debug else logging.INFO)
-    fmt = "%(asctime)s [%(levelname)s] %(message)s"
-    datefmt = "%H:%M:%S"
-    sh = logging.StreamHandler(sys.stderr)
-    sh.setFormatter(_ColourFormatter(fmt, datefmt=datefmt))
-    log.addHandler(sh)
-    fh = logging.FileHandler(log_path, mode="w", encoding="utf-8")
-    fh.setFormatter(logging.Formatter(fmt, datefmt=datefmt))
-    log.addHandler(fh)
+from ocw.utils import versioned_output_path
 
 
 def main() -> None:
@@ -69,7 +39,7 @@ def main() -> None:
         help="Download PDFs still hosted on edX instead of just warning (default: on)",
     )
     args = ap.parse_args()
-    _setup_logging(args.debug, Path("ocw.log"))
+    setup_cli_logging(args.debug, Path("ocw.log"))
     log = logging.getLogger("ocw")
     log.info("ocw %s", __version__)
 
@@ -96,7 +66,7 @@ def main() -> None:
             sequential_sections=args.sequential_sections,
             disable_custom_fields=args.disable_custom_fields,
         ).build(output)
-        run_hybrid_checks(olx_path, output)
+        log_hybrid_checks(olx_path, output, log)
     except Exception as e:
         print(f"error: {e}", file=sys.stderr)
         sys.exit(1)
