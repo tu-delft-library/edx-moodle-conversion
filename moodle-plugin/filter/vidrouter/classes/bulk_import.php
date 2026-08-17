@@ -31,7 +31,7 @@ class bulk_import
 {
     /** @var string[] columns that may be used as the match key */
     public const ASSIGNABLE_FIELDS = [
-        'vidkey', 'youtubeid', 'edxvideoid', 'tuddownloadid', 'stlbaseid',
+        'vidkey', 'youtubeid', 'edxvideoid', 'tuddownloadid', 'collegeramaid', 'srtbaseid',
         'urlname', 'courseid', 'title', 'videopagepath',
     ];
 

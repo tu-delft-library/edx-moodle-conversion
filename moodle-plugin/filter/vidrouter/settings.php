@@ -40,6 +40,16 @@ if ($ADMIN->fulltree) {
     ));
 
     $settings->add(new admin_setting_configselect(
+        'filter_vidrouter/fallbacksource',
+        get_string('fallbacksource', 'filter_vidrouter'),
+        get_string('fallbacksource_desc', 'filter_vidrouter'),
+        'collegeramaid',
+        [
+            'collegeramaid' => get_string('source_collegerama', 'filter_vidrouter'),
+        ]
+    ));
+
+    $settings->add(new admin_setting_configselect(
         'filter_vidrouter/embedstyle',
         get_string('embedstyle', 'filter_vidrouter'),
         get_string('embedstyle_desc', 'filter_vidrouter'),
