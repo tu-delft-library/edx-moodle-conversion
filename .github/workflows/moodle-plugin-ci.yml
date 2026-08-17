@@ -1,9 +1,9 @@
 name: Moodle Plugin CI
 
 on:
-  pull_request:
-    branches: [main]
-    paths: ["moodle-plugin/**"]
+  # pull_request:
+  #   branches: [main]
+  #   paths: ["moodle-plugin/**"]
   workflow_dispatch:
 
 permissions:
