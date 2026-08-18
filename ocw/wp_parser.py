@@ -1,3 +1,5 @@
+"""Parse WordPress course sites into the normalised data consumed by `MBZBuilder`."""
+
 import logging
 
 import requests
@@ -11,23 +13,21 @@ log = logging.getLogger("ocw.wp_parser")
 
 
 class WPCourse(BaseParser):
-    """Scrapes a WordPress-hosted course site (HTML only, no API) into the same
-    chapter/sequential/vertical/component structure the Converter builds an MBZ
-    from."""
+    """Parse a WordPress course site's HTML navigation and content into course records.
 
-    # Sidebar/link types that don't map to any component we build.
+    The parser follows the site's chapter and activity navigation rather than using a WordPress
+    API.
+    """
+
+    # Activity icon types intentionally omitted because the converter has no equivalent component.
     _SKIPPED_ICON_TYPES = frozenset({"icon--exercise", "icon--exam", "icon--mooc"})
 
     def __init__(self, root: str, fetcher: AssetFetcher | None = None) -> None:
-        """
-        Args:
-            root: Course home page URL.
-            fetcher: Optional AssetFetcher for downloading linked PDFs.
-        """
         super().__init__(root, fetcher)
         self._session = requests.Session()
 
     def parse(self) -> None:
+        """Parse the course home page, its subject pages, and all video components."""
         home = self._fetch_page(self.root)
         self.course_name = home.select_one("h1").get_text(strip=True)
         for subject_url, subject_title in self._parse_subjects_sidebar(home):
@@ -42,10 +42,11 @@ class WPCourse(BaseParser):
         ]
 
     def _parse_subjects_sidebar(self, home: BeautifulSoup) -> list[tuple[str, str]]:
-        """(url, title) for each top-level chapter link on the course home page.
-        The heading text above these links isn't stable across courses ("Subjects",
-        "Weeks", ...), so this matches on the surrounding ul.activities wrapper
-        instead of the heading itself."""
+        """Return top-level chapter URLs and titles from the course navigation.
+
+        Matches the stable `ul.activities` wrapper because the heading above it varies between
+        sites.
+        """
         activities = home.select_one("ul.activities")
         if activities is None:
             log.warning("No chapter list found on %s", self.root)
@@ -53,9 +54,10 @@ class WPCourse(BaseParser):
         return [(a["href"], a.get_text(strip=True)) for a in activities.find_all("a")]
 
     def _convert_expandable_widgets(self, article) -> None:
-        """Rewrite WP's vc_expandable_text 'Read more/Read less' accordion (JS-driven,
-        no JS ships with the converted page) into a native, always-closed
-        <details>/<summary> disclosure widget, in place."""
+        """Replace JavaScript-driven WordPress expandable widgets with native `details` elements.
+
+        Widgets without content are removed.
+        """
         for widget in article.select("div.vc_expandable_text"):
             text_div = widget.select_one("div.vc_expandable_text__text")
             if text_div is None:
@@ -74,9 +76,11 @@ class WPCourse(BaseParser):
             text_div.insert_before(summary)
 
     def _parse_subject_page(self, url: str, title: str) -> dict:
-        """One chapter page. Everything before ul.activities is treated as the
-        chapter's intro text; each <li> under ul.activities is a sequential,
-        and the links inside it become verticals."""
+        """Parse one subject page into a chapter record.
+
+        Content before the activity list becomes the chapter summary. Activity groups become
+        sequentials and their links become verticals.
+        """
         soup = self._fetch_page(url)
         article = soup.select_one("article")
         if article is not None:
@@ -109,7 +113,10 @@ class WPCourse(BaseParser):
         return chapter
 
     def _parse_item(self, link, chapter_name: str, sequential_name: str) -> dict | None:
-        """Dispatch a single activities-list link by its icon--TYPE class."""
+        """Dispatch one activity link according to its `icon--...` class.
+
+        Configured unsupported icon types are skipped. Unknown types produce a warning.
+        """
         icon_type = next((c for c in link.get("class", []) if c.startswith("icon--")), "")
         if icon_type in self._SKIPPED_ICON_TYPES:
             return None
@@ -124,9 +131,11 @@ class WPCourse(BaseParser):
     def _parse_lecture(
         self, url: str, title: str, chapter_name: str, sequential_name: str
     ) -> dict:
-        """A lecture page: descriptive text, a video (YouTube or Collegerama
-        iframe), and more descriptive text and/or an attached PDF, in whatever
-        order they appear on the page."""
+        """Parse one lecture page into a vertical record.
+
+        Preserves descriptive HTML in source order, extracts YouTube or Collegerama videos, and
+        turns a linked PDF into a local file link when it can be resolved.
+        """
         soup = self._fetch_page(url)
         article = soup.select_one("article")
         if article is not None:
@@ -185,13 +194,11 @@ class WPCourse(BaseParser):
         youtubeid: str | None = None,
         collegeramaid: str | None = None,
     ) -> dict:
-        """Build a video component in the shape the vidrouter block/[[vid:{key}]]
-        placeholder scheme expects (see ocw.parser.Course._parse_video). WP has no
-        edX video id, so edxvideoid/srtbaseid are always empty here; vidkey is
-        derived from the lecture page's URL slug instead. tuddownloadid is an
-        OLX-only concept (a download-system id, not embeddable) and is always
-        empty here too — collegeramaid is WP's distinct, embeddable Mediasite
-        Play id."""
+        """Build a video-routing record for a WordPress lecture page.
+
+        The routing key derives from the page URL slug. WordPress supplies YouTube or Collegerama
+        IDs, while edX, SRT, and TUD download identifiers remain unset.
+        """
         slug = url.rstrip("/").rsplit("/", 1)[-1]
         return {
             "type": "video",
@@ -207,9 +214,11 @@ class WPCourse(BaseParser):
         }
 
     def _parse_reading(self, url: str, title: str) -> dict | None:
-        """A reading page. If it has a PDF download block, that PDF becomes a
-        Readings entry; whatever body text is on the page (with or without a
-        PDF) becomes a vertical."""
+        """Parse one reading page into an optional PDF resource and an HTML vertical.
+
+        A resolved PDF is added to `readings`. Returns `None` when no reading body remains after
+        removing source-only elements.
+        """
         soup = self._fetch_page(url)
         pdf_url = self._find_download_link(soup)
         if pdf_url is not None:
@@ -225,7 +234,7 @@ class WPCourse(BaseParser):
         return {"display_name": title, "components": [{"type": "html", "content": text_html}]}
 
     def _reading_body_html(self, soup: BeautifulSoup) -> str:
-        """Article content minus the title, download block, and license footer."""
+        """Extract reading-body HTML without the title, PDF download control, or licence footer."""
         article = soup.select_one("article")
         if article is None:
             return ""
@@ -243,8 +252,10 @@ class WPCourse(BaseParser):
         return "".join(parts)
 
     def _resolve_and_fetch(self, pdf_url: str) -> str | None:
-        """Download pdf_url via self.fetcher if not already resolved locally,
-        returning its static_files key, or None if it couldn't be fetched."""
+        """Return the local static-file name for a PDF, fetching it when configured.
+
+        Successfully fetched PDFs are registered in `static_files`.
+        """
         name = resolve_asset_name(pdf_url)
         if name in self.static_files:
             return name
@@ -257,8 +268,7 @@ class WPCourse(BaseParser):
         return fetched.name
 
     def _find_download_link(self, node) -> str | None:
-        """href of the PDF download link in node, whether node itself is the
-        vc_download block or merely contains one."""
+        """Return the PDF URL from a WordPress `vc_download` block in or below `node`."""
         classes = node.get("class") or []
         container = node if "vc_download" in classes else node.select_one("div.vc_download")
         if container is None:
@@ -267,6 +277,10 @@ class WPCourse(BaseParser):
         return link["href"] if link else None
 
     def _fetch_page(self, url: str) -> BeautifulSoup:
+        """Fetch `url` and parse its HTML with lxml.
+
+        HTTP failures propagate to the conversion workflow.
+        """
         resp = self._session.get(url, timeout=15)
         resp.raise_for_status()
         return BeautifulSoup(resp.text, "lxml")

@@ -32,5 +32,11 @@ __pycache__/
 *.pyc
 *.zip
 
+site/
+docs/api/php/
+tools/phpdoc/vendor/
+.phpdoc/
+phpdoc.xml
+
 
 create_wikiwijs_customfields.php

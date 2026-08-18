@@ -1,12 +1,21 @@
-import re
+"""Apply small HTML transformations before course content is written to Moodle.
 
-# TODO: This file mostly handles injecting inline styling to make the MBZ import look closer to the OLX export; would be nice if we could make this a bit more open
+The converter preserves authored markup where possible. These functions remove source-only
+elements and add minimal inline styling where OLX or Word-authored HTML would otherwise render
+poorly in Moodle's content area.
+"""
+
+import re
 
 CLASS_BLACKLIST: list[str] = []  
 TUD_DOWNLOAD_BOX_CLASS = "tud-button"
 
 
 def strip_blacklisted_classes(html: str) -> str:
+    """Remove complete `div` blocks whose class list contains a configured blacklist entry.
+
+    Returns the original HTML unchanged when `CLASS_BLACKLIST` is empty.
+    """
     if not CLASS_BLACKLIST:
         return html
     pattern = re.compile(
@@ -19,6 +28,11 @@ def strip_blacklisted_classes(html: str) -> str:
 
 
 def strip_templated_iframes(html: str) -> str:
+    """Remove iframes whose source URL contains an unresolved template placeholder.
+
+    These source-platform placeholders cannot resolve after Moodle import, so the entire iframe is
+    omitted rather than leaving a broken embed.
+    """
     def _drop(m: re.Match) -> str:
         open_tag = m.group(1)
         return "" if re.search(r'src="[^"]*%%[A-Z_]+%%[^"]*"', open_tag) else m.group(0)
@@ -27,8 +41,11 @@ def strip_templated_iframes(html: str) -> str:
 
 
 def constrain_img_size(html: str) -> str:
-    # OLX images (base64 or file-referenced) often carry hardcoded pixel width/height
-    # from the original author. We overide this with inline styling  
+    """Ensure images fit Moodle's content width while preserving their aspect ratio.
+
+    Adds `max-width:100%` and `height:auto` before any existing inline styles, overriding fixed
+    author-supplied dimensions when needed.
+    """
     def _inject(m: re.Match) -> str:
         tag = m.group(0)
         if "style=" in tag:
@@ -41,10 +58,11 @@ def constrain_img_size(html: str) -> str:
 
 
 def constrain_table_size(html: str) -> str:
-    # Word-pasted tables (telltale <o:p> tags) carry hardcoded pixel widths on
-    # <table> and each <td> that overflow Moodle's narrower content column.
-    # table-layout defaults to auto, so limitting just the outer <table> lets
-    # columns shrink proportionally without touching per-cell widths.
+    """Constrain tables to Moodle's content width without rewriting their cell dimensions.
+
+    Applying `max-width:100%` to the table leaves its automatic layout intact, allowing columns to
+    shrink proportionally when fixed-width source tables would otherwise overflow.
+    """
     def _inject(m: re.Match) -> str:
         tag = m.group(0)
         if "style=" in tag:
@@ -55,6 +73,10 @@ def constrain_table_size(html: str) -> str:
 
 
 def mark_hyperlinks_nomediaplugin(html: str) -> str:
+    """Mark links so Moodle does not replace them with automatic media embeds.
+
+    Adds the `nomediaplugin` class without removing existing link classes.
+    """
     def _inject(m: re.Match) -> str:
         tag = m.group(0)
         if "class=" in tag:
@@ -65,6 +87,11 @@ def mark_hyperlinks_nomediaplugin(html: str) -> str:
 
 
 def style_figcaption(html: str) -> str:
+    """Style headings inside figure captions as caption text.
+
+    Captions sometimes use heading tags in source HTML. Their font size and weight are overridden
+    so they render as secondary text instead of section headings.
+    """
     def _inject_heading_style(hm: re.Match) -> str:
         tag = hm.group(0)
         if "style=" in tag:

@@ -11,11 +11,19 @@ from ocw.gui.common import ConverterApp, _input_label
 from ocw.utils import versioned_output_path
 from ocw.wp_parser import WPCourse
 
+WP_WINDOW_TITLE = "WordPress to Moodle Converter"
+
 
 class App(ConverterApp):
-    WINDOW_TITLE = "WordPress to Moodle Converter"
+    """Provide the GUI workflow for converting WordPress course sites."""
+
+    WINDOW_TITLE = WP_WINDOW_TITLE
 
     def _ask_urls(self) -> str | None:
+        """Open a modal dialog for one course home-page URL per line.
+
+        Returns the entered text, or `None` when the dialog is cancelled.
+        """
         dialog = Toplevel(self.root)
         dialog.title("WordPress course URLs")
         dialog.geometry("560x360")
@@ -52,6 +60,7 @@ class App(ConverterApp):
         return result["value"]
 
     def _choose_input(self) -> None:
+        """Collect course URLs from the dialog and populate the sidebar."""
         raw = self._ask_urls()
         self.input_paths = [line.strip() for line in (raw or "").splitlines() if line.strip()]
         if not self.input_paths:
@@ -65,6 +74,10 @@ class App(ConverterApp):
         self._populate_sidebar()
 
     def _convert_one(self, path: str) -> Path:
+        """Scrape one WordPress course site and build its versioned MBZ archive.
+
+        The temporary directory used for fetched external assets is removed after conversion.
+        """
         fetch_tmp = None
         try:
             fetcher = None
@@ -89,6 +102,10 @@ class App(ConverterApp):
 
 
 def main() -> None:
+    """Launch the WordPress conversion GUI.
+
+    `--log-file` optionally mirrors application logs to a file for development and diagnosis.
+    """
     ap = argparse.ArgumentParser(description="WordPress to Moodle Converter GUI")
     ap.add_argument(
         "--log-file",
