@@ -1,10 +1,6 @@
-"""Single source of truth for the app version.
+"""Resolve the development version from Git.
 
-In CI, build-gui.yml overwrites this whole file with a static assignment
-using the pushed release tag right before PyInstaller freezes the binary
-(frozen builds have no .git dir to inspect at runtime). For local/dev runs,
-resolve it live from git so it always matches the latest tag without
-needing a manual bump.
+Release builds replace this file with a static release tag.
 """
 
 import subprocess
@@ -12,6 +8,7 @@ from pathlib import Path
 
 
 def _git_version() -> str | None:
+    """Return Git's version description, or `None` outside a working tree."""
     try:
         result = subprocess.run(
             ["git", "describe", "--tags", "--always", "--dirty"],
@@ -22,7 +19,7 @@ def _git_version() -> str | None:
             timeout=2,
         )
         return result.stdout.strip()
-    except Exception:
+    except (OSError, subprocess.SubprocessError):
         return None
 
 

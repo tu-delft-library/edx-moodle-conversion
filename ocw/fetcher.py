@@ -1,3 +1,5 @@
+"""Fetch approved external assets for inclusion in a Moodle backup."""
+
 import logging
 import re
 import time
@@ -10,19 +12,21 @@ from ocw.utils import resolve_asset_name
 
 log = logging.getLogger("ocw.fetcher")
 
-# Fetch allowlist. Extend this + _CONTENT_TYPE_BY_EXT together to support a new file type —
-# nothing else in this module is PDF-specific.
+# Supported download types and their expected MIME types. Keep the mappings in sync.
 FETCHABLE_EXTENSIONS = frozenset({".pdf"})
 _CONTENT_TYPE_BY_EXT = {".pdf": "application/pdf"}
 
-_MIN_HOST_INTERVAL = 1.0  # seconds between requests to the same host — be a good citizen
-_TIMEOUT = 15  # seconds
+_MIN_HOST_INTERVAL = 1.0
+_TIMEOUT = 15
 _UNSAFE_FILENAME_RE = re.compile(r"[^-\w.]")
 
 
 class AssetFetcher:
-    """Downloads externally-hosted OLX assets into a local temp dir. Rate-limited per host
-    and de-duplicated by URL within the fetcher's lifetime (one per conversion run)."""
+    """Fetch approved external assets into `dest_dir`.
+
+    Results are cached by URL for this fetcher's lifetime. Requests to the same host are rate
+    limited to avoid repeatedly hitting the source service.
+    """
 
     def __init__(self, dest_dir: Path) -> None:
         self.dest_dir = dest_dir
@@ -31,13 +35,20 @@ class AssetFetcher:
         self._last_request_at: dict[str, float] = {}
 
     def fetch(self, url: str) -> Path | None:
-        """Return a local Path for url, or None if it's not fetchable / the fetch failed.
-        Safe to call repeatedly with the same url — only hits the network once."""
+        """Fetch `url` once and return its local path, or `None` when it is unsupported or unavailable.
+
+        Failed results are cached too, so repeated references do not repeat network requests.
+        """
         if url not in self._cache:
             self._cache[url] = self._fetch_uncached(url)
         return self._cache[url]
 
     def _fetch_uncached(self, url: str) -> Path | None:
+        """Download one uncached supported asset and validate its response type.
+
+        Returns `None` and logs a warning for request failures or content types that do not match
+        the requested extension.
+        """
         ext = Path(urlparse(url).path).suffix.lower()
         if ext not in FETCHABLE_EXTENSIONS:
             return None
@@ -55,7 +66,9 @@ class AssetFetcher:
             log.warning(
                 "External asset '%s' returned content-type '%s', expected '%s' — skipping "
                 "(likely an auth wall or error page)",
-                url, content_type or "<none>", _CONTENT_TYPE_BY_EXT[ext],
+                url,
+                content_type or "<none>",
+                _CONTENT_TYPE_BY_EXT[ext],
             )
             return None
 
@@ -66,11 +79,15 @@ class AssetFetcher:
         return path
 
     def _throttle(self, host: str) -> None:
-        wait = _MIN_HOST_INTERVAL - (time.monotonic() - self._last_request_at.get(host, 0.0))
+        """Wait when necessary to enforce the minimum interval before a request to `host`."""
+        wait = _MIN_HOST_INTERVAL - (
+            time.monotonic() - self._last_request_at.get(host, 0.0)
+        )
         if wait > 0:
             time.sleep(wait)
         self._last_request_at[host] = time.monotonic()
 
 
 def _safe_filename(url: str) -> str:
+    """Convert a resolved asset name from `url` into a filesystem-safe filename."""
     return _UNSAFE_FILENAME_RE.sub("_", resolve_asset_name(url))

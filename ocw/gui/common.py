@@ -40,10 +40,11 @@ class _QueueLogHandler(logging.Handler):
 
 
 class ConverterApp:
-    """Shared GUI scaffolding: log box, sidebar, progress bar, worker thread.
+    """Provide the shared GUI workflow for converting one or more course sources.
 
-    Subclasses implement `_choose_input`, `_convert_one`, and optionally
-    `_build_source_widgets` for anything specific to their source format.
+    The Tk main thread owns all widgets. Conversion runs on a worker thread, which communicates
+    log lines, course markers, and status changes through `_log_queue`. Subclasses supply
+    source-specific input selection and conversion.
     """
 
     WINDOW_TITLE = "OCW Converter"
@@ -69,6 +70,7 @@ class ConverterApp:
         self.root.after(100, self._drain_log_queue)
 
     def _setup_logging(self, log_file: Path | None) -> None:
+        """Route `ocw` log records to the GUI queue and, optionally, to `log_file`."""
         log = logging.getLogger("ocw")
         log.setLevel(logging.INFO)
         log.addHandler(_QueueLogHandler(self._log))
@@ -82,6 +84,7 @@ class ConverterApp:
             log.addHandler(fh)
 
     def _block_log_edit(self, event) -> str | None:
+        """Allow selection, navigation, and copy shortcuts in the log while blocking text edits."""
         if event.state & 0x4 or event.keysym in (
             "Left", "Right", "Up", "Down", "Home", "End", "Prior", "Next", "Tab",
         ):
@@ -89,10 +92,13 @@ class ConverterApp:
         return "break"
 
     def _build_source_widgets(self, pad: dict) -> None:
-        """Hook for source-specific widgets (e.g. OLX's Files/Folder mode toggle).
-        No-op by default."""
+        """Add source-specific controls above the shared input and output controls.
+
+        The base implementation adds none.
+        """
 
     def _build_widgets(self) -> None:
+        """Construct the shared controls, progress display, conversion log, and course sidebar."""
         pad = {"padx": 8, "pady": 4}
 
         self._build_source_widgets(pad)
@@ -187,28 +193,38 @@ class ConverterApp:
         ttk.Button(copy_frame, text="Copy log", command=self._copy_log).pack(side="right")
 
     def _reset_input(self) -> None:
+        """Clear the current source selection before a subclass records a new one."""
         self.input_paths = []
         self.input_var.set("")
 
     def _choose_input(self) -> None:
+        """Select source input and update `input_paths` and its displayed summary."""
         raise NotImplementedError
 
     def _choose_output(self) -> None:
+        """Select an output directory and retain the existing directory when cancelled."""
         path = filedialog.askdirectory()
         if path:
             self.output_dir = Path(path)
             self.output_var.set(path)
 
     def _log(self, message: str) -> None:
+        """Queue one unformatted message for insertion into the GUI log."""
         self._log_queue.put(("log", message))
 
     def _mark_course(self, key: str) -> None:
+        """Queue a marker for the next log line of the course identified by `key`."""
         self._log_queue.put(("mark", key))
 
     def _set_course_status(self, key: str, status: str) -> None:
+        """Queue a sidebar status update for the course identified by `key`."""
         self._log_queue.put(("status", (key, status)))
 
     def _populate_sidebar(self) -> None:
+        """Rebuild the sidebar from `input_paths`, resetting every course to Pending.
+
+        Row IDs use the same `course_<index>` keys as the log markers.
+        """
         self.sidebar.delete(*self.sidebar.get_children())
         for idx, path in enumerate(self.input_paths):
             self.sidebar.insert(
@@ -221,12 +237,14 @@ class ConverterApp:
             )
 
     def _copy_log(self) -> None:
+        """Copy the complete rendered conversion log to the system clipboard."""
         text = self.log_box.get("1.0", "end-1c")
         self.root.clipboard_clear()
         self.root.clipboard_append(text)
         self.root.update()
 
     def _start_convert(self) -> None:
+        """Validate the selection, reset conversion state, and start the worker thread."""
         if not self.input_paths or not self.output_dir:
             self._log("Pick an input and an output directory first.")
             return
@@ -243,12 +261,18 @@ class ConverterApp:
         threading.Thread(target=self._convert_worker, daemon=True).start()
 
     def _advance_progress(self) -> None:
+        """Advance the completed-course counter on the Tk main thread."""
         self.progress["value"] += 1
         self.progress_label.config(
             text=f"{int(self.progress['value'])} / {int(self.progress['maximum'])} courses"
         )
 
     def _convert_worker(self) -> None:
+        """Convert every queued source independently and report its result.
+
+        Failures are logged per course so the remaining batch continues. Tk updates are scheduled
+        through the queue or `root.after()`.
+        """
         for idx, course_path in enumerate(self.input_paths):
             key = f"course_{idx}"
             self._mark_course(key)
@@ -265,9 +289,15 @@ class ConverterApp:
         self.root.after(0, lambda: self.convert_button.state(["!disabled"]))
 
     def _convert_one(self, path: Path | str) -> Path:
+        """Convert one source at `path` and return the generated MBZ path."""
         raise NotImplementedError
 
     def _drain_log_queue(self) -> None:
+        """Apply queued worker events to Tk widgets in first-in, first-out order.
+
+        A course marker is placed immediately before its first queued log line, keeping sidebar
+        navigation aligned with the corresponding conversion block.
+        """
         while not self._log_queue.empty():
             kind, payload = self._log_queue.get()
             if kind == "log":
@@ -286,10 +316,12 @@ class ConverterApp:
         self.root.after(100, self._drain_log_queue)
 
     def _update_sidebar_status(self, key: str, status: str) -> None:
+        """Render a course status in the sidebar using its matching colour tag."""
         tag = {"OK": "ok", "Failed": "failed"}.get(status, "pending")
         self.sidebar.item(key, values=(status,), tags=(tag,))
 
     def _jump_to_course(self, _event) -> None:
+        """Scroll the log to the block marked for the selected sidebar course."""
         selection = self.sidebar.selection()
         if not selection:
             return
@@ -298,6 +330,11 @@ class ConverterApp:
             self.log_box.yview(key)
 
     def _insert_log_line(self, message: str) -> None:
+        """Append one message to the log using colours for timestamps, levels, and outcomes.
+
+        Structured logger output is split into timestamp, level, and body. Plain status messages
+        use their `OK:` or `FAILED:` prefix.
+        """
         match = _LOG_LINE_RE.match(message)
         if match:
             ts, level, body = match.groups()

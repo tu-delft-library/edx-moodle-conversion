@@ -1,3 +1,5 @@
+"""Shared helpers for Moodle backup generation, source assets, and conversion diagnostics."""
+
 import hashlib
 import logging
 import re
@@ -10,13 +12,16 @@ log = logging.getLogger("ocw.converter")
 
 
 def versioned_output_path(path: Path) -> Path:
-    """Insert the ocw version into an output filename: course.mbz -> course_v1.2.3.mbz."""
+    """Insert the current OCW version before an output file's extension."""
     return path.with_name(f"{path.stem}_{__version__}{path.suffix}")
 
 
-# INFO: This helps keep track of each unique XML element when parsing and reconstructing
 class _Counter:
-    """Sequential integer ID generator for Moodle XML elements."""
+    """Allocate monotonically increasing IDs for one MBZ build.
+
+    One instance is shared across record builders and XML writers so every cross-file reference
+    remains unique.
+    """
 
     def __init__(self, start: int = 100) -> None:
         self._n = start
@@ -32,13 +37,15 @@ _VIDKEY_UNSAFE_RE = re.compile(r"[^A-Za-z0-9_-]")
 
 
 def safe_vidkey(raw: str) -> str:
-    """Sanitize a video source id/slug down to the charset the vidrouter
-    placeholder ([[vid:{key}]]) and its DB lookup key can safely contain."""
+    """Convert a source video identifier into a key safe for vidrouter placeholders and lookups."""
     return _VIDKEY_UNSAFE_RE.sub("_", raw)
 
 
-def esc(s: str) -> str:
-    """XML-escape a string, treating None as empty."""
+def esc(s: str | None) -> str:
+    """Escape a value for XML text or attribute insertion.
+
+    `None` becomes an empty string.
+    """
     return (
         (s or "")
         .replace("&", "&amp;")
@@ -49,11 +56,12 @@ def esc(s: str) -> str:
 
 
 def sha1_of(path: Path) -> str:
-    """Return the hex SHA-1 digest of a file's contents."""
+    """Return the lowercase SHA-1 digest of `path`'s contents."""
     return hashlib.sha1(path.read_bytes()).hexdigest()
 
 
 def static_file_kind(filename: str) -> str:
+    """Classify a static filename for missing-asset warnings."""
     match Path(filename).suffix.lower():
         case ".png" | ".jpg" | ".jpeg" | ".gif" | ".svg" | ".webp":
             return "image"
@@ -67,24 +75,24 @@ def static_file_kind(filename: str) -> str:
             return "file"
 
 
+# Absolute edX asset-v1 and legacy c4x references.
 _ABSOLUTE_ASSET_RE = re.compile(
     r'https?://(?:[\w-]+\.)*edx\.org[^"\'>\s]*?'
     r'(?:asset-v1:[^"\'>\s]*?type@asset\+block@|/c4x/[^"\'>\s]*/asset/)([^"\'>\s]+)'
 )
 
-# Same asset-v1/c4x addressing, but the bare relative form OLX also emits (no host at
-# all, e.g. src="/asset-v1:Org+Course+Run+type@asset+block@name.png") — distinct from
-# _ABSOLUTE_ASSET_RE, which requires an edx.org host to avoid mistaking this for one.
+# Equivalent asset-v1 and c4x references without an edX hostname.
 _RELATIVE_ASSET_RE = re.compile(
     r'(?:asset-v1:[^"\'>\s]*?type@asset\+block@|/c4x/[^"\'>\s]*/asset/)([^"\'>\s]+)'
 )
 
 
 def resolve_asset_name(url: str) -> str:
-    """Bare filename an asset reference should resolve to in static_files, regardless of
-    whether url is a /static/-relative path or an absolute edX asset URL. Falls back to
-    the URL's last path segment for an absolute URL that doesn't match the recognized
-    asset-addressing pattern — display-only, not a signal that url is fetchable."""
+    """Return the local filename represented by a source asset reference.
+
+    Recognises `/static/`, edX asset-v1, and legacy c4x forms. Unknown absolute URLs fall back to
+    their final path segment.
+    """
     if url.startswith("http"):
         match = _ABSOLUTE_ASSET_RE.search(url)
         return match.group(1) if match else (Path(urlparse(url).path).name or url)
@@ -92,11 +100,11 @@ def resolve_asset_name(url: str) -> str:
 
 
 def rewrite_static_urls(html: str, static_files: dict[str, Path] | None = None) -> str:
-    """Replace /static/<name> with @@PLUGINFILE@@/<name> for Moodle file embedding, and
-    the same for an edX asset-v1/c4x reference — absolute (with an edx.org host) or the
-    bare relative form OLX also emits — whose resolved name is in static_files (i.e. it
-    was fetched or otherwise resolved locally). An unresolved reference is left as-is
-    rather than rewritten into a dangling @@PLUGINFILE@@ link."""
+    """Rewrite embedded local assets to Moodle's `@@PLUGINFILE@@` placeholder.
+
+    `/static/` references are always local. Asset-v1 and c4x references are rewritten only when
+    their resolved filename exists in `static_files`, leaving unresolved external references intact.
+    """
     html = re.sub(r'/static/([^"\'>\s]+)', r"@@PLUGINFILE@@/\1", html)
     if not static_files:
         return html
@@ -109,18 +117,12 @@ def rewrite_static_urls(html: str, static_files: dict[str, Path] | None = None) 
     return _RELATIVE_ASSET_RE.sub(_rewrite_asset, html)
 
 
-# Confirmed against 26 real course exports in files/OLX/ (see PLAN_2.md "Survey findings").
-# www.edx.org deliberately excluded — those are generic marketing/FAQ links, not asset
-# dependencies. edx-video.net / cloudfront are included here for completeness but in
-# practice never match: those URLs live in video/*.xml, not html content — see the
-# _parse_video gap noted under PLAN_2.md "Out of scope".
+# EdX domains that indicate a course-content dependency. Generic `www.edx.org` links are excluded.
 _EDX_HOST_RE = re.compile(
     r'https?://(?:'
-    r'(?!www\.edx\.org)(?:[\w-]+\.)*edx\.org'       # courses./studio./learning./support./
-                                                      # discussions./ecommerce./help./files./
-                                                      # course-authoring./payment.edx.org
-    r'|(?:[\w-]+\.)*edx-video\.net'                  # edx-video.net, prod-images.edx-video.net
-    r'|d2f1egay8yehza\.cloudfront\.net'              # edX's video cloudfront distribution
+    r'(?!www\.edx\.org)(?:[\w-]+\.)*edx\.org'
+    r'|(?:[\w-]+\.)*edx-video\.net'
+    r'|d2f1egay8yehza\.cloudfront\.net'
     r'|edx\.readthedocs\.(?:org|io)'
     r')[^"\'>\s]*'
 )
@@ -129,10 +131,11 @@ _EDX_HOST_RE = re.compile(
 def warn_external_edx_urls(
     html: str, context: str = "", static_files: dict[str, Path] | None = None
 ) -> None:
-    """Warn on any absolute URL still pointing at edX-hosted infrastructure — skips a URL
-    whose resolved asset name is already in static_files (bundled locally, or fetched),
-    since rewrite_static_urls rewrites that one to a local file at build time instead of
-    leaving it external."""
+    """Warn about EdX-hosted URLs that will remain external after conversion.
+
+    Locally packaged or fetched assets are skipped because `rewrite_static_urls()` embeds them in
+    the Moodle backup instead.
+    """
     for match in _EDX_HOST_RE.findall(html):
         if static_files and resolve_asset_name(match) in static_files:
             continue
@@ -141,5 +144,3 @@ def warn_external_edx_urls(
             f" on page '{context}'" if context else "",
             match,
         )
-
-
