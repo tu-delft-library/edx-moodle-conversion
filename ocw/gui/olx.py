@@ -13,15 +13,20 @@ from ocw.hybrid_checks import log_hybrid_checks
 from ocw.parser import Course
 from ocw.utils import versioned_output_path
 
+OLX_WINDOW_TITLE = "OLX to Moodle Converter"
+
 
 class App(ConverterApp):
-    WINDOW_TITLE = "OLX to Moodle Converter"
+    """Provide the GUI workflow for converting OLX course exports."""
+
+    WINDOW_TITLE = OLX_WINDOW_TITLE
 
     def __init__(self, root: Tk, log_file: Path | None = None) -> None:
         self.mode = StringVar(value="files")
         super().__init__(root, log_file)
 
     def _build_source_widgets(self, pad: dict) -> None:
+        """Add the input-mode controls for individual archives or a folder of archives."""
         mode_frame = ttk.Frame(self.root)
         mode_frame.pack(fill="x", **pad)
         ttk.Radiobutton(
@@ -40,6 +45,7 @@ class App(ConverterApp):
         ).pack(side="left")
 
     def _choose_input(self) -> None:
+        """Select OLX archives according to the active input mode and populate the sidebar."""
         if self.mode.get() == "files":
             paths = filedialog.askopenfilenames(
                 filetypes=[("OLX archive", "*.tar.gz"), ("All files", "*.*")]
@@ -60,6 +66,10 @@ class App(ConverterApp):
         self._populate_sidebar()
 
     def _convert_one(self, path: Path) -> Path:
+        """Parse one OLX archive or directory, build its versioned MBZ, and run parity checks.
+
+        Temporary extraction and fetched-asset directories are removed after conversion.
+        """
         tmp = None
         fetch_tmp = None
         try:
@@ -94,6 +104,10 @@ class App(ConverterApp):
 
 
 def main() -> None:
+    """Launch the OLX conversion GUI.
+
+    `--log-file` optionally mirrors application logs to a file for development and diagnosis.
+    """
     ap = argparse.ArgumentParser(description="OLX to Moodle Converter GUI")
     ap.add_argument(
         "--log-file",

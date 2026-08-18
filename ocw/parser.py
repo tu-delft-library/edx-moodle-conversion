@@ -6,64 +6,68 @@ from xml.etree import ElementTree as ET
 
 from ocw.fetcher import AssetFetcher
 from ocw.parser_base import BaseParser
-from ocw.utils import _ABSOLUTE_ASSET_RE, resolve_asset_name, safe_vidkey, static_file_kind
+from ocw.utils import (
+    _ABSOLUTE_ASSET_RE,
+    resolve_asset_name,
+    safe_vidkey,
+    static_file_kind,
+)
 
 log = logging.getLogger("ocw.parser")
 
+_DFRAME_RE = re.compile(
+    r'<iframe\b[^>]*class="[^"]*\bdframe\b[^"]*"[^>]*>', re.IGNORECASE
+)
+_DOWNLOADID_RE = re.compile(r'data-downloadid="([^"]*)"')
+
+# Tags the parser actively converts into page content.
+# _WHITELISTED_TAGS = frozenset({"html", "video"})
+
+# Component tags deliberately dropped because the converter has no Moodle equivalent.
+_BLACKLISTED_TAGS = frozenset(
+    {
+        "problem",
+        "discussion",
+        "drag-and-drop",
+        "drag-and-drop-v2",
+        "advanced",
+        "lti_consumer",
+        "word_cloud",
+        "openassessment",
+        "poll",
+        "survey",
+        "freetextresponse",
+    }
+)
+
 
 def _find_dframe_downloadids(html: str) -> list[str]:
+    """Return every download ID on a dframe iframe in `html`."""
     ids = []
-    for tag_match in Course._DFRAME_RE.finditer(html):
-        id_match = Course._DOWNLOADID_RE.search(tag_match.group(0))
+    for tag_match in _DFRAME_RE.finditer(html):
+        id_match = _DOWNLOADID_RE.search(tag_match.group(0))
         if id_match:
             ids.append(id_match.group(1))
     return ids
 
 
 class Course(BaseParser):
-    """Parses an OpenEdX OLX course export into a structured representation."""
+    """Parse an Open edX OLX export into source-normalised course data.
 
-    _DFRAME_RE = re.compile(
-        r'<iframe\b[^>]*class="[^"]*\bdframe\b[^"]*"[^>]*>', re.IGNORECASE
-    )
-    _DOWNLOADID_RE = re.compile(r'data-downloadid="([^"]*)"')
-
-    # Tags the parser actively converts into page content.
-    _WHITELISTED_TAGS = frozenset({"html", "video"})
-
-    # Known tags with no sane Moodle equivalent — dropped silently (debug only).
-    _BLACKLISTED_TAGS = frozenset(
-        {
-            "problem",
-            "discussion",
-            "drag-and-drop",
-            "drag-and-drop-v2",
-            "advanced",
-            "lti_consumer",
-            "word_cloud",
-            "openassessment",
-            "poll",
-            "survey",
-            "freetextresponse",
-        }
-    )
+    Follows the `course -> chapter -> sequential -> vertical -> component` reference graph,
+    resolves packaged assets, and records supported HTML and video components for MBZ construction.
+    """
 
     def __init__(self, root: Path, fetcher: AssetFetcher | None = None) -> None:
-        """
-        Args:
-            root: Path to the extracted OLX directory or a .tar.gz archive.
-            fetcher: Optional AssetFetcher — when set, PDFs referenced by an absolute
-                edX asset URL (still hosted live, not bundled in this export) are
-                downloaded and treated as local. Off (None) unless the caller opts in.
-        """
         super().__init__(root, fetcher)
         self.root: Path = root
         self._b64_tmp_dir: Path | None = None
 
     def parse(self) -> None:
-        """Populate course metadata, chapters, and static_files from the OLX tree.
-        General flow takes the url-links from the parent xml file, and searches for child elements.
-        These are saved in this intermediate class as dictionaries roughly matching the original structure of the OLX format.
+        """Populate course metadata, source hierarchy, static assets, readings, and videos.
+
+        Resolves the OLX reference graph and stores the normalised records consumed by the MBZ
+        builder.
         """
         stub_path = self.root / "course.xml"
         if not stub_path.exists():
@@ -82,14 +86,12 @@ class Course(BaseParser):
 
         static_dir = self.root / "static"
 
-        # Record all static content: images
         if static_dir.is_dir():
             for f in static_dir.iterdir():
                 if f.is_file():
                     self.static_files[f.name] = f
                     self.static_files[re.sub(r"[^-\w.]", "_", f.name)] = f
 
-        # Record all chapters, which contain the XML linking to all sequences (sub sections)
         for ref in course.findall("chapter"):
             self.chapters.append(
                 self._parse_chapter(self.root, ref.get("url_name", ""))
@@ -108,30 +110,29 @@ class Course(BaseParser):
         ]
 
     def _parse_summary(self) -> None:
-        """Populate summary_html from about/short_description.html.
+        """Populate the course summary from `about/short_description.html`.
 
-        overview.html fallback disabled for now — too often still contains edX Studio's
-        unedited default boilerplate ("Include your long course description here...").
+        `overview.html` is deliberately not used because exports often retain its unedited Studio
+        boilerplate.
         """
-        for name in (
-            "short_description.html",
-            # "overview.html",
-        ):
-            path = self.root / "about" / name
-            if path.exists() and path.read_text(encoding="utf-8").strip():
-                self.summary_html = path.read_text(encoding="utf-8")
-                return
+        path = self.root / "about" / "short_description.html"
+        if path.exists() and path.read_text(encoding="utf-8").strip():
+            self.summary_html = path.read_text(encoding="utf-8")
 
     def _parse_syllabus(self, url_name: str) -> None:
-        """Populate syllabus_html/syllabus_title from policy.json's static_tab
-        entry, if one is configured, and instructors from instructor_info.
+        """Populate optional instructor and syllabus data from the course policy.
+
+        Instructor information is read independently. A configured static tab supplies the
+        syllabus title and HTML when its corresponding tab file exists.
         """
         policy_path = self.root / "policies" / url_name / "policy.json"
         if not policy_path.exists():
             return
         policy = json.loads(policy_path.read_text(encoding="utf-8"))
         course_policy = policy.get(f"course/{url_name}", {})
-        self.instructors = course_policy.get("instructor_info", {}).get("instructors", [])
+        self.instructors = course_policy.get("instructor_info", {}).get(
+            "instructors", []
+        )
         tab = next(
             (t for t in course_policy.get("tabs", []) if t.get("type") == "static_tab"),
             None,
@@ -148,16 +149,11 @@ class Course(BaseParser):
         self.syllabus_title = tab.get("name") or "Syllabus"
 
     def _parse_readings(self, course: ET.Element) -> None:
-        """Populate self.readings by flattening every pdf_textbooks[].chapters[]
-        entry on the course run XML root (the same element course_name/course_id
-        are already read from in parse()). Not policy.json-resident — see
-        findings_overview_policies.md §1, Pattern A. Missing attribute is a
-        silent no-op, same as syllabus: Readings is optional course chrome, not
-        required structure. A chapter entry whose PDF isn't found in
-        static_files is dropped (warned, not raised) rather than emitted with a
-        dangling reference — unlike prose HTML links, a Readings entry becomes
-        a whole mod_resource activity 1:1, so there's no sensible degraded
-        output for a resource with nothing to attach.
+        """Build reading records from the course's optional `pdf_textbooks` metadata.
+
+        Each reading requires a matching local asset or a successfully fetched external PDF.
+        Missing files are warned about and omitted so the builder never creates an empty resource
+        activity.
         """
         raw = course.get("pdf_textbooks")
         if not raw:
@@ -183,13 +179,13 @@ class Course(BaseParser):
                 self.readings.append({"title": chapter.get("title", ""), "name": name})
 
     def _parse_chapter(self, root: Path, url_name: str) -> dict:
+        """Resolve one chapter reference into its sequential records."""
         path = root / "chapter" / f"{url_name}.xml"
         if not path.exists():
             raise FileNotFoundError(f"Missing Chapter XML: {url_name}")
         el = ET.parse(path).getroot()
         sequentials = []
         chapter_name = el.get("display_name", url_name)
-        # So this finds all sequential keys in the XML element, records them
         for ref in el.findall("sequential"):
             sequentials.append(
                 self._parse_sequential(root, ref.get("url_name", ""), chapter_name)
@@ -203,13 +199,16 @@ class Course(BaseParser):
     def _parse_sequential(
         self, root: Path, url_name: str, chapter_name: str = ""
     ) -> dict:
+        """Resolve one sequential reference into its vertical records.
+
+        Passes the chapter name onward so later warnings can identify the source location.
+        """
         path = root / "sequential" / f"{url_name}.xml"
         if not path.exists():
             raise FileNotFoundError(f"Missing Sequential XML: {url_name}")
         el = ET.parse(path).getroot()
         verticals = []
         sequential_name = el.get("display_name", url_name)
-        # This finds all the verticles, which are wrappers around the html content that each sub section links to
         for ref in el.findall("vertical"):
             verticals.append(
                 self._parse_vertical(
@@ -229,6 +228,10 @@ class Course(BaseParser):
         chapter_name: str = "",
         sequential_name: str = "",
     ) -> dict:
+        """Resolve one vertical reference into supported component records.
+
+        Attaches a download ID only when the vertical contains one matching dframe and one video.
+        """
         path = root / "vertical" / f"{url_name}.xml"
         if not path.exists():
             raise FileNotFoundError(f"Missing Vertical XML: {url_name}")
@@ -254,6 +257,10 @@ class Course(BaseParser):
     def _attach_video_download_ids(
         self, components: list[dict], vertical_name: str = ""
     ) -> None:
+        """Attach a dframe download ID to a video only when the vertical has one of each.
+
+        Ambiguous pairings are warned about and left unset.
+        """
         downloadids = [
             did
             for comp in components
@@ -281,6 +288,11 @@ class Course(BaseParser):
         sequential_name: str = "",
         chapter_name: str = "",
     ) -> dict | None:
+        """Dispatch one OLX component to its supported parser.
+
+        Known unsupported tags are skipped with debug logging. Unknown tags produce a warning so
+        new source component types are visible.
+        """
         url_name = child.get("url_name", "")
         match child.tag:
             case "html":
@@ -291,7 +303,7 @@ class Course(BaseParser):
                 return self._parse_video(
                     root, url_name, vertical_name, sequential_name, chapter_name
                 )
-            case tag if tag in self._BLACKLISTED_TAGS:
+            case tag if tag in _BLACKLISTED_TAGS:
                 log.debug(
                     "Skipping unsupported component type '%s' (url_name='%s') in vertical '%s'",
                     child.tag,
@@ -315,6 +327,11 @@ class Course(BaseParser):
         sequential_name: str = "",
         chapter_name: str = "",
     ) -> dict:
+        """Read one HTML component and resolve its referenced assets.
+
+        Absolute external assets may be fetched when configured. Every unresolved local or external
+        asset is reported with its chapter, sequential, and vertical location.
+        """
         path = root / "html" / f"{url_name}.xml"
         if not path.exists():
             raise FileNotFoundError(f"Missing HTML XML: {url_name}")
@@ -366,6 +383,12 @@ class Course(BaseParser):
         sequential_name: str = "",
         chapter_name: str = "",
     ) -> dict:
+        """Read one OLX video component and construct its video-routing record.
+
+        Uses the edX video ID as the stable routing key when available and falls back to the
+        component URL name. The TUD download ID is attached later from vertical-level dframe
+        pairing. OLX exposes no Collegerama identifier.
+        """
         path = root / "video" / f"{url_name}.xml"
         if not path.exists():
             raise FileNotFoundError(f"Missing Video XML: {url_name}")
@@ -387,8 +410,8 @@ class Course(BaseParser):
             "youtubeid": youtubeid,
             "edxvideoid": edx_video_id,
             "srtbaseid": edx_video_id,
-            "tuddownloadid": None,  # filled in by _attach_video_download_ids
-            "collegeramaid": None,  # OLX has no Collegerama source
+            "tuddownloadid": None,
+            "collegeramaid": None,
             "urlname": url_name,
             "videopagepath": f"{chapter_name} > {sequential_name} > {vertical_name}",
         }
