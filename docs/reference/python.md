@@ -18,3 +18,49 @@ generated reference content.
 ## Conversion checks
 
 ::: ocw.hybrid_checks
+
+## Video source extension points
+
+### OLX video metadata
+
+::: ocw.parser.Course._parse_video
+
+### WordPress video metadata
+
+::: ocw.wp_parser.WPCourse._video_component
+
+### MBZ Video Router block
+
+::: ocw.converter.builder.MBZBuilder._build_vidrouter_block
+
+## OLX conversion entry points
+
+### Command line
+
+::: ocw.cli.olx.main
+
+### GUI worker
+
+::: ocw.gui.olx.App._convert_one
+
+## WordPress conversion entry points
+
+### Command line
+
+::: ocw.cli.wp.main
+
+### GUI worker
+
+::: ocw.gui.wp.App._convert_one
+
+### Subject parser
+
+::: ocw.wp_parser.WPCourse._parse_subject_page
+
+### Lecture parser
+
+::: ocw.wp_parser.WPCourse._parse_lecture
+
+### Reading parser
+
+::: ocw.wp_parser.WPCourse._parse_reading
