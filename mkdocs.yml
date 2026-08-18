@@ -21,7 +21,11 @@ plugins:
 markdown_extensions:
   - admonition
   - pymdownx.details
-  - pymdownx.superfences
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
   - toc:
       permalink: true
 
@@ -30,7 +34,7 @@ nav:
   - Implementation:
       - Architecture: implementation/architecture.md
       - OLX Importer: implementation/olx-importer.md
-      - WordPress Importer: implementation/wordpress-importer.md
+      - WP Importer: implementation/wordpress-importer.md
       - Moodle Video Router: implementation/moodle-video-router.md
       - MBZ Format: implementation/mbz-format.md
       - Testing: implementation/testing.md
