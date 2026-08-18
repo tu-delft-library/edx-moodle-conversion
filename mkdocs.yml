@@ -1,0 +1,39 @@
+site_name: OpenEdx and WordPress to Moodle Converter
+site_description: Implementation documentation and API reference for the OCW converter.
+repo_url: https://github.com/tu-delft-library/edx-moodle-conversion
+repo_name: tu-delft-library/edx-moodle-conversion
+strict: true
+
+theme:
+  name: material
+
+plugins:
+  - search
+  - mkdocstrings:
+      handlers:
+        python:
+          paths: [.]
+          options:
+            show_root_heading: true
+            show_source: false
+            members_order: source
+
+markdown_extensions:
+  - admonition
+  - pymdownx.details
+  - pymdownx.superfences
+  - toc:
+      permalink: true
+
+nav:
+  - Overview: index.md
+  - Implementation:
+      - Architecture: implementation/architecture.md
+      - OLX Importer: implementation/olx-importer.md
+      - WordPress Importer: implementation/wordpress-importer.md
+      - Moodle Video Router: implementation/moodle-video-router.md
+      - MBZ Format: implementation/mbz-format.md
+      - Testing: implementation/testing.md
+  - Reference:
+      - Python API: reference/python.md
+      - PHP API: reference/php.md
