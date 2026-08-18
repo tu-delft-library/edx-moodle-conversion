@@ -202,3 +202,28 @@ Collegerama, then shows an unavailable-video message when neither source is avai
 
 When Moodle duplicates or restores an existing Moodle course, `local_vidrouter` _should_ preserve the resolved video
 HTML in the course backup.
+
+# 7. Documentation
+
+The implementation documentation includes Markdown pages and generated Python and PHP API reference.
+
+Install the documentation dependencies:
+
+```bash
+poetry install --with dev
+composer install --working-dir=tools/phpdoc
+```
+
+Build all documentation, including the PHP API reference:
+
+```bash
+./scripts/build-docs.sh
+```
+
+Start a local preview:
+
+```bash
+poetry run mkdocs serve
+```
+
+Re-run `./scripts/build-docs.sh` after changing PHP code or PHPDoc blocks.
