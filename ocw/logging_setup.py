@@ -1,14 +1,19 @@
+"""Configure CLI logging for terminal output and a persistent log file."""
+
 import logging
 import sys
 from pathlib import Path
 
 
 class ColourFormatter(logging.Formatter):
+    """Add ANSI colour to terminal warnings and recognised conversion-phase labels."""
+
     _YELLOW = "\033[33m"
     _BLUE = "\033[34m"
     _RESET = "\033[0m"
 
     def format(self, record: logging.LogRecord) -> str:
+        """Format one CLI log record without changing the record seen by other handlers."""
         if record.levelno == logging.WARNING:
             record = logging.makeLogRecord(record.__dict__)
             record.levelname = f"{self._YELLOW}WARNING{self._RESET}"
@@ -23,7 +28,10 @@ class ColourFormatter(logging.Formatter):
 
 
 def setup_cli_logging(debug: bool, log_path: Path) -> None:
-    """Attach stderr and file handlers to the root ocw logger."""
+    """Configure the `ocw` logger for coloured stderr output and a plain-text log file.
+
+    Debug mode lowers the logger threshold to include diagnostic records.
+    """
     log = logging.getLogger("ocw")
     log.setLevel(logging.DEBUG if debug else logging.INFO)
     fmt = "%(asctime)s [%(levelname)s] %(message)s"

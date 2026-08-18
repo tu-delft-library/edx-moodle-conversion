@@ -5,9 +5,11 @@ from ocw.fetcher import AssetFetcher
 
 
 class BaseParser(ABC):
-    """Contract every source-format parser fills in. Converter/MBZBuilder only ever
-    reads these attributes — never anything format-specific — so a new parser is a
-    self-contained addition that doesn't touch conversion logic."""
+    """Define the normalised course data required by `MBZBuilder`.
+
+    Source-specific subclasses populate these shared attributes from their own export or site
+    format. The builder depends only on this contract, not on a source-specific parser.
+    """
 
     def __init__(self, root: Path | str, fetcher: AssetFetcher | None = None) -> None:
         self.root = root
@@ -28,4 +30,4 @@ class BaseParser(ABC):
 
     @abstractmethod
     def parse(self) -> None:
-        """Populate every attribute above from the source export/site."""
+        """Populate the normalised course data from the configured source."""

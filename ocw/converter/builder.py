@@ -36,10 +36,25 @@ MOODLE_RELEASE = os.getenv("MOODLE_RELEASE", "5.1 (Build: 20251208)")
 
 
 class MBZBuilder:
-    """Converts a parsed Course into a Moodle MBZ backup archive."""
+    """Build a self-contained Moodle MBZ backup from a parsed course.
+
+    Each build creates its own monotonically increasing `_Counter`. Every generated Moodle
+    record identifier must be allocated from that one counter, in the order records are written.
+    This keeps IDs unique and preserves the cross-file references that Moodle restores.
+
+    Args:
+        course: Source-normalised course data to export.
+        sequential_sections: Create one Moodle section per source sequential instead of nested
+            subsections.
+        disable_custom_fields: Omit Edusources custom-field data from `course.xml`.
+    """
 
     def __init__(
-        self, course: BaseParser, *, sequential_sections: bool = False, disable_custom_fields: bool = False
+        self,
+        course: BaseParser,
+        *,
+        sequential_sections: bool = False,
+        disable_custom_fields: bool = False,
     ) -> None:
         self.course = course
         self.sequential_sections = sequential_sections
@@ -47,7 +62,10 @@ class MBZBuilder:
         self.log = logging.getLogger("ocw.converter")
 
     def build(self, out: Path) -> None:
-        """Write the MBZ archive to out."""
+        """Create a temporary Moodle backup tree, package it as an MBZ archive, and remove it.
+
+        The temporary tree is removed even if the build fails.
+        """
         tmp = Path(tempfile.mkdtemp())
         try:
             self._populate(tmp)
@@ -58,7 +76,17 @@ class MBZBuilder:
             shutil.rmtree(tmp, ignore_errors=True)
 
     def _populate(self, tmp: Path) -> None:
-        """Build the full MBZ directory tree in tmp."""
+        """Materialise the complete MBZ tree in `tmp`.
+
+        One `_Counter` is created for the entire build and passed to every structural builder and
+        XML writer. A helper allocates each Moodle record ID exactly once through that counter,
+        stores it in its returned record, and later writers reuse that stored ID for cross-file
+        references.
+
+        The build order is: optional overview/readings structures, source-derived sections and
+        pages, file entries, then XML manifests. One timestamp is shared by every generated
+        record.
+        """
         ids = _Counter()
         ts = int(time.time())
         c = self.course
@@ -93,7 +121,7 @@ class MBZBuilder:
                 child_sec["number"] = section_offset + strategy_section_count
                 for r in readings_resources:
                     r["sec_num"] = child_sec["number"]
-                subsection["parent_sec_num"] = 0  # Overview is always number 0
+                subsection["parent_sec_num"] = 0
                 all_sections.append(child_sec)
                 sub_mods.append(subsection)
                 resources.extend(readings_resources)
@@ -115,12 +143,17 @@ class MBZBuilder:
     def _build_overview_section(
         self, c: BaseParser, ids: _Counter
     ) -> tuple[dict, dict] | None:
-        """Course-level "Overview" section holding the Syllabus page, prepended
-        ahead of the chapter sections — or None if no static_tab Syllabus was
-        configured in the OLX export."""
+        """Build the optional Overview section and its Syllabus page.
+
+        Allocates the section, module, and module-context IDs together so the returned records
+        already contain their required references. Returns `None` when the parsed course has no
+        syllabus HTML.
+        """
         if c.syllabus_html is None:
             return None
-        warn_external_edx_urls(c.syllabus_html, context="Syllabus", static_files=c.static_files)
+        warn_external_edx_urls(
+            c.syllabus_html, context="Syllabus", static_files=c.static_files
+        )
         content = style_figcaption(
             constrain_table_size(
                 constrain_img_size(
@@ -154,13 +187,12 @@ class MBZBuilder:
     def _build_readings_section(
         self, c: BaseParser, ids: _Counter
     ) -> tuple[dict, list[dict]] | None:
-        """Course-level "Readings" section holding one mod_resource per
-        pdf_textbooks chapter, inserted right after Overview (or at the front
-        if there's no Overview) — or None if c.readings is empty. Resources
-        are returned separately from pages/sub_mods, not merged into either —
-        _write_all/_activity_lines/_setting_lines all assume every "page" is
-        literally a mod_page, so a resource needs its own list threaded the
-        same way sub_mods already is."""
+        """Build a standalone Readings section and one resource activity per reading.
+
+        Allocates one section ID, then a module and module-context ID for each resource. The
+        returned resources reference that section. Returns `None` when the parsed course has no
+        readings.
+        """
         if not c.readings:
             return None
         sec_id = ids.next()
@@ -190,18 +222,13 @@ class MBZBuilder:
     def _build_readings_subsection(
         self, c: BaseParser, ids: _Counter, overview_section: dict
     ) -> tuple[dict, list[dict]]:
-        """Readings resources nested inside Overview as a mod_subsection — same
-        sub_mods/child_sec shape NestedSectionStrategy uses for sequentials-
-        under-chapters (strategies.py), reusing _write_subsection/
-        _section_lines/_setting_lines unchanged since those already treat
-        sub_mods generically. child_sec["number"]/resource["sec_num"] are left
-        as 0 placeholders here — _populate finalizes them once strategy.build()
-        is known, because Moodle requires every parent section number to sort
-        below every child section number, course-wide
-        (test_parent_sections_numbered_before_children).
+        """Build a Readings subsection under `overview_section` and its resource activities.
 
-        Caller owns the decision to invoke this at all — only called from
-        _populate when c.readings is non-empty, so no guard here."""
+        Allocates the child section first because every resource references it, then allocates
+        each resource module and context, and finally allocates the subsection module, context,
+        and internal IDs. The subsection module is appended to the parent section before both
+        records are returned.
+        """
         resources: list[dict] = []
         child_sec_id = ids.next()
         for reading in c.readings:
@@ -225,7 +252,7 @@ class MBZBuilder:
             "modules": [r["id"] for r in resources],
             "itemid": sub_int_id,
             "parent_mod_id": sub_mod_id,
-            "number": 0,  # placeholder, set in _populate
+            "number": 0,
         }
         subsection = {
             "mod_id": sub_mod_id,
@@ -241,7 +268,12 @@ class MBZBuilder:
     def _build_file_entries(
         self, c: BaseParser, pages: list[dict], ids: _Counter
     ) -> list[dict]:
-        """sha1 + mime metadata for files.xml — one entry per (page, filename) with correct ctx."""
+        """Build MBZ file records for locally resolved files referenced by pages or resources.
+
+        Each file record receives one ID from `ids`, which is also appended to its owning
+        activity's `file_ids`. Missing local files are omitted so no backup record refers to
+        absent content.
+        """
         file_entries: list[dict] = []
         for page in pages:
             for name in page["file_refs"]:
@@ -278,6 +310,12 @@ class MBZBuilder:
         ts: int,
         ids: _Counter,
     ) -> None:
+        """Write every XML manifest, activity directory, and referenced file into `tmp`.
+
+        All structural records must already hold their final IDs and relationships before this
+        method is called. The same `ids` counter remains available for course-level records
+        written here, such as custom fields.
+        """
         self._write_moodle_backup(tmp, c, all_sections, sub_mods, pages, resources, ts)
         self._write_static_manifests(tmp)
         self._write_course_xml(tmp, c, ts, ids)
@@ -299,10 +337,12 @@ class MBZBuilder:
         pages: list[dict],
         resources: list[dict],
     ) -> list[str]:
+        """Serialise activity manifest entries in each section's declared module order.
+
+        Moodle reconstructs a section's activity sequence from this order during restore. Module
+        IDs resolve to page, resource, or subsection records. Activities inside child sections
+        are marked as nested.
         """
-        Moodle rebuilds sequences based on moodle_backup section order. As such we need to reorder 
-        sequences based on how we want it presented to the user.
-        """ 
         child_sec_ids = {sub["child_sec"]["id"] for sub in sub_mods}
         subs_by_mod_id = {sub["mod_id"]: sub for sub in sub_mods}
         pages_by_id = {p["id"]: p for p in pages}
@@ -340,6 +380,11 @@ class MBZBuilder:
         return lines
 
     def _section_lines(self, sections: list[dict], sub_mods: list[dict]) -> list[str]:
+        """Serialise the section manifest, including parent links for child sections.
+
+        A child section points to its enclosing subsection module through `parentcmid` and is
+        labelled as a subsection. Top-level sections have neither value.
+        """
         child_sec_ids = {sub["child_sec"]["id"]: sub["mod_id"] for sub in sub_mods}
         return [
             f"      <section><sectionid>{s['id']}</sectionid><title>{esc(s['name'])}</title>"
@@ -357,6 +402,12 @@ class MBZBuilder:
         pages: list[dict],
         resources: list[dict],
     ) -> list[str]:
+        """Generate backup settings for the course, its sections, and its activities.
+
+        Moodle uses these entries during restore to decide which structures to include. Section
+        and activity setting identifiers must match the corresponding manifest directory
+        identifiers.
+        """
         root_settings = [
             ("filename", esc(c.course_name)),
             ("imscc11", "0"),
@@ -417,10 +468,16 @@ class MBZBuilder:
         resources: list,
         ts: int,
     ) -> None:
-        """Write moodle_backup.xml with activity and section manifests."""
+        """Write the root `moodle_backup.xml` manifest.
+
+        The manifest indexes every section and activity, declares their restore settings, and
+        records the Moodle and OCW version metadata needed to identify the archive.
+        """
         acts = "\n".join(self._activity_lines(sections, sub_mods, pages, resources))
         secs = "\n".join(self._section_lines(sections, sub_mods))
-        settings = "\n".join(self._setting_lines(c, sections, sub_mods, pages, resources))
+        settings = "\n".join(
+            self._setting_lines(c, sections, sub_mods, pages, resources)
+        )
         xml = templates.MOODLE_BACKUP.format(
             course_name=esc(c.course_name),
             course_id=esc(c.course_id),
@@ -436,7 +493,11 @@ class MBZBuilder:
         (tmp / "moodle_backup.xml").write_text(xml, encoding="utf-8")
 
     def _write_static_manifests(self, tmp: Path) -> None:
-        """Write required root-level XML stubs that have no OLX equivalent."""
+        """Write the required empty root-level manifests for unsupported Moodle subsystems.
+
+        These files have no source-course data in this converter, but Moodle expects them to exist
+        in a valid course backup.
+        """
         for name, content in (
             ("roles.xml", templates.ROLES_XML),
             ("gradebook.xml", templates.GRADEBOOK_XML),
@@ -449,20 +510,10 @@ class MBZBuilder:
             (tmp / name).write_text(content, encoding="utf-8")
 
     def _build_vidrouter_block(self, c: BaseParser) -> str:
-        """Fields match restore_local_vidrouter_plugin.class.php's
-        process_plugin_local_vidrouter_video() exactly — no courseid, no html.
-        Data row, not an HTML5 tag; filter_vidrouter renders at request time.
+        """Build the course-level video-routing data for parsed video components.
 
-        Emitted as a 'local' plugin block (not 'filter') because Moodle's course-level
-        restore only scans format/theme/report/coursereport/plagiarism/local/tool plugin
-        types (restore_course_structure_step::define_structure()) — filter_ is never
-        scanned, so local_vidrouter owns the course-level restore hook. See
-        RESTORE_HOOK_FINDINGS.md.
-
-        Fields are child elements, not XML attributes: Moodle's SAX restore parser
-        only checks in at a path when it descends into a child, so an attribute-only
-        <video/> leaf never gets its own dispatch chunk, and repeated attribute-only
-        siblings get deduped down to one survivor before that. See findings.md #16.
+        Each entry stores a `vidkey` and its available provider identifiers. Returns an empty
+        string when the course contains no videos.
         """
         if not c.videos:
             return ""
@@ -493,16 +544,13 @@ class MBZBuilder:
         return f"  <plugin_local_vidrouter_course>\n{videos_xml}\n  </plugin_local_vidrouter_course>\n"
 
     def _build_customfields_block(self, c: BaseParser, ids: _Counter) -> str:
-        """Emits <customfield> elements for the 4 auto-fillable Wikiwijs fields
-        (Uitgever/Taal/Toegang/Gebruiksrecht). Matched on restore by shortname+type
-        (core_course\\customfield\\course_handler::restore_instance_data_from_backup) —
-        a target site missing the one-off registration script (PLAN.md §5) just
-        silently drops non-matching blocks, no error. type is 'text' for all four,
-        not 'select' — see PLAN.md §9.2 for why (select's backed-up value is an
-        option-list index, not the string we'd be writing here).
+        """Build course custom-field records from source metadata.
 
-        Values are passed through as-is from OLX — no normalisation/translation.
+        Each non-empty field receives an ID from `ids` and is identified by its registered
+        shortname and field type during restore. Returns an empty string when custom-field export
+        is disabled.
         """
+
         if self.disable_custom_fields:
             return ""
         fields = [
@@ -526,7 +574,14 @@ class MBZBuilder:
         ]
         return "\n".join(lines) + ("\n" if lines else "")
 
-    def _write_course_xml(self, tmp: Path, c: BaseParser, ts: int, ids: _Counter) -> None:
+    def _write_course_xml(
+        self, tmp: Path, c: BaseParser, ts: int, ids: _Counter
+    ) -> None:
+        """Write the course record and its course-level extension data.
+
+        Custom-field records are allocated here when enabled. Video-routing data is included when
+        the parsed course contains videos.
+        """
         d = tmp / "course"
         d.mkdir(exist_ok=True)
         (d / "course.xml").write_text(
@@ -551,7 +606,11 @@ class MBZBuilder:
         )
 
     def _write_section(self, tmp: Path, sec: dict, idx: int, ts: int) -> None:
-        """Write sections/section_{id}/section.xml and inforef.xml."""
+        """Write one section record and its empty information-reference manifest.
+
+        Selects the child-section schema when `sec` has an `itemid`. The section sequence
+        preserves the record's declared module order.
+        """
         d = tmp / "sections" / f"section_{sec['id']}"
         d.mkdir(parents=True, exist_ok=True)
         tmpl = templates.CHILD_SECTION_XML if "itemid" in sec else templates.SECTION_XML
@@ -569,10 +628,12 @@ class MBZBuilder:
             '<?xml version="1.0" encoding="UTF-8"?>\n<inforef/>', encoding="utf-8"
         )
 
-    # TODO: Too many conditionals can make it hard to enforce XML count parity, so think of a better way to handle different sub structures for the same XML tag
-    # OpenEdx is very incosistent
     def _write_page(self, tmp: Path, page: dict, ts: int) -> None:
-        """Write activities/page_{id}/page.xml and inforef.xml."""
+        """Write a page activity and its required supporting manifests.
+
+        Its information-reference manifest links the activity to the file records identified by
+        `page["file_ids"]`.
+        """
         d = tmp / "activities" / f"page_{page['id']}"
         d.mkdir(parents=True, exist_ok=True)
         xml = templates.PAGE_XML.format(
@@ -607,7 +668,11 @@ class MBZBuilder:
         (d / "module.xml").write_text(module_xml, encoding="utf-8")
 
     def _write_resource(self, tmp: Path, resource: dict, ts: int) -> None:
-        """Write activities/resource_{id}/resource.xml and inforef.xml."""
+        """Write a resource activity and its required supporting manifests.
+
+        Its information-reference manifest links the activity to the file records identified by
+        `resource["file_ids"]`.
+        """
         d = tmp / "activities" / f"resource_{resource['id']}"
         d.mkdir(parents=True, exist_ok=True)
         xml = templates.RESOURCE_XML.format(
@@ -641,7 +706,11 @@ class MBZBuilder:
         (d / "module.xml").write_text(module_xml, encoding="utf-8")
 
     def _write_subsection(self, tmp: Path, sub: dict, ts: int) -> None:
-        """Write activities/subsection_{mod_id}/ files."""
+        """Write the subsection activity that links a parent section to a child section.
+
+        The subsection record reuses its allocated module, module-context, and internal IDs.
+        Supporting manifests are emitted alongside it as required by Moodle.
+        """
         d = tmp / "activities" / f"subsection_{sub['mod_id']}"
         d.mkdir(parents=True, exist_ok=True)
         (d / "subsection.xml").write_text(
@@ -683,7 +752,11 @@ class MBZBuilder:
         )
 
     def _write_files_xml(self, tmp: Path, file_entries: list, ts: int) -> None:
-        """Write files.xml listing all static asset metadata."""
+        """Write the archive-wide catalogue for every embedded file.
+
+        Each entry reuses the allocated file ID and activity context from `file_entries`. Its SHA-1
+        identifies the payload written by `_copy_static()`.
+        """
         entries = "\n".join(
             templates.FILE_ENTRY.format(
                 id=f["id"],
@@ -703,7 +776,10 @@ class MBZBuilder:
         )
 
     def _copy_static(self, tmp: Path, file_entries: list) -> None:
-        """Copy static assets into files/{sha1[:2]}/{sha1}."""
+        """Copy embedded file payloads into Moodle's SHA-1-addressed file store.
+
+        Each payload path and SHA-1 comes from the same `file_entries` record used in `files.xml`.
+        """
         files_dir = tmp / "files"
         for f in file_entries:
             dest = files_dir / f["sha1"][:2]

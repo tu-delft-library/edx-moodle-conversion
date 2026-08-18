@@ -1,0 +1,48 @@
+name: Documentation
+
+on:
+  pull_request:
+    paths:
+      - "docs/**"
+      - "ocw/**"
+      - "moodle-plugin/**"
+      - "mkdocs.yml"
+      - "phpdoc.dist.xml"
+      - "pyproject.toml"
+      - "tools/phpdoc/**"
+      - "scripts/build-docs.sh"
+  push:
+    branches: [main]
+    paths:
+      - "docs/**"
+      - "ocw/**"
+      - "moodle-plugin/**"
+      - "mkdocs.yml"
+      - "phpdoc.dist.xml"
+      - "pyproject.toml"
+      - "tools/phpdoc/**"
+      - "scripts/build-docs.sh"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: "8.2"
+      - run: pipx install poetry
+      - run: poetry install --with dev
+      - run: composer install --working-dir=tools/phpdoc --no-interaction --prefer-dist
+      - run: ./scripts/build-docs.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: documentation-site
+          path: site/

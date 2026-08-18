@@ -1,12 +1,12 @@
-"""OLX<->MBZ hybrid parity checks: chapter/section, sequential/subsection, and
-page counts must match between the source OLX export and the built MBZ.
-Shared by the pytest suite (tests/integration/test_hybrid_checks.py) and the
-GUI/CLI's post-build sanity check (see ocw.utils.run_hybrid_checks) — this
-module has no pytest dependency so it works from a frozen PyInstaller build."""
+"""Check structural parity between an OLX export and its converted MBZ archive.
+
+The checks compare chapter/section, sequential/subsection, and page counts after a build.
+"""
 
 import logging
 import tarfile
 import xml.etree.ElementTree as ET
+from collections.abc import Iterator
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -15,16 +15,23 @@ from ocw.parser import Course
 
 @dataclass
 class CheckResult:
+    """One expected-versus-actual structural count from a hybrid check."""
+
     name: str
     expected: int
     actual: int
 
     @property
     def passed(self) -> bool:
+        """Whether the observed count matches the parsed source export."""
         return self.expected == self.actual
 
 
 def _expected_counts(olx_path: Path) -> tuple[int, int, int]:
+    """Return the section, subsection, and page counts the OLX export should produce.
+
+    Includes the synthetic Overview and Readings structures created by the MBZ builder.
+    """
     course = Course(olx_path)
     course.parse()
     pages = sum(
@@ -46,15 +53,18 @@ def _expected_counts(olx_path: Path) -> tuple[int, int, int]:
     )
 
 
-def _iter_section_xmls(tar: tarfile.TarFile):
+def _iter_section_xmls(tar: tarfile.TarFile) -> Iterator[ET.Element]:
+    """Yield the root element of every section XML file in an MBZ archive."""
     for m in tar.getmembers():
         if m.name.startswith("sections/") and m.name.endswith("section.xml"):
             yield ET.parse(tar.extractfile(m)).getroot()
 
 
 def run_hybrid_checks(olx_path: Path, mbz_path: Path) -> list[CheckResult]:
-    """Parse olx_path, inspect mbz_path's section/page XML, and return one
-    CheckResult per parity check (chapters, subsections, pages)."""
+    """Compare the OLX-derived structural counts with the converted MBZ archive.
+
+    Returns one result each for sections, subsections, and pages.
+    """
     expected_chapters, expected_seqs, expected_pages = _expected_counts(olx_path)
     with tarfile.open(mbz_path) as tar:
         section_roots = list(_iter_section_xmls(tar))
@@ -69,12 +79,10 @@ def run_hybrid_checks(olx_path: Path, mbz_path: Path) -> list[CheckResult]:
 
 
 def log_hybrid_checks(olx_path: Path, mbz_path: Path, log: logging.Logger) -> None:
-    """Run the checks and log each result — INFO if all pass, WARNING if any
-    fail. Previously the CLI/GUI shelled out to `poetry run pytest`, which
-    only works from a source checkout with poetry on PATH — broke silently
-    in the frozen PyInstaller build (no poetry, no tests/ dir bundled).
-    Calling run_hybrid_checks() directly works identically from source and
-    from the frozen .exe/AppImage.
+    """Run the parity checks and log every result.
+
+    All results use INFO when every check passes, otherwise WARNING so a failed check is visible
+    in normal conversion output.
     """
     results = run_hybrid_checks(olx_path, mbz_path)
     level = logging.INFO if all(r.passed for r in results) else logging.WARNING
