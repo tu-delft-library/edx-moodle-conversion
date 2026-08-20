@@ -96,7 +96,8 @@ def resolve_asset_name(url: str) -> str:
     if url.startswith("http"):
         match = _ABSOLUTE_ASSET_RE.search(url)
         return match.group(1) if match else (Path(urlparse(url).path).name or url)
-    return url.removeprefix("/static/")
+    match = _RELATIVE_ASSET_RE.search(url)
+    return match.group(1) if match else url.removeprefix("/static/")
 
 
 def rewrite_static_urls(html: str, static_files: dict[str, Path] | None = None) -> str:
