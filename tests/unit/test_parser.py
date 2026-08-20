@@ -1,3 +1,6 @@
+from pathlib import Path
+from xml.etree import ElementTree as ET
+
 import pytest
 from tests.builders import (
     Chapter,
@@ -16,6 +19,16 @@ def _minimal_builder(tmp_path) -> OLXFixtureBuilder:
     b = OLXFixtureBuilder(tmp_path / "course")
     b.chapters = [Chapter("ch1", "Ch 1", [Sequential("s1", "S1", [Vertical("v1", "V1", [HtmlComponent("pg1", "Page 1")])])])]
     return b
+
+
+class _FakeFetcher:
+    def __init__(self, path: Path | None):
+        self._path = path
+        self.calls: list[str] = []
+
+    def fetch(self, url: str) -> Path | None:
+        self.calls.append(url)
+        return self._path
 
 
 def test_missing_chapter_xml_raises(tmp_path):
@@ -104,6 +117,14 @@ def test_syllabus_none_when_tabs_file_missing(tmp_path):
     assert course.syllabus_html is None
 
 
+def test_syllabus_none_when_static_tab_has_no_url_slug(tmp_path):
+    b = _minimal_builder(tmp_path)
+    b.static_tabs = [StaticTab("Syllabus", "")]
+    course = Course(b.build())
+    course.parse()
+    assert course.syllabus_html is None
+
+
 def test_readings_parsed_when_pdf_textbooks_configured(tmp_path):
     b = _minimal_builder(tmp_path)
     b.static_files = {"reading1.pdf": b"fake-pdf-bytes"}
@@ -130,6 +151,54 @@ def test_readings_flattened_across_multiple_pdf_textbooks_entries(tmp_path):
         {"title": "A", "name": "a.pdf"},
         {"title": "B", "name": "b.pdf"},
     ]
+
+
+def test_readings_resolved_for_relative_asset_v1_url(tmp_path):
+    """pdf_textbooks chapter URLs may reference assets via the relative asset-v1 form (no
+    leading /static/, no http host) rather than the /static/ form — the same relative form
+    rewrite_static_urls() already handles via _RELATIVE_ASSET_RE. resolve_asset_name() must
+    resolve this form to the bare filename too, or a locally present PDF is wrongly reported
+    as missing and the reading is dropped."""
+    b = _minimal_builder(tmp_path)
+    b.static_files = {"handbook.pdf": b"fake-pdf-bytes"}
+    b.pdf_textbooks = [
+        PdfTextbook(
+            "Readings",
+            [
+                {
+                    "title": "Handbook",
+                    "url": "/asset-v1:DelftX+Course+2021+type@asset+block@handbook.pdf",
+                }
+            ],
+        )
+    ]
+    course = Course(b.build())
+    course.parse()
+    assert course.readings == [{"title": "Handbook", "name": "handbook.pdf"}]
+
+
+def test_readings_fetched_externally_when_not_packaged(tmp_path):
+    b = _minimal_builder(tmp_path)
+    b.pdf_textbooks = [
+        PdfTextbook(
+            "Readings",
+            [
+                {
+                    "title": "Handbook",
+                    "url": (
+                        "https://prod-edxapp.edx.org/asset-v1:DelftX+course+2021"
+                        "+type@asset+block@handbook.pdf"
+                    ),
+                }
+            ],
+        )
+    ]
+    fetcher = _FakeFetcher(Path("/tmp/dest/handbook.pdf"))
+    course = Course(b.build(), fetcher=fetcher)
+    course.parse()
+    assert course.readings == [{"title": "Handbook", "name": "handbook.pdf"}]
+    assert course.static_files["handbook.pdf"] == Path("/tmp/dest/handbook.pdf")
+    assert fetcher.calls
 
 
 def test_readings_empty_when_no_pdf_textbooks(tmp_path):
@@ -359,3 +428,152 @@ def test_course_videos_flat_list_matches_video_components(tmp_path):
     )
     assert len(course.videos) == 2
     assert len(course.videos) == total_video_components
+
+
+def test_missing_video_xml_raises(tmp_path):
+    b = _minimal_builder(tmp_path)
+    b.chapters = [
+        Chapter(
+            "ch1",
+            "Ch 1",
+            [Sequential("s1", "S1", [Vertical("v1", "V1", [VideoComponent("vid1", "Video 1")])])],
+        )
+    ]
+    root = b.build()
+    (root / "video" / "vid1.xml").unlink()
+    with pytest.raises(FileNotFoundError, match="Missing Video XML"):
+        Course(root).parse()
+
+
+def test_blacklisted_component_tag_dropped(tmp_path, caplog):
+    course = Course(tmp_path)
+    el = ET.fromstring('<problem url_name="p1"/>')
+    with caplog.at_level("DEBUG", logger="ocw.parser"):
+        result = course._parse_component(tmp_path, el, vertical_name="V1")
+    assert result is None
+    assert "Skipping unsupported component type 'problem'" in caplog.text
+
+
+def test_unknown_component_tag_logs_warning_and_is_dropped(tmp_path, caplog):
+    course = Course(tmp_path)
+    el = ET.fromstring('<some_new_xblock url_name="x1"/>')
+    with caplog.at_level("WARNING"):
+        result = course._parse_component(tmp_path, el, vertical_name="V1")
+    assert result is None
+    assert "Unhandled OLX component tag '<some_new_xblock>'" in caplog.text
+
+
+def test_html_component_fetches_absolute_edx_asset(tmp_path):
+    b = _minimal_builder(tmp_path)
+    b.chapters = [
+        Chapter(
+            "ch1",
+            "Ch 1",
+            [
+                Sequential(
+                    "s1",
+                    "S1",
+                    [
+                        Vertical(
+                            "v1",
+                            "V1",
+                            [
+                                HtmlComponent(
+                                    "pg1",
+                                    "Page 1",
+                                    content=(
+                                        '<img src="https://prod-edxapp.edx.org/'
+                                        "asset-v1:DelftX+course+2021+type@asset+block@"
+                                        'diagram.png">'
+                                    ),
+                                )
+                            ],
+                        )
+                    ],
+                )
+            ],
+        )
+    ]
+    fetcher = _FakeFetcher(Path("/tmp/dest/diagram.png"))
+    course = Course(b.build(), fetcher=fetcher)
+    course.parse()
+    assert course.static_files["diagram.png"] == Path("/tmp/dest/diagram.png")
+    assert fetcher.calls
+
+
+def test_html_component_skips_already_packaged_absolute_edx_asset(tmp_path):
+    b = _minimal_builder(tmp_path)
+    b.static_files = {"diagram.png": b"fake-png-bytes"}
+    b.chapters = [
+        Chapter(
+            "ch1",
+            "Ch 1",
+            [
+                Sequential(
+                    "s1",
+                    "S1",
+                    [
+                        Vertical(
+                            "v1",
+                            "V1",
+                            [
+                                HtmlComponent(
+                                    "pg1",
+                                    "Page 1",
+                                    content=(
+                                        '<img src="https://prod-edxapp.edx.org/'
+                                        "asset-v1:DelftX+course+2021+type@asset+block@"
+                                        'diagram.png">'
+                                    ),
+                                )
+                            ],
+                        )
+                    ],
+                )
+            ],
+        )
+    ]
+    fetcher = _FakeFetcher(Path("/tmp/should-not-be-used.png"))
+    course = Course(b.build(), fetcher=fetcher)
+    course.parse()
+    assert course.static_files["diagram.png"].name == "diagram.png"
+    assert not fetcher.calls
+
+
+def test_html_component_warns_when_absolute_edx_asset_unfetchable(tmp_path, caplog):
+    b = _minimal_builder(tmp_path)
+    b.chapters = [
+        Chapter(
+            "ch1",
+            "Ch 1",
+            [
+                Sequential(
+                    "s1",
+                    "S1",
+                    [
+                        Vertical(
+                            "v1",
+                            "V1",
+                            [
+                                HtmlComponent(
+                                    "pg1",
+                                    "Page 1",
+                                    content=(
+                                        '<img src="https://prod-edxapp.edx.org/'
+                                        "asset-v1:DelftX+course+2021+type@asset+block@"
+                                        'diagram.png">'
+                                    ),
+                                )
+                            ],
+                        )
+                    ],
+                )
+            ],
+        )
+    ]
+    fetcher = _FakeFetcher(None)
+    course = Course(b.build(), fetcher=fetcher)
+    with caplog.at_level("WARNING"):
+        course.parse()
+    assert "diagram.png" not in course.static_files
+    assert "Missing image 'diagram.png'" in caplog.text
