@@ -597,6 +597,31 @@ def test_readings_file_bytes_copied(readings_only_mbz):
     assert f"files/{sha1[:2]}/{sha1}" in names
 
 
+def test_readings_resource_without_resolvable_file_writes_empty_inforef(tmp_path):
+    """A readings entry whose file never made it into static_files (e.g. a
+    fetch that failed after the reading was still recorded) must not produce
+    a <fileref> pointing at a nonexistent file record."""
+    course = Course(_readings_builder(tmp_path).build())
+    course.parse()
+    course.readings.append({"title": "Ghost Reading", "name": "ghost.pdf"})
+    out = tmp_path / "out.mbz"
+    MBZBuilder(course).build(out)
+    with tarfile.open(out) as tar:
+        names = tar.getnames()
+        resource_dirs = sorted(
+            {n.split("/")[1] for n in names if n.startswith("activities/resource_")}
+        )
+        assert len(resource_dirs) == 2
+        inforefs = {
+            d: ET.parse(tar.extractfile(f"activities/{d}/inforef.xml")).getroot()
+            for d in resource_dirs
+        }
+    ghost_inforef = next(
+        root for root in inforefs.values() if root.find("fileref") is None
+    )
+    assert ghost_inforef.find("fileref") is None
+
+
 # ── D: Wikiwijs metadata (summary + customfields, plan.md §10) ─────────────────
 
 
