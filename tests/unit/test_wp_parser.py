@@ -102,6 +102,15 @@ READING_NO_ATTACHMENT = """
 <article><p>Just inline text, no download link.</p></article>
 """
 
+READING_WITH_ALIGNED_IMAGE_AND_SEPARATOR = """
+<article>
+<div class="vc_row">
+<p><img alt="" class="alignleft wp-image-1" src="https://ocw.tudelft.nl/photo.jpg"/>Bio text here.</p>
+<div class="vc_separator"><span class="vc_sep_holder"><span class="vc_sep_line"></span></span></div>
+</div>
+</article>
+"""
+
 READING_WITH_EXPANDABLE_TEXT = """
 <article>
 <div class="vc_row">
@@ -268,6 +277,18 @@ def test_expandable_text_converted_to_details_spoiler():
     assert "vc_expandable_text__more" not in content
     assert "display: block" not in content
     assert "Chapter 1: Introduction" in content
+
+
+def test_aligned_image_gets_float_style_and_separator_dropped():
+    course = _course({})
+    course._fetch_page = lambda url: BeautifulSoup(
+        READING_WITH_ALIGNED_IMAGE_AND_SEPARATOR, "lxml"
+    )
+    result = course._parse_reading("https://x/read1/", "Bio")
+    content = result["components"][0]["content"]
+    assert 'style="float:left' in content
+    assert "vc_separator" not in content
+    assert "<hr" in content
 
 
 def test_reading_with_pdf_and_text_returns_both_readings_entry_and_page():
