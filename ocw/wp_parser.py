@@ -19,8 +19,13 @@ class WPCourse(BaseParser):
     API.
     """
 
-    # Activity icon types intentionally omitted because the converter has no equivalent component.
     _SKIPPED_ICON_TYPES = frozenset({"icon--exercise", "icon--exam", "icon--mooc"})
+
+    _ALIGN_STYLES = {
+        "alignleft": "float:left;margin:0 1em 1em 0;",
+        "alignright": "float:right;margin:0 0 1em 1em;",
+        "aligncenter": "display:block;margin:0 auto 1em;",
+    }
 
     def __init__(self, root: str, fetcher: AssetFetcher | None = None) -> None:
         super().__init__(root, fetcher)
@@ -75,6 +80,30 @@ class WPCourse(BaseParser):
             summary.string = label
             text_div.insert_before(summary)
 
+    def _apply_wp_image_alignment(self, article) -> None:
+        """Translate WordPress `alignleft`/`alignright`/`aligncenter` image classes into inline
+        float styles, since Moodle's theme has no CSS for WordPress's align classes.
+        """
+        for img in article.select("img"):
+            classes = img.get("class") or []
+            align = next((c for c in classes if c in self._ALIGN_STYLES), None)
+            if align is None:
+                continue
+            img["style"] = self._ALIGN_STYLES[align] + img.get("style", "")
+
+    def _replace_separators(self, article) -> None:
+        """Replace WPBakery `vc_separator` dividers with `<hr>`; the original markup depends on
+        Visual Composer CSS Moodle doesn't ship, so it renders as invisible empty elements.
+        """
+        for sep in article.select("div.vc_separator"):
+            sep.replace_with(article.new_tag("hr"))
+
+    def _clean_article(self, article) -> None:
+        """Apply all WordPress-widget-to-Moodle-safe-HTML conversions to `article`."""
+        self._convert_expandable_widgets(article)
+        self._apply_wp_image_alignment(article)
+        self._replace_separators(article)
+
     def _parse_subject_page(self, url: str, title: str) -> dict:
         """Parse one subject page into a chapter record.
 
@@ -84,7 +113,7 @@ class WPCourse(BaseParser):
         soup = self._fetch_page(url)
         article = soup.select_one("article")
         if article is not None:
-            self._convert_expandable_widgets(article)
+            self._clean_article(article)
         intro_rows = []
         activities = None
         if article is not None:
@@ -139,7 +168,7 @@ class WPCourse(BaseParser):
         soup = self._fetch_page(url)
         article = soup.select_one("article")
         if article is not None:
-            self._convert_expandable_widgets(article)
+            self._clean_article(article)
         components = []
         pdf_url = None
         for child in (article.find_all(recursive=False) if article else []):
@@ -238,7 +267,7 @@ class WPCourse(BaseParser):
         article = soup.select_one("article")
         if article is None:
             return ""
-        self._convert_expandable_widgets(article)
+        self._clean_article(article)
         parts = []
         for child in article.find_all(recursive=False):
             if child.name == "h1":
