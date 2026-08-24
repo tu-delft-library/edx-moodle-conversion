@@ -3,7 +3,7 @@ from pathlib import Path
 import pytest
 from bs4 import BeautifulSoup
 
-from ocw.wp_parser import WPCourse
+from ocw.parser.wp import WPCourse
 
 HOME_NO_ACTIVITIES = """
 <h1>Example Course</h1>

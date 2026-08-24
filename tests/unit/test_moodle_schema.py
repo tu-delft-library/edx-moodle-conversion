@@ -5,7 +5,7 @@ from pathlib import Path
 import pytest
 
 from ocw.converter import MBZBuilder
-from ocw.parser import Course
+from ocw.parser.olx import Course
 from tests.builders import Chapter, HtmlComponent, OLXFixtureBuilder, Sequential, Vertical
 
 REFERENCE = Path(__file__).parent.parent / "fixtures" / "reference_mbz"

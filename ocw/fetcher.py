@@ -1,14 +1,13 @@
 """Fetch approved external assets for inclusion in a Moodle backup."""
 
 import logging
-import re
 import time
 from pathlib import Path
 from urllib.parse import urlparse
 
 import requests
 
-from ocw.utils import resolve_asset_name
+from ocw.utils import _UNSAFE_FILENAME_RE, resolve_asset_name
 
 log = logging.getLogger("ocw.fetcher")
 
@@ -18,7 +17,6 @@ _CONTENT_TYPE_BY_EXT = {".pdf": "application/pdf"}
 
 _MIN_HOST_INTERVAL = 1.0
 _TIMEOUT = 15
-_UNSAFE_FILENAME_RE = re.compile(r"[^-\w.]")
 
 
 class AssetFetcher:

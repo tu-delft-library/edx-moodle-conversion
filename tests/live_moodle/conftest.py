@@ -7,7 +7,7 @@ import requests
 from dotenv import load_dotenv
 
 from ocw.converter import MBZBuilder
-from ocw.parser import Course
+from ocw.parser.olx import Course
 from tests.builders import Chapter, HtmlComponent, OLXFixtureBuilder, Sequential, Vertical
 
 load_dotenv()

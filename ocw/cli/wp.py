@@ -10,7 +10,7 @@ from ocw.converter import MBZBuilder
 from ocw.fetcher import AssetFetcher
 from ocw.logging_setup import setup_cli_logging
 from ocw.utils import versioned_output_path
-from ocw.wp_parser import WPCourse
+from ocw.parser.wp import WPCourse
 
 
 def main() -> None:

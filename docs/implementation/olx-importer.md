@@ -44,7 +44,7 @@ The execution stages above correspond to the following Python entry points:
 * [`ocw.cli.olx.main()`](../reference/python.md#ocw.cli.olx.main) and
   [`App._convert_one()`](../reference/python.md#ocw.gui.olx.App._convert_one): prepare a local OLX directory.
   Archives are extracted into a temporary directory. The CLI can also create a temporary asset-fetch directory.
-* [`Course.parse()`](../reference/python.md#ocw.parser.Course.parse): follows OLX XML references, retains supported
+* [`Course.parse()`](../reference/python.md#ocw.parser.olx.Course.parse): follows OLX XML references, retains supported
   HTML and video components, gathers static files, and records summary, syllabus, readings, and video metadata.
 * [`MBZBuilder.build()`](../reference/python.md#ocw.converter.builder.MBZBuilder.build): creates a temporary Moodle
   backup tree, assigns consistent Moodle IDs, writes XML and stored files, then packages the tree as a `.mbz` archive.
