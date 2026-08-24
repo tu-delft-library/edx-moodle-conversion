@@ -1,6 +1,6 @@
 from ocw.converter import MBZBuilder
 from ocw.hybrid_checks import run_hybrid_checks
-from ocw.parser import Course
+from ocw.parser.olx import Course
 
 
 def test_run_hybrid_checks_all_pass_on_matching_build(minimal_fixture, tmp_path):

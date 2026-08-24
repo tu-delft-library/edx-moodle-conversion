@@ -5,20 +5,17 @@ from pathlib import Path
 from xml.etree import ElementTree as ET
 
 from ocw.fetcher import AssetFetcher
-from ocw.parser_base import BaseParser
+from ocw.parser.base import BaseParser
 from ocw.utils import (
     _ABSOLUTE_ASSET_RE,
+    _DFRAME_RE,
+    _DOWNLOADID_RE,
     resolve_asset_name,
     safe_vidkey,
     static_file_kind,
 )
 
 log = logging.getLogger("ocw.parser")
-
-_DFRAME_RE = re.compile(
-    r'<iframe\b[^>]*class="[^"]*\bdframe\b[^"]*"[^>]*>', re.IGNORECASE
-)
-_DOWNLOADID_RE = re.compile(r'data-downloadid="([^"]*)"')
 
 # Tags the parser actively converts into page content.
 # _WHITELISTED_TAGS = frozenset({"html", "video"})

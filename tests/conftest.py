@@ -23,7 +23,7 @@ def hybrid_mbz_path(request, hybrid_olx_path, tmp_path_factory):
     if p:
         return Path(p)
     from ocw.converter import MBZBuilder
-    from ocw.parser import Course
+    from ocw.parser.olx import Course
     out = tmp_path_factory.mktemp("hybrid") / "course.mbz"
     course = Course(hybrid_olx_path)
     course.parse()

@@ -12,7 +12,7 @@ from tests.builders import (
     Vertical,
     VideoComponent,
 )
-from ocw.parser import Course
+from ocw.parser.olx import Course
 
 
 def _minimal_builder(tmp_path) -> OLXFixtureBuilder:

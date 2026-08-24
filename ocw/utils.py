@@ -35,6 +35,15 @@ class _Counter:
 
 _VIDKEY_UNSAFE_RE = re.compile(r"[^A-Za-z0-9_-]")
 
+_UNSAFE_FILENAME_RE = re.compile(r"[^-\w.]")
+
+_LOG_LINE_RE = re.compile(r"^(\d{2}:\d{2}:\d{2}) \[(\w+)\] (.*)$")
+
+_DFRAME_RE = re.compile(
+    r'<iframe\b[^>]*class="[^"]*\bdframe\b[^"]*"[^>]*>', re.IGNORECASE
+)
+_DOWNLOADID_RE = re.compile(r'data-downloadid="([^"]*)"')
+
 
 def safe_vidkey(raw: str) -> str:
     """Convert a source video identifier into a key safe for vidrouter placeholders and lookups."""
