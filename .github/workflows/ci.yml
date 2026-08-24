@@ -23,6 +23,9 @@ jobs:
 
       - run: poetry install --with dev
 
+      - name: Lint (dead code, complexity)
+        run: poetry run ruff check .
+
       - name: Run tests with coverage
         run: >
           poetry run pytest -v --cov=ocw --cov-report=term-missing --cov-report=xml
