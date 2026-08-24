@@ -157,6 +157,15 @@ class NestedSectionStrategy(SectionStrategy):
         Parent sections, subsection activities, and child sections are created before pages so
         every relationship and section number is available when page records are built.
         """
+        ch_sections, sub_mods = self._build_chapter_and_subsection_records()
+        all_sections = self._flatten_sections(ch_sections, sub_mods)
+        self._number_sections(ch_sections, sub_mods, all_sections)
+        pages = self._build_pages(sub_mods)
+        return all_sections, sub_mods, pages
+
+    def _build_chapter_and_subsection_records(self) -> tuple[list[dict], list[dict]]:
+        """Create one parent section per chapter and one subsection-activity/child-section pair
+        per sequential."""
         sub_mods: list[dict] = []
         ch_sections: list[dict] = []
         for ch in self.c.chapters:
@@ -167,31 +176,37 @@ class NestedSectionStrategy(SectionStrategy):
                 )
             ch_sections.append(ch_sec)
             for seq in ch["sequentials"]:
-                sub_mod_id, sub_ctx_id, sub_int_id = (
-                    self.ids.next(),
-                    self.ids.next(),
-                    self.ids.next(),
-                )
-                child_sec = {
-                    "id": self.ids.next(),
-                    "name": seq["display_name"],
-                    "modules": [],
-                    "itemid": sub_int_id,
-                    "parent_mod_id": sub_mod_id,
-                }
-                sub_mods.append(
-                    {
-                        "mod_id": sub_mod_id,
-                        "ctx": sub_ctx_id,
-                        "internal_id": sub_int_id,
-                        "name": seq["display_name"],
-                        "parent_sec_id": ch_sec["id"],
-                        "child_sec": child_sec,
-                        "seq": seq,
-                    }
-                )
-                ch_sec["modules"].append(sub_mod_id)
+                sub_mods.append(self._build_subsection_record(ch_sec, seq))
+        return ch_sections, sub_mods
 
+    def _build_subsection_record(self, ch_sec: dict, seq: dict) -> dict:
+        """Create the subsection activity and child section for one source sequential, and
+        register the activity as a module of its parent chapter section."""
+        sub_mod_id, sub_ctx_id, sub_int_id = (
+            self.ids.next(),
+            self.ids.next(),
+            self.ids.next(),
+        )
+        child_sec = {
+            "id": self.ids.next(),
+            "name": seq["display_name"],
+            "modules": [],
+            "itemid": sub_int_id,
+            "parent_mod_id": sub_mod_id,
+        }
+        ch_sec["modules"].append(sub_mod_id)
+        return {
+            "mod_id": sub_mod_id,
+            "ctx": sub_ctx_id,
+            "internal_id": sub_int_id,
+            "name": seq["display_name"],
+            "parent_sec_id": ch_sec["id"],
+            "child_sec": child_sec,
+            "seq": seq,
+        }
+
+    def _flatten_sections(self, ch_sections: list[dict], sub_mods: list[dict]) -> list[dict]:
+        """Interleave each chapter section with its child sections, in restore order."""
         all_sections: list[dict] = []
         sub_cursor = 0
         for ch_i, ch_sec in enumerate(ch_sections):
@@ -201,10 +216,14 @@ class NestedSectionStrategy(SectionStrategy):
                 sub["child_sec"] for sub in sub_mods[sub_cursor : sub_cursor + n]
             )
             sub_cursor += n
+        return all_sections
 
-        # Number parent chapters `offset..offset+n-1` and child sections
-        # `offset+n..offset+n+m-1`, matching Moodle's course-wide layout and preserving the
-        # course-level offset.
+    def _number_sections(
+        self, ch_sections: list[dict], sub_mods: list[dict], all_sections: list[dict]
+    ) -> None:
+        """Number parent chapters `offset..offset+n-1` and child sections
+        `offset+n..offset+n+m-1`, matching Moodle's course-wide layout and preserving the
+        course-level offset."""
         num_ch = len(ch_sections)
         for ch_i, ch_sec in enumerate(ch_sections):
             ch_sec["number"] = ch_i + self.section_offset
@@ -214,14 +233,15 @@ class NestedSectionStrategy(SectionStrategy):
         for sub in sub_mods:
             sub["parent_sec_num"] = sec_num[sub["parent_sec_id"]]
 
+    def _build_pages(self, sub_mods: list[dict]) -> list[dict]:
+        """Build page records for every vertical in every child section."""
         pages: list[dict] = []
         for sub in sub_mods:
             child_sec = sub["child_sec"]
             for vert in sub["seq"]["verticals"]:
-                page = self._build_page(vert, child_sec["id"], sec_num[child_sec["id"]])
+                page = self._build_page(vert, child_sec["id"], child_sec["number"])
                 if page is None:
                     continue
                 pages.append(page)
                 child_sec["modules"].append(page["id"])
-
-        return all_sections, sub_mods, pages
+        return pages
