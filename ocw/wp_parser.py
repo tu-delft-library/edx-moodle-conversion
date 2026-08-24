@@ -172,38 +172,11 @@ class WPCourse(BaseParser):
         components = []
         pdf_url = None
         for child in (article.find_all(recursive=False) if article else []):
-            if child.name == "h1":
-                continue
-            if child.name == "section" and "license" in (child.get("class") or []):
-                continue
-
-            iframe = child if child.name == "iframe" else child.select_one("iframe")
-            if iframe is not None and iframe.get("src"):
-                src = iframe["src"]
-                if "youtube.com" in src:
-                    youtubeid = src.rstrip("/").split("/")[-1].split("?")[0]
-                    components.append(
-                        self._video_component(
-                            url, title, chapter_name, sequential_name, youtubeid=youtubeid
-                        )
-                    )
-                elif "collegerama.tudelft.nl" in src:
-                    collegeramaid = src.rstrip("/").split("/")[-1]
-                    components.append(
-                        self._video_component(
-                            url, title, chapter_name, sequential_name,
-                            collegeramaid=collegeramaid,
-                        )
-                    )
-                continue
-
-            dl_url = self._find_download_link(child)
-            if dl_url is not None:
-                pdf_url = dl_url
-                continue
-
-            if child.get_text(strip=True):
-                components.append({"type": "html", "content": str(child)})
+            kind, value = self._classify_lecture_child(child, url, title, chapter_name, sequential_name)
+            if kind == "component":
+                components.append(value)
+            elif kind == "pdf_url":
+                pdf_url = value
 
         if pdf_url:
             name = self._resolve_and_fetch(pdf_url)
@@ -212,6 +185,41 @@ class WPCourse(BaseParser):
                     {"type": "html", "content": f'<p><a href="/static/{name}">{title}</a></p>'}
                 )
         return {"display_name": title, "components": components}
+
+    def _classify_lecture_child(
+        self, child, url: str, title: str, chapter_name: str, sequential_name: str
+    ) -> tuple[str | None, object]:
+        """Classify one top-level lecture element as a component, a PDF download URL, or nothing.
+
+        Returns `("component", dict)`, `("pdf_url", str)`, or `(None, None)` to skip the element.
+        """
+        if child.name == "h1":
+            return None, None
+        if child.name == "section" and "license" in (child.get("class") or []):
+            return None, None
+
+        iframe = child if child.name == "iframe" else child.select_one("iframe")
+        if iframe is not None and iframe.get("src"):
+            src = iframe["src"]
+            if "youtube.com" in src:
+                youtubeid = src.rstrip("/").split("/")[-1].split("?")[0]
+                return "component", self._video_component(
+                    url, title, chapter_name, sequential_name, youtubeid=youtubeid
+                )
+            if "collegerama.tudelft.nl" in src:
+                collegeramaid = src.rstrip("/").split("/")[-1]
+                return "component", self._video_component(
+                    url, title, chapter_name, sequential_name, collegeramaid=collegeramaid
+                )
+            return None, None
+
+        dl_url = self._find_download_link(child)
+        if dl_url is not None:
+            return "pdf_url", dl_url
+
+        if child.get_text(strip=True):
+            return "component", {"type": "html", "content": str(child)}
+        return None, None
 
     def _video_component(
         self,
