@@ -10,7 +10,7 @@ from collections.abc import Iterator
 from dataclasses import dataclass
 from pathlib import Path
 
-from ocw.parser import Course
+from ocw.parser.olx import Course
 
 
 @dataclass

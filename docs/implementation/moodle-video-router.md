@@ -33,8 +33,8 @@ over the site configuration.
 
 | Component | Responsibility |
 | --- | --- |
-| `ocw/parser.py` | Parses OLX video metadata. |
-| `ocw/wp_parser.py` | Parses WordPress YouTube and Collegerama embeds. |
+| `ocw/parser/olx.py` | Parses OLX video metadata. |
+| `ocw/parser/wp.py` | Parses WordPress YouTube and Collegerama embeds. |
 | `ocw/converter/builder.py` | Writes the Video Router data block into `course/course.xml`. |
 | `local_vidrouter` | Imports video records during MBZ restore. |
 | `filter_vidrouter` | Resolves `[[vid:KEY]]` at render time. |
@@ -74,9 +74,9 @@ Each source has a dedicated nullable ID column in `filter_vidrouter_map`, such a
    <code>xmldb_filter_vidrouter_upgrade()</code></a>
    in `db/upgrade.php`, and `filter/vidrouter/version.php`.
 2. Add the field to relevant source parsers:
-   [`Course._parse_video()`](../reference/python.md#ocw.parser.Course._parse_video) in `ocw/parser.py` and
-   [`WPCourse._video_component()`](../reference/python.md#ocw.wp_parser.WPCourse._video_component) in
-   `ocw/wp_parser.py`.
+   [`Course._parse_video()`](../reference/python.md#ocw.parser.olx.Course._parse_video) in `ocw/parser/olx.py` and
+   [`WPCourse._video_component()`](../reference/python.md#ocw.parser.wp.WPCourse._video_component) in
+   `ocw/parser/wp.py`.
 3. Write the field into the MBZ plugin block through
    <a href="../reference/python.md#ocw.converter.builder.MBZBuilder._build_vidrouter_block">
    <code>MBZBuilder._build_vidrouter_block()</code></a> in `ocw/converter/builder.py`.

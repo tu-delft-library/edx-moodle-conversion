@@ -5,11 +5,11 @@ generated reference content.
 
 ## OLX parser
 
-::: ocw.parser
+::: ocw.parser.olx
 
 ## WordPress parser
 
-::: ocw.wp_parser
+::: ocw.parser.wp
 
 ## MBZ builder
 
@@ -23,11 +23,11 @@ generated reference content.
 
 ### OLX video metadata
 
-::: ocw.parser.Course._parse_video
+::: ocw.parser.olx.Course._parse_video
 
 ### WordPress video metadata
 
-::: ocw.wp_parser.WPCourse._video_component
+::: ocw.parser.wp.WPCourse._video_component
 
 ### MBZ Video Router block
 
@@ -55,12 +55,12 @@ generated reference content.
 
 ### Subject parser
 
-::: ocw.wp_parser.WPCourse._parse_subject_page
+::: ocw.parser.wp.WPCourse._parse_subject_page
 
 ### Lecture parser
 
-::: ocw.wp_parser.WPCourse._parse_lecture
+::: ocw.parser.wp.WPCourse._parse_lecture
 
 ### Reading parser
 
-::: ocw.wp_parser.WPCourse._parse_reading
+::: ocw.parser.wp.WPCourse._parse_reading

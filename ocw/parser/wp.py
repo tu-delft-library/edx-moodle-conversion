@@ -6,7 +6,7 @@ import requests
 from bs4 import BeautifulSoup
 
 from ocw.fetcher import AssetFetcher
-from ocw.parser_base import BaseParser
+from ocw.parser.base import BaseParser
 from ocw.utils import resolve_asset_name, safe_vidkey
 
 log = logging.getLogger("ocw.wp_parser")

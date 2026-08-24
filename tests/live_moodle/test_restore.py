@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from ocw.parser import Course
+from ocw.parser.olx import Course
 from tests.live_moodle.conftest import _ws
 
 MINIMAL = Path(__file__).parent.parent / "fixtures" / "minimal"

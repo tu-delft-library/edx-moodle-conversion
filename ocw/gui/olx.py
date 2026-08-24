@@ -10,7 +10,7 @@ from ocw.converter import MBZBuilder
 from ocw.fetcher import AssetFetcher
 from ocw.gui.common import ConverterApp, _input_label
 from ocw.hybrid_checks import log_hybrid_checks
-from ocw.parser import Course
+from ocw.parser.olx import Course
 from ocw.utils import versioned_output_path
 
 OLX_WINDOW_TITLE = "OLX to Moodle Converter"
