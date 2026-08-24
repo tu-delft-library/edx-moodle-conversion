@@ -29,6 +29,8 @@ add_to_readme.md
 
 __pycache__/
 
+.ruff_cache/
+
 *.pyc
 *.zip
 
