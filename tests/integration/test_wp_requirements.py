@@ -132,6 +132,44 @@ def test_wp_cc4_video_shortcode_and_vidrouter_block(tmp_path):
     assert "[[vid:lec1]]" in page_xml
 
 
+# WP-CC5
+def test_wp_cc5_multiple_videos_on_one_page_all_captured(tmp_path):
+    site = WPFixtureSite()
+    site.add_home([(SUBJECT_URL, "1. Intro")])
+    site.add_subject_page(
+        SUBJECT_URL,
+        _activities_html(
+            f'<li><a class="icon icon--lecture" href="{LECTURE_URL}">Lecture 1</a></li>'
+        ),
+    )
+    site.add_lecture_page(
+        LECTURE_URL,
+        '<div class="vc_row">'
+        '<iframe src="https://www.youtube.com/embed/abc123"></iframe>'
+        '<iframe src="https://www.youtube.com/embed/def456"></iframe>'
+        "</div>",
+    )
+    course = site.course()
+    course.parse()
+    out = tmp_path / "course.mbz"
+    MBZBuilder(course).build(out)
+
+    with tarfile.open(out) as tar:
+        course_xml = ET.parse(tar.extractfile("course/course.xml")).getroot()
+        page_xml = next(
+            tar.extractfile(m).read().decode()
+            for m in tar.getmembers()
+            if m.name.endswith("page.xml")
+        )
+
+    videos = course_xml.findall(".//plugin_local_vidrouter_course/video")
+    assert len(videos) == len(course.videos) == 2
+    youtubeids = {v.findtext("vidkey"): v.findtext("youtubeid") for v in videos}
+    assert youtubeids == {"lec1-1": "abc123", "lec1-2": "def456"}
+    assert "[[vid:lec1-1]]" in page_xml
+    assert "[[vid:lec1-2]]" in page_xml
+
+
 # WP-C1
 def test_wp_c1_warns_missing_pdf(caplog):
     site = WPFixtureSite()
