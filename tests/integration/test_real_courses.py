@@ -3,7 +3,7 @@ import pytest
 from pathlib import Path
 
 from ocw.converter import MBZBuilder
-from ocw.parser import Course
+from ocw.parser.olx import Course
 
 FIXTURES = Path(__file__).parent.parent / "fixtures"
 

@@ -10,7 +10,7 @@ from ocw.converter.html import (
     strip_templated_iframes,
     style_figcaption,
 )
-from ocw.parser_base import BaseParser
+from ocw.parser.base import BaseParser
 from ocw.utils import _Counter, rewrite_static_urls, warn_external_edx_urls
 
 log = logging.getLogger("ocw.converter")

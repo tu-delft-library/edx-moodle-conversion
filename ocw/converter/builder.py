@@ -20,7 +20,7 @@ from ocw.converter.html import (
     style_figcaption,
 )
 from ocw.converter.strategies import FlatSectionStrategy, NestedSectionStrategy
-from ocw.parser_base import BaseParser
+from ocw.parser.base import BaseParser
 from ocw.utils import (
     _Counter,
     esc,

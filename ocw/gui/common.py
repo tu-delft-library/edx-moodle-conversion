@@ -1,7 +1,6 @@
 import logging
 import os
 import queue
-import re
 import sys
 import threading
 import traceback
@@ -11,11 +10,10 @@ from tkinter import BooleanVar, StringVar, Tk, filedialog, ttk
 from tkinter.scrolledtext import ScrolledText
 
 from ocw._version import __version__
+from ocw.utils import _LOG_LINE_RE
 
 if sys.platform.startswith("linux"):
     os.environ.setdefault("TK_USE_PORTAL", "1")
-
-_LOG_LINE_RE = re.compile(r"^(\d{2}:\d{2}:\d{2}) \[(\w+)\] (.*)$")
 
 
 def _input_label(path: Path | str) -> str:
@@ -55,7 +53,7 @@ class ConverterApp:
         root.geometry("860x460")
 
         self.sequential_sections = BooleanVar(value=False)
-        self.enable_custom_fields = BooleanVar(value=False)
+        self.enable_custom_fields = BooleanVar(value=True)
         self.debug = BooleanVar(value=False)
         self.fetch_external_assets = BooleanVar(value=True)
         self.input_paths: list[Path | str] = []

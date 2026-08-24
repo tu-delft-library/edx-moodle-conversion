@@ -9,7 +9,7 @@ from ocw.converter import MBZBuilder
 from ocw.fetcher import AssetFetcher
 from ocw.gui.common import ConverterApp, _input_label
 from ocw.utils import versioned_output_path
-from ocw.wp_parser import WPCourse
+from ocw.parser.wp import WPCourse
 
 WP_WINDOW_TITLE = "WordPress to Moodle Converter"
 

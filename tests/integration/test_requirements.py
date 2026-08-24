@@ -4,7 +4,7 @@ from xml.etree import ElementTree as ET
 
 from tests.builders import Chapter, HtmlComponent, OLXFixtureBuilder, Sequential, Vertical, VideoComponent
 from ocw.converter import MBZBuilder
-from ocw.parser import Course
+from ocw.parser.olx import Course
 from ocw.utils import esc
 
 

@@ -6,7 +6,7 @@ from xml.etree import ElementTree as ET
 import pytest
 
 from ocw.converter import MBZBuilder
-from ocw.parser import Course
+from ocw.parser.olx import Course
 from tests.builders import (
     Chapter,
     HtmlComponent,

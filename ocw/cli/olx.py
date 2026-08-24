@@ -11,7 +11,7 @@ from ocw.converter import MBZBuilder
 from ocw.fetcher import AssetFetcher
 from ocw.hybrid_checks import log_hybrid_checks
 from ocw.logging_setup import setup_cli_logging
-from ocw.parser import Course
+from ocw.parser.olx import Course
 from ocw.utils import versioned_output_path
 
 
