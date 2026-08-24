@@ -172,11 +172,13 @@ class WPCourse(BaseParser):
         components = []
         pdf_url = None
         for child in (article.find_all(recursive=False) if article else []):
-            kind, value = self._classify_lecture_child(child, url, title, chapter_name, sequential_name)
-            if kind == "component":
-                components.append(value)
-            elif kind == "pdf_url":
-                pdf_url = value
+            for kind, value in self._classify_lecture_child(
+                child, url, title, chapter_name, sequential_name
+            ):
+                if kind == "component":
+                    components.append(value)
+                elif kind == "pdf_url":
+                    pdf_url = value
 
         if pdf_url:
             name = self._resolve_and_fetch(pdf_url)
@@ -188,38 +190,62 @@ class WPCourse(BaseParser):
 
     def _classify_lecture_child(
         self, child, url: str, title: str, chapter_name: str, sequential_name: str
-    ) -> tuple[str | None, object]:
-        """Classify one top-level lecture element as a component, a PDF download URL, or nothing.
+    ) -> list[tuple[str, object]]:
+        """Classify one top-level lecture element into zero or more (kind, value) results.
 
-        Returns `("component", dict)`, `("pdf_url", str)`, or `(None, None)` to skip the element.
+        `kind` is `"component"` (a page or video component) or `"pdf_url"`. An element carrying
+        one or more playable iframes fully consumes the element instead of falling through to the
+        PDF/text checks below, matching the source page treating that container as video-only.
         """
         if child.name == "h1":
-            return None, None
+            return []
         if child.name == "section" and "license" in (child.get("class") or []):
-            return None, None
+            return []
 
-        iframe = child if child.name == "iframe" else child.select_one("iframe")
-        if iframe is not None and iframe.get("src"):
-            src = iframe["src"]
-            if "youtube.com" in src:
-                youtubeid = src.rstrip("/").split("/")[-1].split("?")[0]
-                return "component", self._video_component(
-                    url, title, chapter_name, sequential_name, youtubeid=youtubeid
-                )
-            if "collegerama.tudelft.nl" in src:
-                collegeramaid = src.rstrip("/").split("/")[-1]
-                return "component", self._video_component(
-                    url, title, chapter_name, sequential_name, collegeramaid=collegeramaid
-                )
-            return None, None
+        iframes = [child] if child.name == "iframe" else child.select("iframe")
+        if iframes:
+            videos = self._lecture_videos(iframes, url, title, chapter_name, sequential_name)
+            return [("component", v) for v in videos]
 
         dl_url = self._find_download_link(child)
         if dl_url is not None:
-            return "pdf_url", dl_url
+            return [("pdf_url", dl_url)]
 
-        if child.get_text(strip=True):
-            return "component", {"type": "html", "content": str(child)}
-        return None, None
+        if child.get_text(strip=True) or child.name in ("img", "hr") or child.find(["img", "hr"]):
+            return [("component", {"type": "html", "content": str(child)})]
+        return []
+
+    def _lecture_videos(
+        self, iframes: list, url: str, title: str, chapter_name: str, sequential_name: str
+    ) -> list[dict]:
+        """Build one video component per playable (YouTube/Collegerama) iframe in `iframes`.
+
+        Each video gets an index suffix on its routing key only when the page embeds more than
+        one, so single-video pages keep their existing key.
+        """
+        videos = [el for el in iframes if el.get("src")]
+        multiple = len(videos) > 1
+        components = []
+        for idx, iframe in enumerate(videos, start=1):
+            src = iframe["src"]
+            index = idx if multiple else None
+            if "youtube.com" in src:
+                youtubeid = src.rstrip("/").split("/")[-1].split("?")[0]
+                components.append(
+                    self._video_component(
+                        url, title, chapter_name, sequential_name,
+                        youtubeid=youtubeid, index=index,
+                    )
+                )
+            elif "collegerama.tudelft.nl" in src:
+                collegeramaid = src.rstrip("/").split("/")[-1]
+                components.append(
+                    self._video_component(
+                        url, title, chapter_name, sequential_name,
+                        collegeramaid=collegeramaid, index=index,
+                    )
+                )
+        return components
 
     def _video_component(
         self,
@@ -230,13 +256,17 @@ class WPCourse(BaseParser):
         *,
         youtubeid: str | None = None,
         collegeramaid: str | None = None,
+        index: int | None = None,
     ) -> dict:
         """Build a video-routing record for a WordPress lecture page.
 
-        The routing key derives from the page URL slug. WordPress supplies YouTube or Collegerama
-        IDs, while edX, SRT, and TUD download identifiers remain unset.
+        The routing key derives from the page URL slug, suffixed with `index` when the page
+        embeds more than one video so each gets a distinct key. WordPress supplies YouTube or
+        Collegerama IDs, while edX, SRT, and TUD download identifiers remain unset.
         """
         slug = url.rstrip("/").rsplit("/", 1)[-1]
+        if index is not None:
+            slug = f"{slug}-{index}"
         return {
             "type": "video",
             "display_name": title,
@@ -284,7 +314,7 @@ class WPCourse(BaseParser):
                 continue
             if self._find_download_link(child) is not None:
                 continue
-            if child.get_text(strip=True):
+            if child.get_text(strip=True) or child.name in ("img", "hr") or child.find(["img", "hr"]):
                 parts.append(str(child))
         return "".join(parts)
 
