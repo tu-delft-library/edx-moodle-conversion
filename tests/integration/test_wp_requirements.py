@@ -202,6 +202,84 @@ def test_wp_cc6_vc_single_image_wrapper_alignment_survives_into_mbz(tmp_path):
     assert esc("float:left;margin:0 1em 1em 0;") in page_xml
 
 
+_TUD_HOST_CHECK = 'TUD_location.indexOf("ocw.tudelft.nl")!=-1'
+
+_DOWNLOAD_TOOL_HTML = (
+    '<div id="download_tool"><div class="wpb_wrapper">'
+    '<div class="TUD_box_download" data-DownloadID="Course/Week_1/Course_lec" '
+    'data-YoutubeID="abc123" data-VideoType=".mp4">'
+    '<div class="tud-button tud-float video-download">'
+    '<img class="tud-float tud_video_img" src="/static/icon_grey1_video_blanc_36.png"/>'
+    '<ul class="TUD"><li class="TUD TUD_High_Video"><a href="#" target="_blank">High</a></li></ul>'
+    "</div></div>"
+    '<script type="text/javascript">'
+    "var TUD_location=window.location.href;"
+    'if(TUD_location.indexOf("ocw.tudelft.nl")!=-1){'
+    '$.getScript("https://delftxdownloads.tudelft.nl/download-tool/OCW/TUD_download_tool.js")'
+    '}else $.getScript("/static/TUD_download_tool.js");'
+    "</script></div></div>"
+)
+
+
+# WP-CC7
+def test_wp_cc7_download_tool_widget_host_check_forced_rest_untouched(tmp_path):
+    """The `#download_tool` widget's own bootstrap script only takes its self-contained branch
+    (loads jQuery itself, then the real `TUD_download_tool.js`) when `location.href` contains
+    "ocw.tudelft.nl"."""
+    site = WPFixtureSite()
+    site.add_home([(SUBJECT_URL, "1. Intro")])
+    site.add_subject_page(
+        SUBJECT_URL,
+        _activities_html(
+            f'<li><a class="icon icon--lecture" href="{LECTURE_URL}">Lecture 1</a></li>'
+        ),
+    )
+    site.add_lecture_page(LECTURE_URL, f"<p>content</p>{_DOWNLOAD_TOOL_HTML}")
+    course = site.course()
+    course.parse()
+    out = tmp_path / "course.mbz"
+    MBZBuilder(course).build(out)
+
+    with tarfile.open(out) as tar:
+        page_xml = next(
+            tar.extractfile(m).read().decode()
+            for m in tar.getmembers()
+            if m.name.endswith("page.xml")
+        )
+    assert esc(_TUD_HOST_CHECK) not in page_xml
+    assert "if(true){" in page_xml
+    assert "TUD_box_download" in page_xml
+    assert "TUD_High_Video" in page_xml
+    assert "icon_grey1_video_blanc_36.png" in page_xml
+    assert (
+        "https://delftxdownloads.tudelft.nl/download-tool/OCW/TUD_download_tool.js"
+        in page_xml
+    )
+    assert "@@PLUGINFILE@@/TUD_download_tool.js" in page_xml
+    assert esc('data-downloadid="Course/Week_1/Course_lec"') in page_xml
+
+
+# WP-CC7 (negative case)
+def test_wp_cc7_no_download_tool_widget_is_a_no_op():
+    site = WPFixtureSite()
+    site.add_home([(SUBJECT_URL, "1. Intro")])
+    site.add_subject_page(
+        SUBJECT_URL,
+        _activities_html(
+            f'<li><a class="icon icon--lecture" href="{LECTURE_URL}">Lecture 1</a></li>'
+        ),
+    )
+    site.add_lecture_page(LECTURE_URL, "<p>content</p>")
+    course = site.course()
+    course.parse()
+
+    lecture = course.chapters[0]["sequentials"][0]["verticals"][0]
+    html_components = [
+        c["content"] for c in lecture["components"] if c["type"] == "html"
+    ]
+    assert any("content" in html for html in html_components)
+
+
 # WP-C1
 def test_wp_c1_warns_missing_pdf(caplog):
     site = WPFixtureSite()
@@ -256,7 +334,9 @@ def test_wp_c2_image_sibling_of_video_iframe_still_captured(caplog):
 
     assert not any("not captured" in r.message for r in caplog.records)
     lecture = course.chapters[0]["sequentials"][0]["verticals"][0]
-    html_components = [c["content"] for c in lecture["components"] if c["type"] == "html"]
+    html_components = [
+        c["content"] for c in lecture["components"] if c["type"] == "html"
+    ]
     assert any("diagram.png" in html for html in html_components)
     videos = [c for c in lecture["components"] if c["type"] == "video"]
     assert len(videos) == 1
@@ -294,7 +374,8 @@ def test_wp_c2_no_false_positive_on_image_only_page(caplog):
         ),
     )
     site.add_lecture_page(
-        LECTURE_URL, '<p><img src="https://ocw.tudelft.nl/wp-content/uploads/pic.png"/></p>'
+        LECTURE_URL,
+        '<p><img src="https://ocw.tudelft.nl/wp-content/uploads/pic.png"/></p>',
     )
     course = site.course()
     with caplog.at_level(logging.WARNING, logger="ocw.wp_parser"):
