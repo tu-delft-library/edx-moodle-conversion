@@ -1,5 +1,6 @@
 """Parse WordPress course sites into the normalised data consumed by `MBZBuilder`."""
 
+import itertools
 import logging
 
 import requests
@@ -25,6 +26,11 @@ class WPCourse(BaseParser):
         "alignleft": "float:left;margin:0 1em 1em 0;",
         "alignright": "float:right;margin:0 0 1em 1em;",
         "aligncenter": "display:block;margin:0 auto 1em;",
+    }
+    _VC_ALIGN_STYLES = {
+        "vc_align_left": "float:left;margin:0 1em 1em 0;",
+        "vc_align_right": "float:right;margin:0 0 1em 1em;",
+        "vc_align_center": "display:block;margin:0 auto 1em;",
     }
 
     def __init__(self, root: str, fetcher: AssetFetcher | None = None) -> None:
@@ -83,13 +89,21 @@ class WPCourse(BaseParser):
     def _apply_wp_image_alignment(self, article) -> None:
         """Translate WordPress `alignleft`/`alignright`/`aligncenter` image classes into inline
         float styles, since Moodle's theme has no CSS for WordPress's align classes.
+
+        WPBakery's `vc_single_image` shortcode puts the alignment class (`vc_align_left`/
+        `vc_align_right`/`vc_align_center`) on an ancestor wrapper div instead of the `<img>`
+        itself, so that case is checked separately.
         """
         for img in article.select("img"):
             classes = img.get("class") or []
             align = next((c for c in classes if c in self._ALIGN_STYLES), None)
-            if align is None:
+            if align is not None:
+                img["style"] = self._ALIGN_STYLES[align] + img.get("style", "")
                 continue
-            img["style"] = self._ALIGN_STYLES[align] + img.get("style", "")
+            wrapper = img.find_parent(class_=lambda c: c in self._VC_ALIGN_STYLES)
+            if wrapper is not None:
+                wrapper_align = next(c for c in wrapper["class"] if c in self._VC_ALIGN_STYLES)
+                img["style"] = self._VC_ALIGN_STYLES[wrapper_align] + img.get("style", "")
 
     def _replace_separators(self, article) -> None:
         """Replace WPBakery `vc_separator` dividers with `<hr>`; the original markup depends on
@@ -103,6 +117,83 @@ class WPCourse(BaseParser):
         self._convert_expandable_widgets(article)
         self._apply_wp_image_alignment(article)
         self._replace_separators(article)
+        self._fix_download_tool_widgets(article)
+
+    _TUD_HOST_CHECK = 'TUD_location.indexOf("ocw.tudelft.nl")!=-1'
+    _TUD_HOST_CHECK_FORCED = "true"
+
+    def _fix_download_tool_widgets(self, article) -> None:
+        """Patch WordPress's `#download_tool` widget so it actually works when served from Moodle.
+
+        The widget's own bootstrap script branches on whether `location.href` contains
+        "ocw.tudelft.nl": the true branch loads jQuery itself before using it; the false branch
+        (taken on Moodle) assumes jQuery is already global, which is only true on WP. Forcing the
+        host check permanently true makes the widget always take the self-contained branch.
+        """
+        for widget in article.select("#download_tool"):
+            for script in widget.select("script"):
+                if script.string and self._TUD_HOST_CHECK in script.string:
+                    script.string = script.string.replace(
+                        self._TUD_HOST_CHECK, self._TUD_HOST_CHECK_FORCED
+                    )
+
+    def _excluded_imgs(self, article) -> set[str]:
+        """Return image srcs the parser already intentionally drops on purpose, so the
+        content-loss audit doesn't flag them as false positives.
+
+        Covers the licence footer's CC badge (`section.license`, skipped in
+        `_classify_lecture_child`/`_reading_body_html`).
+        """
+        excluded: set[str] = set()
+        for region in article.select("section.license"):
+            excluded.update(img["src"] for img in region.select("img") if img.get("src"))
+        return excluded
+
+    def _audit_content_loss(
+        self,
+        expected_imgs: set[str],
+        expected_iframe_srcs: set[str],
+        expected_separators: int,
+        components: list[dict],
+        found_iframe_srcs: set[str],
+        url: str,
+    ) -> None:
+        """Warn about img/iframe/separator content present on the source page but missing from
+        the built components. Detection only — never changes what gets built.
+
+        Expected sets/counts must be captured before `_clean_article` mutates the article
+        (separator divs are replaced in place, so a post-clean count is always zero).
+
+        `found_iframe_srcs` covers iframes already pulled out into their own video components
+        (the lecture path); iframes left embedded raw inside an `"html"` component (the reading
+        path, which doesn't route through `_lecture_videos` at all) are picked up here instead.
+        """
+        found_imgs: set[str] = set()
+        found_iframe_srcs = set(found_iframe_srcs)
+        found_hrs = 0
+        for comp in components:
+            if comp["type"] != "html":
+                continue
+            frag = BeautifulSoup(comp["content"], "lxml")
+            found_imgs.update(img["src"] for img in frag.select("img") if img.get("src"))
+            found_iframe_srcs.update(el["src"] for el in frag.select("iframe") if el.get("src"))
+            found_hrs += len(frag.select("hr"))
+
+        for src in sorted(expected_imgs - found_imgs):
+            log.warning(
+                "Parsing WP: image '%s' present on page but not captured in any component at %s",
+                src, url,
+            )
+        for src in sorted(expected_iframe_srcs - found_iframe_srcs):
+            log.warning(
+                "Parsing WP: iframe '%s' present on page but not captured in any component at %s",
+                src, url,
+            )
+        if expected_separators != found_hrs:
+            log.warning(
+                "Parsing WP: %d separator(s) present on page but only %d <hr> captured at %s",
+                expected_separators, found_hrs, url,
+            )
 
     def _parse_subject_page(self, url: str, title: str) -> dict:
         """Parse one subject page into a chapter record.
@@ -167,18 +258,35 @@ class WPCourse(BaseParser):
         """
         soup = self._fetch_page(url)
         article = soup.select_one("article")
+        expected_imgs = (
+            {img["src"] for img in article.select("img") if img.get("src")} - self._excluded_imgs(article)
+            if article else set()
+        )
+        expected_iframe_srcs = (
+            {el["src"] for el in article.select("iframe") if el.get("src")} if article else set()
+        )
+        expected_separators = len(article.select("div.vc_separator")) if article else 0
         if article is not None:
             self._clean_article(article)
+        total_videos = (
+            len([el for el in article.select("iframe") if self._is_playable_video(el)])
+            if article else 0
+        )
+        multiple = total_videos > 1
+        video_index = itertools.count(1)
         components = []
         pdf_url = None
+        found_iframe_srcs: set[str] = set()
         for child in (article.find_all(recursive=False) if article else []):
             for kind, value in self._classify_lecture_child(
-                child, url, title, chapter_name, sequential_name
+                child, url, title, chapter_name, sequential_name, multiple, video_index
             ):
                 if kind == "component":
                     components.append(value)
                 elif kind == "pdf_url":
                     pdf_url = value
+                elif kind == "video_src":
+                    found_iframe_srcs.add(value)
 
         if pdf_url:
             name = self._resolve_and_fetch(pdf_url)
@@ -186,16 +294,35 @@ class WPCourse(BaseParser):
                 components.append(
                     {"type": "html", "content": f'<p><a href="/static/{name}">{title}</a></p>'}
                 )
+        self._audit_content_loss(
+            expected_imgs, expected_iframe_srcs, expected_separators,
+            components, found_iframe_srcs, url,
+        )
         return {"display_name": title, "components": components}
 
     def _classify_lecture_child(
-        self, child, url: str, title: str, chapter_name: str, sequential_name: str
+        self,
+        child,
+        url: str,
+        title: str,
+        chapter_name: str,
+        sequential_name: str,
+        multiple: bool,
+        video_index,
     ) -> list[tuple[str, object]]:
         """Classify one top-level lecture element into zero or more (kind, value) results.
 
-        `kind` is `"component"` (a page or video component) or `"pdf_url"`. An element carrying
-        one or more playable iframes fully consumes the element instead of falling through to the
-        PDF/text checks below, matching the source page treating that container as video-only.
+        `kind` is `"component"` (a page or video component), `"pdf_url"`, or `"video_src"`. An
+        element carrying one or more playable iframes and no other real content (WPBakery's
+        `wpb_video_widget` wrapper) is consumed whole as video. An element that mixes iframe(s)
+        with other real content -- WPBakery nests video and text/image columns several layout-div
+        levels deep inside one shared row -- is recursed into instead, so its non-video siblings
+        aren't swallowed along with the video.
+
+        `multiple` and `video_index` are shared across the whole page (computed once in
+        `_parse_lecture`) rather than reset per element, so pages that lay out each video in its
+        own separate top-level row (instead of one shared wrapper) still get a unique routing key
+        per video instead of every video colliding on the same unsuffixed key.
         """
         if child.name == "h1":
             return []
@@ -204,8 +331,24 @@ class WPCourse(BaseParser):
 
         iframes = [child] if child.name == "iframe" else child.select("iframe")
         if iframes:
-            videos = self._lecture_videos(iframes, url, title, chapter_name, sequential_name)
-            return [("component", v) for v in videos]
+            if self._is_video_only(child, iframes):
+                videos = self._lecture_videos(
+                    iframes, url, title, chapter_name, sequential_name, multiple, video_index
+                )
+                results = []
+                for component, src in videos:
+                    results.append(("component", component))
+                    results.append(("video_src", src))
+                return results
+            results = []
+            for grandchild in child.find_all(recursive=False):
+                results.extend(
+                    self._classify_lecture_child(
+                        grandchild, url, title, chapter_name, sequential_name,
+                        multiple, video_index,
+                    )
+                )
+            return results
 
         dl_url = self._find_download_link(child)
         if dl_url is not None:
@@ -215,37 +358,60 @@ class WPCourse(BaseParser):
             return [("component", {"type": "html", "content": str(child)})]
         return []
 
-    def _lecture_videos(
-        self, iframes: list, url: str, title: str, chapter_name: str, sequential_name: str
-    ) -> list[dict]:
-        """Build one video component per playable (YouTube/Collegerama) iframe in `iframes`.
+    @staticmethod
+    def _is_video_only(child, iframes: list) -> bool:
+        """True when `child` (already known to contain `iframes`) has no other real content --
+        text, image, or `<hr>` -- outside of those iframes, so it's safe to consume whole as
+        video instead of recursing into its children individually."""
+        if child.name == "iframe":
+            return True
+        if child.select("img") or child.select("hr"):
+            return False
+        return not child.get_text(strip=True)
 
-        Each video gets an index suffix on its routing key only when the page embeds more than
-        one, so single-video pages keep their existing key.
+    @staticmethod
+    def _is_playable_video(iframe) -> bool:
+        """True when `iframe` embeds a YouTube or Collegerama video we route through vidrouter."""
+        src = iframe.get("src") or ""
+        return "youtube.com" in src or "collegerama.tudelft.nl" in src
+
+    def _lecture_videos(
+        self,
+        iframes: list,
+        url: str,
+        title: str,
+        chapter_name: str,
+        sequential_name: str,
+        multiple: bool,
+        video_index,
+    ) -> list[tuple[dict, str]]:
+        """Build one (video component, source iframe src) pair per playable (YouTube/Collegerama)
+        iframe in `iframes`. `src` is returned only for content-loss auditing.
+
+        `video_index` is a shared, page-wide counter (see `_classify_lecture_child`); each video
+        gets an index suffix on its routing key only when `multiple` (the whole page embeds more
+        than one), so single-video pages keep their existing key.
         """
         videos = [el for el in iframes if el.get("src")]
-        multiple = len(videos) > 1
-        components = []
-        for idx, iframe in enumerate(videos, start=1):
+        results = []
+        for iframe in videos:
             src = iframe["src"]
-            index = idx if multiple else None
+            index = next(video_index) if multiple else None
             if "youtube.com" in src:
                 youtubeid = src.rstrip("/").split("/")[-1].split("?")[0]
-                components.append(
-                    self._video_component(
-                        url, title, chapter_name, sequential_name,
-                        youtubeid=youtubeid, index=index,
-                    )
+                component = self._video_component(
+                    url, title, chapter_name, sequential_name,
+                    youtubeid=youtubeid, index=index,
                 )
+                results.append((component, src))
             elif "collegerama.tudelft.nl" in src:
                 collegeramaid = src.rstrip("/").split("/")[-1]
-                components.append(
-                    self._video_component(
-                        url, title, chapter_name, sequential_name,
-                        collegeramaid=collegeramaid, index=index,
-                    )
+                component = self._video_component(
+                    url, title, chapter_name, sequential_name,
+                    collegeramaid=collegeramaid, index=index,
                 )
-        return components
+                results.append((component, src))
+        return results
 
     def _video_component(
         self,
@@ -295,16 +461,21 @@ class WPCourse(BaseParser):
             else:
                 self.readings.append({"title": title, "name": name})
 
-        text_html = self._reading_body_html(soup)
+        text_html = self._reading_body_html(soup, url)
         if not text_html:
             return None
         return {"display_name": title, "components": [{"type": "html", "content": text_html}]}
 
-    def _reading_body_html(self, soup: BeautifulSoup) -> str:
+    def _reading_body_html(self, soup: BeautifulSoup, url: str) -> str:
         """Extract reading-body HTML without the title, PDF download control, or licence footer."""
         article = soup.select_one("article")
         if article is None:
             return ""
+        expected_imgs = {
+            img["src"] for img in article.select("img") if img.get("src")
+        } - self._excluded_imgs(article)
+        expected_iframe_srcs = {el["src"] for el in article.select("iframe") if el.get("src")}
+        expected_separators = len(article.select("div.vc_separator"))
         self._clean_article(article)
         parts = []
         for child in article.find_all(recursive=False):
@@ -316,7 +487,12 @@ class WPCourse(BaseParser):
                 continue
             if child.get_text(strip=True) or child.name in ("img", "hr") or child.find(["img", "hr"]):
                 parts.append(str(child))
-        return "".join(parts)
+        html = "".join(parts)
+        self._audit_content_loss(
+            expected_imgs, expected_iframe_srcs, expected_separators,
+            [{"type": "html", "content": html}], set(), url,
+        )
+        return html
 
     def _resolve_and_fetch(self, pdf_url: str) -> str | None:
         """Return the local static-file name for a PDF, fetching it when configured.

@@ -44,6 +44,8 @@ _DFRAME_RE = re.compile(
 )
 _DOWNLOADID_RE = re.compile(r'data-downloadid="([^"]*)"')
 
+_XML_ILLEGAL_CHARS_RE = re.compile(r"[\x00-\x08\x0B\x0C\x0E-\x1F]")
+
 
 def safe_vidkey(raw: str) -> str:
     """Convert a source video identifier into a key safe for vidrouter placeholders and lookups."""
@@ -53,10 +55,13 @@ def safe_vidkey(raw: str) -> str:
 def esc(s: str | None) -> str:
     """Escape a value for XML text or attribute insertion.
 
-    `None` becomes an empty string.
+    `None` becomes an empty string. Strips control characters illegal in XML 1.0 (everything
+    below `\\x20` except tab/newline/CR) that source content sometimes contains -- e.g. a
+    mis-decoded "fi" ligature leaving a literal `\\x0c` form-feed -- since entity-escaping only
+    covers `&<>"` and can't make an otherwise-illegal byte well-formed.
     """
     return (
-        (s or "")
+        _XML_ILLEGAL_CHARS_RE.sub("", s or "")
         .replace("&", "&amp;")
         .replace("<", "&lt;")
         .replace(">", "&gt;")
