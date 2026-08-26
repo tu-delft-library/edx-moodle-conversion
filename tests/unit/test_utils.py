@@ -16,6 +16,15 @@ def test_esc_returns_empty_string_for_none():
     assert esc(None) == ""
 
 
+def test_esc_strips_illegal_xml_control_chars():
+    assert esc("veri\x0ccation") == "verication"
+    assert esc("a\x00b\x1fc") == "abc"
+
+
+def test_esc_keeps_legal_whitespace():
+    assert esc("a\tb\nc\rd") == "a\tb\nc\rd"
+
+
 def test_rewrite_static_urls_replaces_static_prefix():
     assert (
         rewrite_static_urls('<img src="/static/x.png"/>')
