@@ -1,5 +1,6 @@
 """Parse WordPress course sites into the normalised data consumed by `MBZBuilder`."""
 
+import itertools
 import logging
 
 import requests
@@ -267,12 +268,18 @@ class WPCourse(BaseParser):
         expected_separators = len(article.select("div.vc_separator")) if article else 0
         if article is not None:
             self._clean_article(article)
+        total_videos = (
+            len([el for el in article.select("iframe") if self._is_playable_video(el)])
+            if article else 0
+        )
+        multiple = total_videos > 1
+        video_index = itertools.count(1)
         components = []
         pdf_url = None
         found_iframe_srcs: set[str] = set()
         for child in (article.find_all(recursive=False) if article else []):
             for kind, value in self._classify_lecture_child(
-                child, url, title, chapter_name, sequential_name
+                child, url, title, chapter_name, sequential_name, multiple, video_index
             ):
                 if kind == "component":
                     components.append(value)
@@ -294,7 +301,14 @@ class WPCourse(BaseParser):
         return {"display_name": title, "components": components}
 
     def _classify_lecture_child(
-        self, child, url: str, title: str, chapter_name: str, sequential_name: str
+        self,
+        child,
+        url: str,
+        title: str,
+        chapter_name: str,
+        sequential_name: str,
+        multiple: bool,
+        video_index,
     ) -> list[tuple[str, object]]:
         """Classify one top-level lecture element into zero or more (kind, value) results.
 
@@ -304,6 +318,11 @@ class WPCourse(BaseParser):
         with other real content -- WPBakery nests video and text/image columns several layout-div
         levels deep inside one shared row -- is recursed into instead, so its non-video siblings
         aren't swallowed along with the video.
+
+        `multiple` and `video_index` are shared across the whole page (computed once in
+        `_parse_lecture`) rather than reset per element, so pages that lay out each video in its
+        own separate top-level row (instead of one shared wrapper) still get a unique routing key
+        per video instead of every video colliding on the same unsuffixed key.
         """
         if child.name == "h1":
             return []
@@ -313,7 +332,9 @@ class WPCourse(BaseParser):
         iframes = [child] if child.name == "iframe" else child.select("iframe")
         if iframes:
             if self._is_video_only(child, iframes):
-                videos = self._lecture_videos(iframes, url, title, chapter_name, sequential_name)
+                videos = self._lecture_videos(
+                    iframes, url, title, chapter_name, sequential_name, multiple, video_index
+                )
                 results = []
                 for component, src in videos:
                     results.append(("component", component))
@@ -323,7 +344,8 @@ class WPCourse(BaseParser):
             for grandchild in child.find_all(recursive=False):
                 results.extend(
                     self._classify_lecture_child(
-                        grandchild, url, title, chapter_name, sequential_name
+                        grandchild, url, title, chapter_name, sequential_name,
+                        multiple, video_index,
                     )
                 )
             return results
@@ -347,21 +369,34 @@ class WPCourse(BaseParser):
             return False
         return not child.get_text(strip=True)
 
+    @staticmethod
+    def _is_playable_video(iframe) -> bool:
+        """True when `iframe` embeds a YouTube or Collegerama video we route through vidrouter."""
+        src = iframe.get("src") or ""
+        return "youtube.com" in src or "collegerama.tudelft.nl" in src
+
     def _lecture_videos(
-        self, iframes: list, url: str, title: str, chapter_name: str, sequential_name: str
+        self,
+        iframes: list,
+        url: str,
+        title: str,
+        chapter_name: str,
+        sequential_name: str,
+        multiple: bool,
+        video_index,
     ) -> list[tuple[dict, str]]:
         """Build one (video component, source iframe src) pair per playable (YouTube/Collegerama)
         iframe in `iframes`. `src` is returned only for content-loss auditing.
 
-        Each video gets an index suffix on its routing key only when the page embeds more than
-        one, so single-video pages keep their existing key.
+        `video_index` is a shared, page-wide counter (see `_classify_lecture_child`); each video
+        gets an index suffix on its routing key only when `multiple` (the whole page embeds more
+        than one), so single-video pages keep their existing key.
         """
         videos = [el for el in iframes if el.get("src")]
-        multiple = len(videos) > 1
         results = []
-        for idx, iframe in enumerate(videos, start=1):
+        for iframe in videos:
             src = iframe["src"]
-            index = idx if multiple else None
+            index = next(video_index) if multiple else None
             if "youtube.com" in src:
                 youtubeid = src.rstrip("/").split("/")[-1].split("?")[0]
                 component = self._video_component(
