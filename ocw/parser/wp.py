@@ -116,18 +116,35 @@ class WPCourse(BaseParser):
         self._convert_expandable_widgets(article)
         self._apply_wp_image_alignment(article)
         self._replace_separators(article)
+        self._fix_download_tool_widgets(article)
+
+    _TUD_HOST_CHECK = 'TUD_location.indexOf("ocw.tudelft.nl")!=-1'
+    _TUD_HOST_CHECK_FORCED = "true"
+
+    def _fix_download_tool_widgets(self, article) -> None:
+        """Patch WordPress's `#download_tool` widget so it actually works when served from Moodle.
+
+        The widget's own bootstrap script branches on whether `location.href` contains
+        "ocw.tudelft.nl": the true branch loads jQuery itself before using it; the false branch
+        (taken on Moodle) assumes jQuery is already global, which is only true on WP. Forcing the
+        host check permanently true makes the widget always take the self-contained branch.
+        """
+        for widget in article.select("#download_tool"):
+            for script in widget.select("script"):
+                if script.string and self._TUD_HOST_CHECK in script.string:
+                    script.string = script.string.replace(
+                        self._TUD_HOST_CHECK, self._TUD_HOST_CHECK_FORCED
+                    )
 
     def _excluded_imgs(self, article) -> set[str]:
         """Return image srcs the parser already intentionally drops on purpose, so the
         content-loss audit doesn't flag them as false positives.
 
         Covers the licence footer's CC badge (`section.license`, skipped in
-        `_classify_lecture_child`/`_reading_body_html`) and the decorative video/subtitle
-        quality-picker icons in WordPress's `#download_tool` widget (JS-driven UI chrome with no
-        functional equivalent in Moodle, not real page content).
+        `_classify_lecture_child`/`_reading_body_html`).
         """
         excluded: set[str] = set()
-        for region in article.select("section.license, #download_tool"):
+        for region in article.select("section.license"):
             excluded.update(img["src"] for img in region.select("img") if img.get("src"))
         return excluded
 
