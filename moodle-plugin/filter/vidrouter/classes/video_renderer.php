@@ -37,8 +37,10 @@ class video_renderer
      */
     public static function render(\stdClass $record): string
     {
-        $primarysource = get_config('filter_vidrouter', 'primarysource') ?: 'youtube';
-        $fallbacksource = get_config('filter_vidrouter', 'fallbacksource') ?: 'collegeramaid';
+        $primarysource = get_config('filter_vidrouter', 'primarysource');
+        $primarysource = $primarysource === false ? 'youtube' : $primarysource;
+        $fallbacksource = get_config('filter_vidrouter', 'fallbacksource');
+        $fallbacksource = $fallbacksource === false ? 'collegeramaid' : $fallbacksource;
         $label = s($record->title ?: $record->urlname);
 
         switch ($primarysource) {
@@ -75,8 +77,10 @@ class video_renderer
             return self::render($record);
         }
 
-        $primarysource = get_config('filter_vidrouter', 'primarysource') ?: 'youtube';
-        $fallbacksource = get_config('filter_vidrouter', 'fallbacksource') ?: 'collegeramaid';
+        $primarysource = get_config('filter_vidrouter', 'primarysource');
+        $primarysource = $primarysource === false ? 'youtube' : $primarysource;
+        $fallbacksource = get_config('filter_vidrouter', 'fallbacksource');
+        $fallbacksource = $fallbacksource === false ? 'collegeramaid' : $fallbacksource;
         $label = s($record->title ?: $record->urlname);
 
         switch ($primarysource) {
