@@ -31,12 +31,6 @@ defined('MOODLE_INTERNAL') || die();
 
 class restore_local_vidrouter_plugin extends restore_local_plugin
 {
-    public function __construct($plugintype, $pluginname, $step)
-    {
-        parent::__construct($plugintype, $pluginname, $step);
-        error_log('[vidrouter] restore_local_vidrouter_plugin constructed, connectionpoint pending');
-    }
-
     /**
      * Define the course plugin structure
      *
@@ -52,11 +46,9 @@ class restore_local_vidrouter_plugin extends restore_local_plugin
     {
         $paths = array();
 
-        $path = $this->get_pathfor('/video');
-        error_log('[vidrouter] define_course_plugin_structure registering path: ' . $path);
         $paths[] = new restore_path_element(
             'plugin_local_vidrouter_video',
-            $path
+            $this->get_pathfor('/video')
         );
 
         return $paths;
@@ -80,7 +72,6 @@ class restore_local_vidrouter_plugin extends restore_local_plugin
         global $DB;
 
         $data = (object)$data;
-        error_log('[vidrouter] process_plugin_local_vidrouter_video fired, vidkey=' . ($data->vidkey ?? '(missing)'));
 
         if (empty($data->vidkey)) {
             return;
@@ -91,16 +82,7 @@ class restore_local_vidrouter_plugin extends restore_local_plugin
             return;
         }
 
-        $record = new stdClass();
-        $record->vidkey = $data->vidkey;
-        $record->title = $data->title ?? null;
-        $record->youtubeid = $data->youtubeid ?? null;
-        $record->edxvideoid = $data->edxvideoid ?? null;
-        $record->tuddownloadid = $data->tuddownloadid ?? null;
-        $record->collegeramaid = $data->collegeramaid ?? null;
-        $record->srtbaseid = $data->srtbaseid ?? null;
-        $record->urlname = $data->urlname ?? null;
-        $record->videopagepath = $data->videopagepath ?? null;
+        $record = \filter_vidrouter\map_record::build($data);
         $record->courseid = $this->get_task()->get_courseid();
         $record->timecreated = time();
         $record->timemodified = $record->timecreated;
