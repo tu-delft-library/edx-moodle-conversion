@@ -340,19 +340,18 @@ def test_lecture_text_captured_in_order_around_video():
     course = _course({})
     course._fetch_page = lambda url: BeautifulSoup(LECTURE_WITH_SURROUNDING_TEXT, "lxml")
     result = course._parse_lecture("https://x/lec1/", "Lecture 1", "Ch 1", "Seq 1")
-    # nav list (kept), intro text, video, follow-up text, in document order
-    assert [c["type"] for c in result["components"]] == ["html", "html", "video", "html"]
-    assert "Course subject(s)" in result["components"][0]["content"]
-    assert "Intro paragraph before the video." in result["components"][1]["content"]
-    assert "Follow-up paragraph after the video." in result["components"][3]["content"]
+    # nav list dropped; intro text, video, follow-up text, in document order
+    assert [c["type"] for c in result["components"]] == ["html", "video", "html"]
+    assert "Intro paragraph before the video." in result["components"][0]["content"]
+    assert "Follow-up paragraph after the video." in result["components"][2]["content"]
 
 
-def test_lecture_nav_list_kept_license_excluded_from_text():
+def test_lecture_nav_list_and_license_excluded_from_text():
     course = _course({})
     course._fetch_page = lambda url: BeautifulSoup(LECTURE_WITH_SURROUNDING_TEXT, "lxml")
     result = course._parse_lecture("https://x/lec1/", "Lecture 1", "Ch 1", "Seq 1")
     combined = " ".join(c.get("content", "") for c in result["components"])
-    assert "Course subject(s)" in combined
+    assert "Course subject(s)" not in combined
     assert "CC license text" not in combined
 
 
@@ -390,7 +389,7 @@ def test_reading_with_pdf_and_text_returns_page_with_body_and_download_box():
     assert result is not None
     body = result["components"][0]["content"]
     assert "Some descriptive text about the reading." in body
-    assert "Course subject(s)" in body
+    assert "Course subject(s)" not in body
     assert "CC license text" not in body
     assert any(
         c["type"] == "html" and "/static/Chapter.pdf" in c["content"]
