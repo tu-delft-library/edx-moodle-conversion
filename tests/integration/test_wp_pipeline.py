@@ -89,14 +89,95 @@ def test_lecture_video_becomes_vidrouter_block(tmp_path):
     assert page_xml
 
 
-def test_reading_pdf_becomes_resource_with_file_entry(tmp_path):
+def test_reading_pdf_becomes_page_with_download_box_and_file_entry(tmp_path):
     out = _build(tmp_path)
     with tarfile.open(out) as tar:
         names = set(tar.getnames())
-        assert any(re.match(r"activities/resource_\d+/", n) for n in names)
+        page_xml = next(
+            n
+            for n in names
+            if re.match(r"activities/page_\d+/page\.xml", n)
+            and "PLUGINFILE@@/Chapter.pdf" in tar.extractfile(n).read().decode()
+        )
+        assert page_xml
         files_xml = ET.parse(tar.extractfile("files.xml")).getroot()
         file_entry = next(
             f for f in files_xml.findall("file") if f.findtext("filename") == "Chapter.pdf"
         )
         sha1 = file_entry.findtext("contenthash")
         assert f"files/{sha1[:2]}/{sha1}" in names
+
+
+def test_reading_linked_from_two_subjects_lands_in_standalone_readings_section(tmp_path):
+    site = WPFixtureSite()
+    site.add_home(
+        [
+            (f"{site.root}subjects/1-intro/", "1. Intro"),
+            (f"{site.root}subjects/2-more/", "2. More"),
+        ]
+    )
+    for slug, name in [("1-intro", "1.1 Basics"), ("2-more", "2.1 Extra")]:
+        site.add_subject_page(
+            f"{site.root}subjects/{slug}/",
+            f"""
+            <ul class="activities">
+            <li>
+            <h4 class="expand expand--showing"><span class="icon fa-minus course-title">{name}</span></h4>
+            <ul>
+            <li><a class="icon icon--reading" href="https://ocw.tudelft.nl/course-readings/read1/">Reading 1</a></li>
+            </ul>
+            </li>
+            </ul>
+            """,
+        )
+    site.add_reading_page(
+        "https://ocw.tudelft.nl/course-readings/read1/",
+        "<p>Some descriptive reading text.</p>"
+        '<div class="vc_download"><a class="icon fa-file" '
+        'href="https://ocw.tudelft.nl/wp-content/uploads/Chapter.pdf">'
+        "<strong>Chapter</strong></a></div>",
+        pdf_name="Chapter.pdf",
+    )
+    course = site.course()
+    course.parse()
+    out = tmp_path / "wp_course.mbz"
+    MBZBuilder(course).build(out)
+
+    with tarfile.open(out) as tar:
+        names = set(tar.getnames())
+        page_xmls = {
+            n: tar.extractfile(n).read().decode()
+            for n in names
+            if re.match(r"activities/page_\d+/page\.xml", n)
+        }
+        canonical = [
+            (n, content)
+            for n, content in page_xmls.items()
+            if "Some descriptive reading text" in content
+        ]
+        assert len(canonical) == 1
+        canonical_name, canonical_content = canonical[0]
+        canonical_id = re.search(r"page_(\d+)/", canonical_name).group(1)
+        assert "PLUGINFILE@@/Chapter.pdf" in canonical_content
+
+        link_stubs = [
+            content
+            for content in page_xmls.values()
+            if f"$@PAGEVIEWBYID*{canonical_id}@$" in content
+        ]
+        assert len(link_stubs) == 2  # both subjects link, including the first occurrence
+
+        section_xmls = [
+            tar.extractfile(n).read().decode()
+            for n in names
+            if re.match(r"sections/section_\d+/section\.xml", n)
+        ]
+        readings_sections = [s for s in section_xmls if "<name>Readings</name>" in s]
+        assert len(readings_sections) == 1
+        assert canonical_id in readings_sections[0]
+
+        files_xml = ET.parse(tar.extractfile("files.xml")).getroot()
+        chapter_files = [
+            f for f in files_xml.findall("file") if f.findtext("filename") == "Chapter.pdf"
+        ]
+        assert len(chapter_files) == 1  # fetched/stored once, not once per occurrence

@@ -19,7 +19,11 @@ from ocw.converter.html import (
     strip_templated_iframes,
     style_figcaption,
 )
-from ocw.converter.strategies import FlatSectionStrategy, NestedSectionStrategy
+from ocw.converter.strategies import (
+    FlatSectionStrategy,
+    NestedSectionStrategy,
+    SectionStrategy,
+)
 from ocw.parser.base import BaseParser
 from ocw.utils import (
     _Counter,
@@ -95,18 +99,30 @@ class MBZBuilder:
         # at most one synthetic section now occupies the top slot: either
         # Overview (with Readings nested inside it), or standalone Readings
         # as the no-Overview fallback, or Overview alone
-        section_offset = 1 if (overview is not None or c.readings) else 0
+        section_offset = (
+            1 if (overview is not None or c.readings or c.reading_pages) else 0
+        )
 
         strategy = (
             FlatSectionStrategy(c, ids, section_offset)
             if self.sequential_sections
             else NestedSectionStrategy(c, ids, section_offset)
         )
+
+        # Built before strategy.build() walks the source chapters: every reading occurrence
+        # there is now an in-course link, resolved via strategy._reading_page_ids, which this
+        # call is what populates.
+        wp_readings = self._build_wp_readings_section(c, ids, strategy)
+
         all_sections, sub_mods, pages = strategy.build()
         strategy_section_count = len(all_sections)
         resources: list[dict] = []
 
-        if overview is not None:
+        if wp_readings is not None:
+            readings_section, readings_pages = wp_readings
+            all_sections.insert(0, readings_section)
+            pages = readings_pages + pages
+        elif overview is not None:
             overview_section, syllabus_page = overview
             all_sections.insert(0, overview_section)
             pages.insert(0, syllabus_page)
@@ -264,6 +280,35 @@ class MBZBuilder:
         }
         overview_section["modules"].append(sub_mod_id)
         return subsection, resources
+
+    def _build_wp_readings_section(
+        self, c: BaseParser, ids: _Counter, strategy: SectionStrategy
+    ) -> tuple[dict, list[dict]] | None:
+        """Build a standalone Readings section holding one real page per WP reading page.
+
+        Reuses `strategy._build_page` (rather than duplicating its HTML-processing pipeline) so
+        each reading page's mod_id is registered in `strategy._reading_page_ids` as a side
+        effect -- this must run before `strategy.build()` walks the source chapters, so every
+        subject's in-course link to a reading resolves to a real, already-built target. Returns
+        `None` when the parsed course has no WP reading pages.
+        """
+        if not c.reading_pages:
+            return None
+        sec_id = ids.next()
+        pages = [
+            page
+            for vert in c.reading_pages
+            if (page := strategy._build_page(vert, sec_id, 0)) is not None
+        ]
+        if not pages:
+            return None
+        readings_section = {
+            "id": sec_id,
+            "name": "Readings",
+            "number": 0,
+            "modules": [p["id"] for p in pages],
+        }
+        return readings_section, pages
 
     def _build_file_entries(
         self, c: BaseParser, pages: list[dict], ids: _Counter

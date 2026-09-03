@@ -1,3 +1,4 @@
+import html
 import logging
 import re
 from abc import ABC, abstractmethod
@@ -30,6 +31,10 @@ class SectionStrategy(ABC):
         self.c = course
         self.ids = ids
         self.section_offset = section_offset
+        # reading URL -> canonical page's mod_id, populated as pages are built so later
+        # "reading_link" stubs (built after their canonical page, per source parse order) can
+        # resolve their target.
+        self._reading_page_ids: dict[str, int] = {}
 
     @abstractmethod
     def build(self) -> tuple[list[dict], list[dict], list[dict]]:
@@ -77,6 +82,16 @@ class SectionStrategy(ABC):
                 parts.append(processed + '<div style="clear:both"></div>')
             elif comp["type"] == "video":
                 parts.append(f"<p>[[vid:{comp['vidkey']}]]</p>")
+            elif comp["type"] == "reading_link":
+                target_id = self._reading_page_ids.get(comp["reading_url"])
+                if target_id is None:
+                    log.warning(
+                        "No canonical page built yet for reading '%s'; dropping link",
+                        comp["reading_url"],
+                    )
+                    continue
+                name = html.escape(vert.get("display_name", ""))
+                parts.append(f'<p><a href="$@PAGEVIEWBYID*{target_id}@$">{name}</a></p>')
             else:
                 log.debug(
                     "Dropping component type '%s' in vertical '%s'",
@@ -86,6 +101,8 @@ class SectionStrategy(ABC):
         if not parts:
             return None
         mod_id, ctx_id = self.ids.next(), self.ids.next()
+        if vert.get("reading_url"):
+            self._reading_page_ids[vert["reading_url"]] = mod_id
         combined = "".join(parts)
         file_refs = re.findall(r'@@PLUGINFILE@@/([^"\'>\s]+)', combined)
         return {
