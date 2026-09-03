@@ -382,3 +382,96 @@ def test_wp_c2_no_false_positive_on_image_only_page(caplog):
         course.parse()
 
     assert not any("not captured" in r.message for r in caplog.records)
+
+
+# WP-C3
+def test_wp_c3_multiple_downloads_in_one_row_all_captured(tmp_path, caplog):
+    """Reproduces the shape found live in `breakwaters-and-closure-dams` (`6-data-collection`):
+    two `vc_download` blocks side by side in one `vc_row`, as WPBakery column siblings rather
+    than at the article's top level. Both must be fetched, keep their own caption/filename
+    (never the lecture title), and stay in source order relative to surrounding text."""
+    site = WPFixtureSite()
+    site.add_static_file("ct530806.pdf", b"%PDF-1.4 fake")
+    site.add_static_file("GumbelWeibull__1_.xls", b"fake xls bytes")
+    site.add_static_file("fontawesome-webfont.woff2", b"fake woff2 bytes")
+    site.add_static_file("fontawesome-webfont.woff", b"fake woff bytes")
+    site.add_home([(SUBJECT_URL, "1. Intro")])
+    site.add_subject_page(
+        SUBJECT_URL,
+        _activities_html(
+            f'<li><a class="icon icon--lecture" href="{LECTURE_URL}">Lecture 1</a></li>'
+        ),
+    )
+    site.add_lecture_page(
+        LECTURE_URL,
+        '<p>before text</p>'
+        '<div class="vc_row wpb_row vc_row-fluid">'
+        '<div class="wpb_column vc_column_container vc_col-sm-6"><div class="vc_column-inner">'
+        '<div class="wpb_wrapper"><div class="vc_download">'
+        '<a class="icon fa-file" target="_blank" '
+        'href="https://ocw.tudelft.nl/wp-content/uploads/ct530806.pdf">'
+        '<strong>Download of the presentation</strong>ct530806.pdf</a>'
+        '</div></div></div></div>'
+        '<div class="wpb_column vc_column_container vc_col-sm-6"><div class="vc_column-inner">'
+        '<div class="wpb_wrapper"><div class="vc_download">'
+        '<a class="icon fa-file" target="_blank" '
+        'href="https://ocw.tudelft.nl/wp-content/uploads/GumbelWeibull__1_.xls">'
+        '<strong>Download of the presentation</strong>GumbelWeibull__1_.xls</a>'
+        '</div></div></div></div>'
+        '</div>'
+        '<p>after text</p>',
+    )
+    course = site.course()
+    with caplog.at_level(logging.WARNING, logger="ocw.wp_parser"):
+        course.parse()
+
+    assert not any("download" in r.message for r in caplog.records)
+
+    lecture = course.chapters[0]["sequentials"][0]["verticals"][0]
+    html_components = [c["content"] for c in lecture["components"] if c["type"] == "html"]
+
+    pdf_html = next(h for h in html_components if "ct530806.pdf" in h)
+    xls_html = next(h for h in html_components if "GumbelWeibull__1_.xls" in h)
+    assert "Download of the presentation" in pdf_html
+    assert "Download of the presentation" in xls_html
+    assert "Lecture 1" not in pdf_html
+    assert "Lecture 1" not in xls_html
+
+    before_i = next(i for i, h in enumerate(html_components) if "before text" in h)
+    pdf_i = html_components.index(pdf_html)
+    xls_i = html_components.index(xls_html)
+    after_i = next(i for i, h in enumerate(html_components) if "after text" in h)
+    assert before_i < pdf_i < xls_i < after_i
+
+    style_components = [h for h in html_components if h.startswith("<style>")]
+    assert len(style_components) == 1
+    assert "fontawesome-webfont.woff2" in style_components[0]
+
+    out = tmp_path / "course.mbz"
+    MBZBuilder(course).build(out)
+    with tarfile.open(out) as tar:
+        files_xml = ET.parse(tar.extractfile("files.xml")).getroot()
+        filenames = [f.findtext("filename") for f in files_xml.findall("file")]
+    assert filenames.count("ct530806.pdf") == 1
+    assert filenames.count("GumbelWeibull__1_.xls") == 1
+    assert filenames.count("fontawesome-webfont.woff2") == 1
+    assert filenames.count("fontawesome-webfont.woff") == 1
+
+
+# WP-C3 (negative case)
+def test_wp_c3_no_download_css_on_page_without_downloads():
+    site = WPFixtureSite()
+    site.add_home([(SUBJECT_URL, "1. Intro")])
+    site.add_subject_page(
+        SUBJECT_URL,
+        _activities_html(
+            f'<li><a class="icon icon--lecture" href="{LECTURE_URL}">Lecture 1</a></li>'
+        ),
+    )
+    site.add_lecture_page(LECTURE_URL, "<p>content</p>")
+    course = site.course()
+    course.parse()
+
+    lecture = course.chapters[0]["sequentials"][0]["verticals"][0]
+    html_components = [c["content"] for c in lecture["components"] if c["type"] == "html"]
+    assert not any(h.startswith("<style>") for h in html_components)
