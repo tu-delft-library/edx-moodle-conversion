@@ -20,7 +20,11 @@ class BaseParser(ABC):
         self.static_files: dict[str, Path] = {}
         self.syllabus_html: str | None = None
         self.syllabus_title: str = "Syllabus"
+        # OLX: bare {title, name} entries, rendered as mod_resource in a standalone Readings
+        # section. WP: real vertical dicts (own body text + download box), rendered as mod_page
+        # in that same section; every course occurrence links to the one canonical page.
         self.readings: list[dict] = []
+        self.reading_pages: list[dict] = []
         self.videos: list[dict] = []
         self.org: str = ""
         self.language: str = ""

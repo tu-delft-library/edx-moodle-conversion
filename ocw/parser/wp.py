@@ -45,6 +45,8 @@ class WPCourse(BaseParser):
         "text-align:center;color:#fff;border-radius:3px;background:#222;padding:0;"
         "position:absolute;top:24px;left:0px;font-size:1rem}"
         ".vc_download>a>strong{display:block;text-decoration:underline}"
+        ".ocw-vc-row{display:flex;flex-wrap:wrap;gap:0 20px}"
+        ".ocw-vc-row>.vc_download{flex:1 1 0;min-width:220px}"
         ".ocw-vc-icon{position:relative}"
         ".ocw-vc-icon:before{font:normal normal normal 24px/1 FontAwesome;text-rendering:auto;"
         "-webkit-font-smoothing:antialiased}"
@@ -59,6 +61,7 @@ class WPCourse(BaseParser):
     def __init__(self, root: str, fetcher: AssetFetcher | None = None) -> None:
         super().__init__(root, fetcher)
         self._session = requests.Session()
+        # URL -> parsed canonical reading vertical (or None), for dedup across subject pages.
         self._reading_pages: dict[str, dict | None] = {}
 
     def parse(self) -> None:
@@ -346,12 +349,21 @@ class WPCourse(BaseParser):
             ):
                 if kind == "component":
                     components.append(value)
-                elif kind == "pdf_url":
-                    name = self._resolve_and_fetch(value["href"])
-                    if name:
+                elif kind == "pdf_url_group":
+                    boxes = []
+                    for block in value:
+                        name = self._resolve_and_fetch(block["href"])
+                        if name:
+                            boxes.append(self._download_link_component(name, block)["content"])
+                            found_downloads += 1
+                    if boxes:
                         self._ensure_download_css(components)
-                        components.append(self._download_link_component(name, value))
-                        found_downloads += 1
+                        content = (
+                            f'<div class="ocw-vc-row">{"".join(boxes)}</div>'
+                            if len(boxes) > 1
+                            else boxes[0]
+                        )
+                        components.append({"type": "html", "content": content})
                 elif kind == "video_src":
                     found_iframe_srcs.add(value)
 
@@ -409,7 +421,9 @@ class WPCourse(BaseParser):
     ) -> list[tuple[str, object]]:
         """Classify one top-level lecture element into zero or more (kind, value) results.
 
-        `kind` is `"component"` (a page or video component), `"pdf_url"`, or `"video_src"`. An
+        `kind` is `"component"` (a page or video component), `"pdf_url_group"` (one or more
+        `vc_download` blocks found together under this element, kept together so sibling
+        downloads from the same WPBakery row render side by side), or `"video_src"`. An
         element carrying one or more playable iframes and no other real content (WPBakery's
         `wpb_video_widget` wrapper) is consumed whole as video. An element that mixes iframe(s)
         with other real content -- WPBakery nests video and text/image columns several layout-div
@@ -460,7 +474,7 @@ class WPCourse(BaseParser):
 
         dl_blocks = self._find_download_link(child)
         if dl_blocks:
-            return [("pdf_url", block) for block in dl_blocks]
+            return [("pdf_url_group", dl_blocks)]
 
         if (
             child.get_text(strip=True)
@@ -567,12 +581,37 @@ class WPCourse(BaseParser):
         }
 
     def _parse_reading(self, url: str, title: str) -> dict | None:
-        """Parse one reading page into an optional PDF resource and an HTML vertical.
+        """Every occurrence of `url` (including the first) returns an in-course link, resolved
+        to a Moodle page ID at build time (see `SectionStrategy._build_page`).
 
-        A resolved PDF is added to `readings`. Returns `None` when no reading body remains after
-        removing source-only elements.
+        `url`'s real page is built at most once, into `self.reading_pages`, for
+        `MBZBuilder._build_wp_readings_section` to place in a standalone Readings section --
+        mirroring the OLX layout instead of leaving the canonical page inline in whichever
+        subject happened to link it first.
+        """
+        if url not in self._reading_pages:
+            result = self._parse_reading_uncached(url, title)
+            self._reading_pages[url] = result
+            if result is not None:
+                self.reading_pages.append(result)
+        if self._reading_pages[url] is None:
+            return None
+        return {
+            "display_name": title,
+            "components": [{"type": "reading_link", "reading_url": url}],
+        }
+
+    def _parse_reading_uncached(self, url: str, title: str) -> dict | None:
+        """Parse one reading page into an HTML vertical with its own styled download box.
+
+        Returns `None` when no reading body and no download resolve.
         """
         soup = self._fetch_page(url)
+        components = []
+        text_html = self._reading_body_html(soup, url)
+        if text_html:
+            components.append({"type": "html", "content": text_html})
+
         dl_blocks = self._find_download_link(soup)
         if dl_blocks:
             name = self._resolve_and_fetch(dl_blocks[0]["href"])
@@ -581,15 +620,12 @@ class WPCourse(BaseParser):
                     "Parsing WP: Missing pdf for Readings entry '%s' at %s", title, url
                 )
             else:
-                self.readings.append({"title": title, "name": name})
+                self._ensure_download_css(components)
+                components.append(self._download_link_component(name, dl_blocks[0]))
 
-        text_html = self._reading_body_html(soup, url)
-        if not text_html:
+        if not components:
             return None
-        return {
-            "display_name": title,
-            "components": [{"type": "html", "content": text_html}],
-        }
+        return {"display_name": title, "components": components, "reading_url": url}
 
     def _reading_body_html(self, soup: BeautifulSoup, url: str) -> str:
         """Extract reading-body HTML without the title, PDF download control, or licence footer."""

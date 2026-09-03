@@ -430,18 +430,20 @@ def test_wp_c3_multiple_downloads_in_one_row_all_captured(tmp_path, caplog):
     lecture = course.chapters[0]["sequentials"][0]["verticals"][0]
     html_components = [c["content"] for c in lecture["components"] if c["type"] == "html"]
 
-    pdf_html = next(h for h in html_components if "ct530806.pdf" in h)
-    xls_html = next(h for h in html_components if "GumbelWeibull__1_.xls" in h)
-    assert "Download of the presentation" in pdf_html
-    assert "Download of the presentation" in xls_html
-    assert "Lecture 1" not in pdf_html
-    assert "Lecture 1" not in xls_html
+ 
+    row_html = next(h for h in html_components if "ct530806.pdf" in h)
+    assert "GumbelWeibull__1_.xls" in row_html
+    assert row_html.startswith('<div class="ocw-vc-row">')
+    assert "Download of the presentation" in row_html
+    assert "Lecture 1" not in row_html
+    pdf_pos = row_html.index("ct530806.pdf")
+    xls_pos = row_html.index("GumbelWeibull__1_.xls")
+    assert pdf_pos < xls_pos  # source order preserved within the row
 
     before_i = next(i for i, h in enumerate(html_components) if "before text" in h)
-    pdf_i = html_components.index(pdf_html)
-    xls_i = html_components.index(xls_html)
+    row_i = html_components.index(row_html)
     after_i = next(i for i, h in enumerate(html_components) if "after text" in h)
-    assert before_i < pdf_i < xls_i < after_i
+    assert before_i < row_i < after_i
 
     style_components = [h for h in html_components if h.startswith("<style>")]
     assert len(style_components) == 1
