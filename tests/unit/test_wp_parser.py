@@ -175,6 +175,12 @@ READING_NO_ATTACHMENT = """
 <article><p>Just inline text, no download link.</p></article>
 """
 
+READING_WITH_DANGLING_WP_LINK = """
+<article>
+<p>See also <a href="https://ocw.tudelft.nl/courses/other-course/subjects/2-more/">this subject</a>.</p>
+</article>
+"""
+
 READING_WITH_ALIGNED_IMAGE_AND_SEPARATOR = """
 <article>
 <div class="vc_row">
@@ -414,6 +420,16 @@ def test_subject_page_without_activities_list_logs_warning_and_returns_empty_seq
         chapter = course._parse_subject_page("https://x/subj1/", "1. Intro")
     assert chapter == {"display_name": "1. Intro", "sequentials": []}
     assert "No activities list found" in caplog.text
+
+
+def test_reading_with_dangling_wp_link_logs_warning(caplog):
+    course = _course({})
+    course._fetch_page = lambda url: BeautifulSoup(READING_WITH_DANGLING_WP_LINK, "lxml")
+    with caplog.at_level("WARNING"):
+        result = course._parse_reading_uncached("https://x/read1/", "Reading 1")
+    assert result is not None
+    assert "still hosted on ocw.tudelft.nl" in caplog.text
+    assert "ocw.tudelft.nl/courses/other-course/subjects/2-more/" in caplog.text
 
 
 def test_unhandled_icon_type_logs_warning_and_is_dropped(caplog):
