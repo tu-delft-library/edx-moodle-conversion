@@ -62,6 +62,7 @@ def test_section_sequence_ids_have_activity_dirs(tmp_path):
                     n.startswith(f"activities/page_{mod_id}/")
                     or n.startswith(f"activities/subsection_{mod_id}/")
                     or n.startswith(f"activities/resource_{mod_id}/")
+                    or n.startswith(f"activities/url_{mod_id}/")
                     for n in names
                 ), f"section sequence references mod {mod_id} but no matching activity dir"
 
@@ -108,7 +109,7 @@ def test_reading_pdf_becomes_page_with_download_box_and_file_entry(tmp_path):
         assert f"files/{sha1[:2]}/{sha1}" in names
 
 
-def test_reading_linked_from_two_subjects_lands_in_standalone_readings_section(tmp_path):
+def test_reading_linked_from_two_subjects_redirects_via_url_activity(tmp_path):
     site = WPFixtureSite()
     site.add_home(
         [
@@ -160,12 +161,18 @@ def test_reading_linked_from_two_subjects_lands_in_standalone_readings_section(t
         canonical_id = re.search(r"page_(\d+)/", canonical_name).group(1)
         assert "PLUGINFILE@@/Chapter.pdf" in canonical_content
 
+        url_xmls = {
+            n: tar.extractfile(n).read().decode()
+            for n in names
+            if re.match(r"activities/url_\d+/url\.xml", n)
+        }
         link_stubs = [
             content
-            for content in page_xmls.values()
+            for content in url_xmls.values()
             if f"$@PAGEVIEWBYID*{canonical_id}@$" in content
         ]
         assert len(link_stubs) == 2  # both subjects link, including the first occurrence
+        assert all("<display>5</display>" in content for content in link_stubs)
 
         section_xmls = [
             tar.extractfile(n).read().decode()

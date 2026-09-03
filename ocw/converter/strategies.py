@@ -1,4 +1,3 @@
-import html
 import logging
 import re
 from abc import ABC, abstractmethod
@@ -71,10 +70,16 @@ class SectionStrategy(ABC):
 
         HTML components are transformed and video components become routing tokens. Allocates the
         page module and context IDs when the vertical contains supported content, otherwise
-        returns `None`.
+        returns `None`. A vertical whose only component is a `reading_link` is built as a
+        redirecting URL activity instead (see `_build_reading_url`).
         """
+        components = vert["components"]
+        if len(components) == 1 and components[0]["type"] == "reading_link":
+            return self._build_reading_url(
+                vert, components[0]["reading_url"], sec_id, sec_num
+            )
         parts = []
-        for comp in vert["components"]:
+        for comp in components:
             if comp["type"] == "html":
                 processed = self._process_html(
                     comp["content"], context=vert.get("display_name", "")
@@ -82,16 +87,6 @@ class SectionStrategy(ABC):
                 parts.append(processed + '<div style="clear:both"></div>')
             elif comp["type"] == "video":
                 parts.append(f"<p>[[vid:{comp['vidkey']}]]</p>")
-            elif comp["type"] == "reading_link":
-                target_id = self._reading_page_ids.get(comp["reading_url"])
-                if target_id is None:
-                    log.warning(
-                        "No canonical page built yet for reading '%s'; dropping link",
-                        comp["reading_url"],
-                    )
-                    continue
-                name = html.escape(vert.get("display_name", ""))
-                parts.append(f'<p><a href="$@PAGEVIEWBYID*{target_id}@$">{name}</a></p>')
             else:
                 log.debug(
                     "Dropping component type '%s' in vertical '%s'",
@@ -113,6 +108,41 @@ class SectionStrategy(ABC):
             "name": vert["display_name"],
             "content": combined,
             "file_refs": file_refs,
+            "file_ids": [],
+        }
+
+    def _build_reading_url(
+        self, vert: dict, reading_url: str, sec_id: int, sec_num: int
+    ) -> dict | None:
+        """Build a `mod_url` record that redirects straight to the canonical reading page.
+
+        A `mod_page` containing only a link makes the reader click twice (open the page, then
+        click the link inside it). `mod_url` with `display=5` ("Open") redirects on the first
+        click instead -- confirmed against Moodle's own source: `mod/url/view.php` calls
+        `redirect($fullurl)` immediately when `display` resolves to `RESOURCELIB_DISPLAY_OPEN`.
+        The restore-time `$@PAGEVIEWBYID*id@$` placeholder resolves here exactly as it does inside
+        page content, since `restore_decode_processor` scans every module's registered
+        decode-content fields (mod_url's `externalurl` included) against the full set of decode
+        rules from every module (mod_page's `PAGEVIEWBYID` rule included).
+
+        Returns `None` when the reading's canonical page hasn't been built yet.
+        """
+        target_id = self._reading_page_ids.get(reading_url)
+        if target_id is None:
+            log.warning(
+                "No canonical page built yet for reading '%s'; dropping link", reading_url
+            )
+            return None
+        mod_id, ctx_id = self.ids.next(), self.ids.next()
+        return {
+            "id": mod_id,
+            "ctx": ctx_id,
+            "sec_id": sec_id,
+            "sec_num": sec_num,
+            "name": vert["display_name"],
+            "kind": "url",
+            "externalurl": f"$@PAGEVIEWBYID*{target_id}@$",
+            "file_refs": [],
             "file_ids": [],
         }
 
