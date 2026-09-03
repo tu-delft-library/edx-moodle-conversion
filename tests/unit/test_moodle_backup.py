@@ -234,6 +234,11 @@ def test_course_format_topics(mbz):
     assert _parse(mbz, "course/course.xml").findtext("format") == "topics"
 
 
+def test_course_idnumber_matches_shortname(mbz):
+    course = _parse(mbz, "course/course.xml")
+    assert course.findtext("idnumber") == course.findtext("shortname")
+
+
 @pytest.fixture(scope="module")
 def spaced_mbz(tmp_path_factory):
     root = tmp_path_factory.mktemp("smbz")

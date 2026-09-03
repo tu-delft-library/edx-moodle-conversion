@@ -111,7 +111,7 @@ COURSE_XML = """\
 <course id="1" contextid="1">
   <shortname>{course_id}</shortname>
   <fullname>{course_name}</fullname>
-  <idnumber></idnumber>
+  <idnumber>{course_id}</idnumber>
   <summary>{summary}</summary>
   <summaryformat>1</summaryformat>
   <format>topics</format>
