@@ -365,6 +365,51 @@ RESOURCE_MODULE_XML = """\
   </tags>
 </module>"""
 
+URL_XML = """\
+<?xml version="1.0" encoding="UTF-8"?>
+<activity id="{id}" moduleid="{id}" modulename="url" contextid="{ctx}">
+  <url id="{id}">
+    <name>{name}</name>
+    <intro/>
+    <introformat>1</introformat>
+    <externalurl>{externalurl}</externalurl>
+    <display>5</display>
+    <displayoptions>a:0:{{}}</displayoptions>
+    <parameters>a:0:{{}}</parameters>
+    <timemodified>{ts}</timemodified>
+  </url>
+</activity>"""
+
+URL_MODULE_XML = """\
+<?xml version="1.0" encoding="UTF-8"?>
+<module id="{id}" version="{moodle_version}">
+  <modulename>url</modulename>
+  <sectionid>{sec_id}</sectionid>
+  <sectionnumber>{sec_num}</sectionnumber>
+  <idnumber>$@NULL@$</idnumber>
+  <added>{ts}</added>
+  <score>0</score>
+  <indent>0</indent>
+  <visible>1</visible>
+  <visibleoncoursepage>1</visibleoncoursepage>
+  <visibleold>1</visibleold>
+  <groupmode>0</groupmode>
+  <groupingid>0</groupingid>
+  <completion>0</completion>
+  <completiongradeitemnumber>$@NULL@$</completiongradeitemnumber>
+  <completionpassgrade>0</completionpassgrade>
+  <completionview>0</completionview>
+  <completionexpected>0</completionexpected>
+  <availability>$@NULL@$</availability>
+  <showdescription>0</showdescription>
+  <downloadcontent>1</downloadcontent>
+  <lang>$@NULL@$</lang>
+  <enableaitools>$@NULL@$</enableaitools>
+  <enabledaiactions>$@NULL@$</enabledaiactions>
+  <tags>
+  </tags>
+</module>"""
+
 FILE_ENTRY = (
     '  <file id="{id}"><contenthash>{sha1}</contenthash>'
     "<contextid>{ctx}</contextid><component>{component}</component>"

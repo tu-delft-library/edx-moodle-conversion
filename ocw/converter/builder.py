@@ -337,7 +337,10 @@ class MBZBuilder:
         for sub in sub_mods:
             self._write_subsection(tmp, sub, ts)
         for page in pages:
-            self._write_page(tmp, page, ts)
+            if page.get("kind") == "url":
+                self._write_url(tmp, page, ts)
+            else:
+                self._write_page(tmp, page, ts)
         for resource in resources:
             self._write_resource(tmp, resource, ts)
         self._write_files_xml(tmp, file_entries, ts)
@@ -375,10 +378,11 @@ class MBZBuilder:
                 elif mod_id in pages_by_id:
                     p = pages_by_id[mod_id]
                     insub = "1" if p["sec_id"] in child_sec_ids else ""
+                    modulename = "url" if p.get("kind") == "url" else "page"
                     lines.append(
                         f"      <activity><moduleid>{p['id']}</moduleid><sectionid>{p['sec_id']}</sectionid>"
-                        f"<modulename>page</modulename><title>{esc(p['name'])}</title>"
-                        f"<directory>activities/page_{p['id']}</directory>"
+                        f"<modulename>{modulename}</modulename><title>{esc(p['name'])}</title>"
+                        f"<directory>activities/{modulename}_{p['id']}</directory>"
                         f"<insubsection>{insub}</insubsection></activity>"
                     )
                 elif mod_id in resources_by_id:
@@ -458,7 +462,8 @@ class MBZBuilder:
                 f"      <setting><level>activity</level><activity>{aid}</activity><name>{aid}_userinfo</name><value>0</value></setting>",
             ]
         for page in pages:
-            aid = f"page_{page['id']}"
+            modulename = "url" if page.get("kind") == "url" else "page"
+            aid = f"{modulename}_{page['id']}"
             lines += [
                 f"      <setting><level>activity</level><activity>{aid}</activity><name>{aid}_included</name><value>1</value></setting>",
                 f"      <setting><level>activity</level><activity>{aid}</activity><name>{aid}_userinfo</name><value>0</value></setting>",
@@ -676,6 +681,41 @@ class MBZBuilder:
             moodle_version=MOODLE_VERSION,
             sec_id=page["sec_id"],
             sec_num=page["sec_num"],
+            ts=ts,
+        )
+        (d / "module.xml").write_text(module_xml, encoding="utf-8")
+
+    def _write_url(self, tmp: Path, url_page: dict, ts: int) -> None:
+        """Write a URL activity that redirects to `url_page["externalurl"]` and its supporting
+        manifests.
+
+        Used for reading-link stubs (see `SectionStrategy._build_reading_url`) instead of a page
+        containing a single link, so opening the activity redirects in one click.
+        """
+        d = tmp / "activities" / f"url_{url_page['id']}"
+        d.mkdir(parents=True, exist_ok=True)
+        xml = templates.URL_XML.format(
+            id=url_page["id"],
+            ctx=url_page["ctx"],
+            name=esc(url_page["name"]),
+            externalurl=url_page["externalurl"],
+            ts=ts,
+        )
+        (d / "url.xml").write_text(xml, encoding="utf-8")
+        (d / "inforef.xml").write_text(
+            '<?xml version="1.0" encoding="UTF-8"?>\n<inforef/>', encoding="utf-8"
+        )
+        (d / "grades.xml").write_text(templates.ACTIVITY_GRADES_XML, encoding="utf-8")
+        (d / "grade_history.xml").write_text(
+            templates.ACTIVITY_GRADE_HISTORY_XML, encoding="utf-8"
+        )
+        (d / "roles.xml").write_text(templates.ACTIVITY_ROLES_XML, encoding="utf-8")
+        (d / "filters.xml").write_text(templates.ACTIVITY_FILTERS_XML, encoding="utf-8")
+        module_xml = templates.URL_MODULE_XML.format(
+            id=url_page["id"],
+            moodle_version=MOODLE_VERSION,
+            sec_id=url_page["sec_id"],
+            sec_num=url_page["sec_num"],
             ts=ts,
         )
         (d / "module.xml").write_text(module_xml, encoding="utf-8")
