@@ -87,21 +87,18 @@ class MBZBuilder:
         stores it in its returned record, and later writers reuse that stored ID for cross-file
         references.
 
-        The build order is: optional overview/readings structures, source-derived sections and
-        pages, file entries, then XML manifests. One timestamp is shared by every generated
-        record.
+        The build order is: Overview (with Readings nested inside it when the course has any),
+        source-derived sections and pages, file entries, then XML manifests. One timestamp is
+        shared by every generated record.
         """
         ids = _Counter()
         ts = int(time.time())
         c = self.course
 
-        overview = self._build_overview_section(c, ids)
-        # at most one synthetic section now occupies the top slot: either
-        # Overview (with Readings nested inside it), or standalone Readings
-        # as the no-Overview fallback, or Overview alone
-        section_offset = (
-            1 if (overview is not None or c.readings or c.reading_pages) else 0
-        )
+        # Overview always occupies section 0, even with no syllabus and empty modules, so both
+        # OLX and WP courses get the same predictable numbering offset.
+        overview_section, syllabus_page = self._build_overview_section(c, ids)
+        section_offset = 1
 
         strategy = (
             FlatSectionStrategy(c, ids, section_offset)
@@ -109,47 +106,43 @@ class MBZBuilder:
             else NestedSectionStrategy(c, ids, section_offset)
         )
 
-        # Built before strategy.build() walks the source chapters: every reading occurrence
-        # there is now an in-course link, resolved via strategy._reading_page_ids, which this
-        # call is what populates.
-        wp_readings = self._build_wp_readings_section(c, ids, strategy)
+        # Built before strategy.build() walks the source chapters: every WP reading occurrence
+        # there is an in-course link, resolved via strategy._reading_page_ids, which this call is
+        # what populates.
+        wp_readings = self._build_wp_readings_subsection(c, ids, strategy, overview_section)
 
         all_sections, sub_mods, pages = strategy.build()
         strategy_section_count = len(all_sections)
         resources: list[dict] = []
 
-        if wp_readings is not None:
-            readings_section, readings_pages = wp_readings
-            all_sections.insert(0, readings_section)
-            pages = readings_pages + pages
-        elif overview is not None:
-            overview_section, syllabus_page = overview
-            all_sections.insert(0, overview_section)
+        all_sections.insert(0, overview_section)
+        if syllabus_page is not None:
             pages.insert(0, syllabus_page)
 
-            if c.readings:
-                subsection, readings_resources = self._build_readings_subsection(
-                    c, ids, overview_section
-                )
-                child_sec = subsection["child_sec"]
-                # nested child section must be numbered after every number the
-                # strategy already used, to satisfy parent < child course-wide
-                child_sec["number"] = section_offset + strategy_section_count
-                for r in readings_resources:
-                    r["sec_num"] = child_sec["number"]
-                subsection["parent_sec_num"] = 0
-                all_sections.append(child_sec)
-                sub_mods.append(subsection)
-                resources.extend(readings_resources)
-        else:
-            readings = self._build_readings_section(c, ids)
-            if readings is not None:
-                readings_section, readings_resources = readings
-                readings_section["number"] = 0
-                for r in readings_resources:
-                    r["sec_num"] = 0
-                all_sections.insert(0, readings_section)
-                resources.extend(readings_resources)
+        if c.readings:
+            subsection, readings_resources = self._build_readings_subsection(
+                c, ids, overview_section
+            )
+            child_sec = subsection["child_sec"]
+            # nested child section must be numbered after every number the
+            # strategy already used, to satisfy parent < child course-wide
+            child_sec["number"] = section_offset + strategy_section_count
+            for r in readings_resources:
+                r["sec_num"] = child_sec["number"]
+            subsection["parent_sec_num"] = 0
+            all_sections.append(child_sec)
+            sub_mods.append(subsection)
+            resources.extend(readings_resources)
+        elif wp_readings is not None:
+            subsection, readings_pages = wp_readings
+            child_sec = subsection["child_sec"]
+            child_sec["number"] = section_offset + strategy_section_count
+            for p in readings_pages:
+                p["sec_num"] = child_sec["number"]
+            subsection["parent_sec_num"] = 0
+            all_sections.append(child_sec)
+            sub_mods.append(subsection)
+            pages = readings_pages + pages
 
         file_entries = self._build_file_entries(c, pages + resources, ids)
         self._write_all(
@@ -158,15 +151,14 @@ class MBZBuilder:
 
     def _build_overview_section(
         self, c: BaseParser, ids: _Counter
-    ) -> tuple[dict, dict] | None:
-        """Build the optional Overview section and its Syllabus page.
-
-        Allocates the section, module, and module-context IDs together so the returned records
-        already contain their required references. Returns `None` when the parsed course has no
-        syllabus HTML.
+    ) -> tuple[dict, dict | None]:
+        """Build the Overview section, and its Syllabus page when the course has one.
         """
+        sec_id = ids.next()
+        overview_section = {"id": sec_id, "name": "Overview", "number": 0, "modules": []}
         if c.syllabus_html is None:
-            return None
+            return overview_section, None
+
         warn_external_edx_urls(
             c.syllabus_html, context="Syllabus", static_files=c.static_files
         )
@@ -181,13 +173,8 @@ class MBZBuilder:
                 )
             )
         )
-        sec_id, mod_id, ctx_id = ids.next(), ids.next(), ids.next()
-        overview_section = {
-            "id": sec_id,
-            "name": "Overview",
-            "number": 0,
-            "modules": [mod_id],
-        }
+        mod_id, ctx_id = ids.next(), ids.next()
+        overview_section["modules"].append(mod_id)
         syllabus_page = {
             "id": mod_id,
             "ctx": ctx_id,
@@ -199,41 +186,6 @@ class MBZBuilder:
             "file_ids": [],
         }
         return overview_section, syllabus_page
-
-    def _build_readings_section(
-        self, c: BaseParser, ids: _Counter
-    ) -> tuple[dict, list[dict]] | None:
-        """Build a standalone Readings section and one resource activity per reading.
-
-        Allocates one section ID, then a module and module-context ID for each resource. The
-        returned resources reference that section. Returns `None` when the parsed course has no
-        readings.
-        """
-        if not c.readings:
-            return None
-        sec_id = ids.next()
-        resources: list[dict] = []
-        for reading in c.readings:
-            mod_id, ctx_id = ids.next(), ids.next()
-            resources.append(
-                {
-                    "id": mod_id,
-                    "ctx": ctx_id,
-                    "sec_id": sec_id,
-                    "sec_num": 0,
-                    "name": reading["title"],
-                    "file_refs": [reading["name"]],
-                    "file_ids": [],
-                    "component": "mod_resource",
-                }
-            )
-        readings_section = {
-            "id": sec_id,
-            "name": "Readings",
-            "number": 0,
-            "modules": [r["id"] for r in resources],
-        }
-        return readings_section, resources
 
     def _build_readings_subsection(
         self, c: BaseParser, ids: _Counter, overview_section: dict
@@ -281,34 +233,50 @@ class MBZBuilder:
         overview_section["modules"].append(sub_mod_id)
         return subsection, resources
 
-    def _build_wp_readings_section(
-        self, c: BaseParser, ids: _Counter, strategy: SectionStrategy
+    def _build_wp_readings_subsection(
+        self, c: BaseParser, ids: _Counter, strategy: SectionStrategy, overview_section: dict
     ) -> tuple[dict, list[dict]] | None:
-        """Build a standalone Readings section holding one real page per WP reading page.
+        """Build a Readings subsection under `overview_section`, one real page per WP reading
+        page -- the WP counterpart of `_build_readings_subsection`, holding real pages instead
+        of bare resource activities.
 
         Reuses `strategy._build_page` (rather than duplicating its HTML-processing pipeline) so
         each reading page's mod_id is registered in `strategy._reading_page_ids` as a side
         effect -- this must run before `strategy.build()` walks the source chapters, so every
-        subject's in-course link to a reading resolves to a real, already-built target. Returns
-        `None` when the parsed course has no WP reading pages.
+        subject's in-course link to a reading resolves to a real, already-built target.
+        `child_sec["number"]` is left as a placeholder for `_populate` to set once every chapter
+        section number is known, same as `_build_readings_subsection`. Returns `None` when the
+        parsed course has no WP reading pages.
         """
         if not c.reading_pages:
             return None
-        sec_id = ids.next()
+        child_sec_id = ids.next()
         pages = [
             page
             for vert in c.reading_pages
-            if (page := strategy._build_page(vert, sec_id, 0)) is not None
+            if (page := strategy._build_page(vert, child_sec_id, 0)) is not None
         ]
         if not pages:
             return None
-        readings_section = {
-            "id": sec_id,
+        sub_mod_id, sub_ctx_id, sub_int_id = ids.next(), ids.next(), ids.next()
+        child_sec = {
+            "id": child_sec_id,
             "name": "Readings",
-            "number": 0,
             "modules": [p["id"] for p in pages],
+            "itemid": sub_int_id,
+            "parent_mod_id": sub_mod_id,
+            "number": 0,
         }
-        return readings_section, pages
+        subsection = {
+            "mod_id": sub_mod_id,
+            "ctx": sub_ctx_id,
+            "internal_id": sub_int_id,
+            "name": "Readings",
+            "parent_sec_id": overview_section["id"],
+            "child_sec": child_sec,
+        }
+        overview_section["modules"].append(sub_mod_id)
+        return subsection, pages
 
     def _build_file_entries(
         self, c: BaseParser, pages: list[dict], ids: _Counter
