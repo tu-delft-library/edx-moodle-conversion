@@ -439,6 +439,8 @@ class WPCourse(BaseParser):
             return []
         if child.name == "section" and "license" in (child.get("class") or []):
             return []
+        if child.name == "p" and "article__link-list" in (child.get("class") or []):
+            return []
 
         iframes = [child] if child.name == "iframe" else child.select("iframe")
         if iframes:
@@ -628,7 +630,8 @@ class WPCourse(BaseParser):
         return {"display_name": title, "components": components, "reading_url": url}
 
     def _reading_body_html(self, soup: BeautifulSoup, url: str) -> str:
-        """Extract reading-body HTML without the title, PDF download control, or licence footer."""
+        """Extract reading-body HTML without the title, PDF download control, licence footer, or
+        subject link list."""
         article = soup.select_one("article")
         if article is None:
             return ""
@@ -645,6 +648,8 @@ class WPCourse(BaseParser):
             if child.name == "h1":
                 continue
             if child.name == "section" and "license" in (child.get("class") or []):
+                continue
+            if child.name == "p" and "article__link-list" in (child.get("class") or []):
                 continue
             if self._find_download_link(child):
                 continue
