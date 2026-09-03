@@ -159,3 +159,19 @@ def warn_external_edx_urls(
             f" on page '{context}'" if context else "",
             match,
         )
+
+
+# The WP source domain. By the time content is finalised, resolved assets and reading links have
+# already been rewritten to `/static/` or `$@PAGEVIEWBYID*...@$`, so any surviving match here is a
+# genuinely unresolved link back to the source site.
+_WP_HOST_RE = re.compile(r'https?://(?:[\w-]+\.)*ocw\.tudelft\.nl[^"\'>\s]*')
+
+
+def warn_external_wp_urls(html: str, context: str = "") -> None:
+    """Warn about ocw.tudelft.nl-hosted URLs that will remain external after conversion."""
+    for match in _WP_HOST_RE.findall(html):
+        log.warning(
+            "Content still hosted on ocw.tudelft.nl%s: '%s'",
+            f" on page '{context}'" if context else "",
+            match,
+        )

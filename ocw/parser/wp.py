@@ -9,7 +9,7 @@ from bs4.element import NavigableString
 
 from ocw.fetcher import AssetFetcher
 from ocw.parser.base import BaseParser
-from ocw.utils import resolve_asset_name, safe_vidkey
+from ocw.utils import resolve_asset_name, safe_vidkey, warn_external_wp_urls
 
 log = logging.getLogger("ocw.wp_parser")
 
@@ -283,7 +283,9 @@ class WPCourse(BaseParser):
             sequentials.append({"display_name": seq_title, "verticals": verticals})
         chapter = {"display_name": title, "sequentials": sequentials}
         if intro_rows:
-            chapter["summary_html"] = "".join(str(row) for row in intro_rows)
+            summary_html = "".join(str(row) for row in intro_rows)
+            warn_external_wp_urls(summary_html, context=title)
+            chapter["summary_html"] = summary_html
         return chapter
 
     def _parse_item(self, link, chapter_name: str, sequential_name: str) -> dict | None:
@@ -377,7 +379,14 @@ class WPCourse(BaseParser):
             expected_downloads=expected_downloads,
             found_downloads=found_downloads,
         )
+        self._warn_external_wp_links(components, title)
         return {"display_name": title, "components": components}
+
+    def _warn_external_wp_links(self, components: list[dict], context: str) -> None:
+        """Warn about any `html` component still linking back to ocw.tudelft.nl."""
+        for comp in components:
+            if comp["type"] == "html":
+                warn_external_wp_urls(comp["content"], context=context)
 
     def _download_link_component(self, name: str, block: dict) -> dict:
         """Build the vc_download-style HTML block for one resolved download link.
@@ -668,6 +677,7 @@ class WPCourse(BaseParser):
             set(),
             url,
         )
+        warn_external_wp_urls(html, context=url)
         return html
 
     def _resolve_and_fetch(self, asset_url: str) -> str | None:
