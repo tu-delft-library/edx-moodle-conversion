@@ -2,6 +2,7 @@
 
 import itertools
 import logging
+from collections import Counter
 
 import requests
 from bs4 import BeautifulSoup
@@ -65,12 +66,21 @@ class WPCourse(BaseParser):
         self._reading_pages: dict[str, dict | None] = {}
         # URL -> parsed canonical lecture vertical, for dedup across subject pages.
         self._lecture_pages: dict[str, dict] = {}
+        # Lecture URL -> number of subject pages referencing it, from a pre-scan pass in
+        # `parse()`. Only URLs referenced 2+ times get routed through the dedup/Hidden-section
+        # mechanism (see `_parse_lecture`); direct calls that bypass `parse()` (unit tests) get
+        # an empty Counter, i.e. every URL defaults to "single reference".
+        self._lecture_ref_counts: Counter[str] = Counter()
 
     def parse(self) -> None:
         """Parse the course home page, its subject pages, and all video components."""
         home = self._fetch_page(self.root)
         self.course_name = home.select_one("h1").get_text(strip=True)
-        for subject_url, subject_title in self._parse_subjects_sidebar(home):
+        subjects = self._parse_subjects_sidebar(home)
+        self._lecture_ref_counts = self._count_lecture_references(
+            url for url, _ in subjects
+        )
+        for subject_url, subject_title in subjects:
             self.chapters.append(self._parse_subject_page(subject_url, subject_title))
         self.videos = [
             comp
@@ -159,18 +169,37 @@ class WPCourse(BaseParser):
         self._localize_images(article)
 
     def _localize_images(self, article) -> None:
-        """Fetch external `<img>` sources locally and rewrite `src` to the `/static/` convention.
+        """Fetch external `<img>` sources (`src` and `srcset`) locally and rewrite them to the
+        `/static/` convention.
 
         Images that cannot be fetched (unsupported type, request failure) are left pointing at
         their original source.
         """
         for img in article.select("img"):
             src = img.get("src")
-            if not src or not src.startswith("http"):
+            if src and src.startswith("http"):
+                name = self._resolve_and_fetch(src)
+                if name:
+                    img["src"] = f"/static/{name}"
+            srcset = img.get("srcset")
+            if srcset:
+                img["srcset"] = self._localize_srcset(srcset)
+
+    def _localize_srcset(self, srcset: str) -> str:
+        """Rewrite each URL in a `srcset` attribute the same way as `src`, keeping each
+        candidate's width/density descriptor intact."""
+        candidates = []
+        for candidate in srcset.split(","):
+            parts = candidate.split()
+            if not parts:
                 continue
-            name = self._resolve_and_fetch(src)
-            if name:
-                img["src"] = f"/static/{name}"
+            url, *descriptor = parts
+            if url.startswith("http"):
+                name = self._resolve_and_fetch(url)
+                if name:
+                    url = f"/static/{name}"
+            candidates.append(" ".join([url, *descriptor]))
+        return ", ".join(candidates)
 
     _TUD_HOST_CHECK = 'TUD_location.indexOf("ocw.tudelft.nl")!=-1'
     _TUD_HOST_CHECK_FORCED = "true"
@@ -244,12 +273,15 @@ class WPCourse(BaseParser):
             )
             found_hrs += len(frag.select("hr"))
 
-        for src in sorted(expected_imgs - found_imgs):
-            log.warning(
-                "Parsing WP: image '%s' present on page but not captured in any component at %s",
-                src,
-                url,
-            )
+        found_names = {resolve_asset_name(src) for src in found_imgs}
+        expected_by_name = {resolve_asset_name(src): src for src in expected_imgs}
+        for name, src in sorted(expected_by_name.items()):
+            if name not in found_names:
+                log.warning(
+                    "Parsing WP: image '%s' present on page but not captured in any component at %s",
+                    src,
+                    url,
+                )
         for src in sorted(expected_iframe_srcs - found_iframe_srcs):
             log.warning(
                 "Parsing WP: iframe '%s' present on page but not captured in any component at %s",
@@ -270,6 +302,33 @@ class WPCourse(BaseParser):
                 found_downloads,
                 url,
             )
+
+    def _find_activities_list(self, article):
+        """Return the `ul.activities` wrapper among `article`'s direct children, or `None`."""
+        if article is None:
+            return None
+        for child in article.find_all(recursive=False):
+            if child.name == "ul" and "activities" in (child.get("class") or []):
+                return child
+        return None
+
+    def _count_lecture_references(self, subject_urls) -> "Counter[str]":
+        """Pre-scan every subject page and count how many link to each lecture URL.
+
+        Must run before any subject page is fully parsed, so `_parse_lecture` can tell a lecture
+        referenced from exactly one subject (build inline, like a normal page) from one
+        referenced from several (route through the dedup/Hidden-section mechanism instead of
+        duplicating it once per subject).
+        """
+        counts: Counter[str] = Counter()
+        for url in subject_urls:
+            soup = self._fetch_page(url)
+            activities = self._find_activities_list(soup.select_one("article"))
+            if activities is None:
+                continue
+            for a in activities.select("a.icon.icon--lecture"):
+                counts[a["href"]] += 1
+        return counts
 
     def _parse_subject_page(self, url: str, title: str) -> dict:
         """Parse one subject page into a chapter record.
@@ -335,22 +394,36 @@ class WPCourse(BaseParser):
     def _parse_lecture(
         self, url: str, title: str, chapter_name: str, sequential_name: str
     ) -> dict:
-        """Every occurrence of `url` (including the first) returns an in-course link, resolved
-        to a Moodle page ID at build time (see `SectionStrategy._build_dedup_url`).
+        """Build `url`'s lecture vertical, deduping it only if it's genuinely referenced from
+        multiple subjects.
 
-        `url`'s real page is built at most once, into `self.dedup_pages`, for
-        `MBZBuilder._build_wp_dedup_section` to place in one hidden, unlisted section -- a
-        lecture linked from N subjects should exist once in the backup, not N times.
+        A URL referenced from 2+ subjects (per `self._lecture_ref_counts`, populated by
+        `parse()`'s pre-scan) returns an in-course link on every occurrence (including the
+        first), resolved to a Moodle page ID at build time (see
+        `SectionStrategy._build_dedup_url`); its real page is built at most once, into
+        `self.dedup_pages`, for `MBZBuilder._build_wp_dedup_section` to place in one hidden,
+        unlisted section -- it should exist once in the backup, not N times. A URL referenced
+        from just one subject (or parsed directly, bypassing `parse()`'s pre-scan -- e.g. unit
+        tests) builds inline instead, exactly like any other page.
         """
+        if self._lecture_ref_counts.get(url, 0) >= 2:
+            if url not in self._lecture_pages:
+                result = self._parse_lecture_uncached(
+                    url, title, chapter_name, sequential_name
+                )
+                self._lecture_pages[url] = result
+                self.dedup_pages.append(result)
+            return {
+                "display_name": title,
+                "components": [{"type": "dedup_link", "dedup_url": url}],
+            }
         if url not in self._lecture_pages:
-            result = self._parse_lecture_uncached(
+            self._lecture_pages[url] = self._parse_lecture_uncached(
                 url, title, chapter_name, sequential_name
             )
-            self._lecture_pages[url] = result
-            self.dedup_pages.append(result)
         return {
             "display_name": title,
-            "components": [{"type": "dedup_link", "dedup_url": url}],
+            "components": self._lecture_pages[url]["components"],
         }
 
     def _parse_lecture_uncached(

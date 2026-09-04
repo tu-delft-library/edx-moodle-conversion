@@ -135,7 +135,7 @@ COURSE_XML = """\
   <requested>0</requested>
   <enablecompletion>0</enablecompletion>
   <completionnotify>0</completionnotify>
-  <hiddensections>0</hiddensections>
+  <hiddensections>1</hiddensections>
   <coursedisplay>0</coursedisplay>
   <category id="1">
     <name>Miscellaneous</name>
