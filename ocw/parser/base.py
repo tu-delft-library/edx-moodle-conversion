@@ -25,6 +25,10 @@ class BaseParser(ABC):
         # in that same section; every course occurrence links to the one canonical page.
         self.readings: list[dict] = []
         self.reading_pages: list[dict] = []
+        # Canonical pages for any other content type that can be linked from more than one place
+        # (currently: WP lectures). Each occurrence links in, but the page itself is built once
+        # and placed in one hidden, unlisted section rather than duplicated per occurrence.
+        self.dedup_pages: list[dict] = []
         self.videos: list[dict] = []
         self.org: str = ""
         self.language: str = ""

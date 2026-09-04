@@ -14,6 +14,7 @@ log = logging.getLogger("ocw.fetcher")
 # Supported download types and their expected MIME types. Keep the mappings in sync.
 FETCHABLE_EXTENSIONS = frozenset({
     ".pdf", ".xls", ".xlsx", ".doc", ".docx", ".ppt", ".pptx", ".zip", ".woff2", ".woff",
+    ".jpg", ".jpeg", ".png", ".gif", ".svg", ".webp",
 })
 _CONTENT_TYPE_BY_EXT = {
     ".pdf": "application/pdf",
@@ -26,6 +27,12 @@ _CONTENT_TYPE_BY_EXT = {
     ".zip": "application/zip",
     ".woff2": "font/woff2",
     ".woff": "font/woff",
+    ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg",
+    ".png": "image/png",
+    ".gif": "image/gif",
+    ".svg": "image/svg+xml",
+    ".webp": "image/webp",
 }
 
 _MIN_HOST_INTERVAL = 1.0

@@ -188,3 +188,71 @@ def test_reading_linked_from_two_subjects_redirects_via_url_activity(tmp_path):
             f for f in files_xml.findall("file") if f.findtext("filename") == "Chapter.pdf"
         ]
         assert len(chapter_files) == 1  # fetched/stored once, not once per occurrence
+
+
+def test_lecture_linked_from_two_subjects_redirects_via_hidden_section(tmp_path):
+    site = WPFixtureSite()
+    site.add_home(
+        [
+            (f"{site.root}subjects/1-intro/", "1. Intro"),
+            (f"{site.root}subjects/2-more/", "2. More"),
+        ]
+    )
+    for slug, name in [("1-intro", "1.1 Basics"), ("2-more", "2.1 Extra")]:
+        site.add_subject_page(
+            f"{site.root}subjects/{slug}/",
+            f"""
+            <ul class="activities">
+            <li>
+            <h4 class="expand expand--showing"><span class="icon fa-minus course-title">{name}</span></h4>
+            <ul>
+            <li><a class="icon icon--lecture" href="https://ocw.tudelft.nl/course-lectures/lec1/">Lecture 1</a></li>
+            </ul>
+            </li>
+            </ul>
+            """,
+        )
+    site.add_lecture_page(
+        "https://ocw.tudelft.nl/course-lectures/lec1/",
+        '<iframe src="https://www.youtube.com/embed/abc123"></iframe>',
+    )
+    course = site.course()
+    course.parse()
+    out = tmp_path / "wp_course.mbz"
+    MBZBuilder(course).build(out)
+
+    with tarfile.open(out) as tar:
+        names = set(tar.getnames())
+        page_xmls = {
+            n: tar.extractfile(n).read().decode()
+            for n in names
+            if re.match(r"activities/page_\d+/page\.xml", n)
+        }
+        canonical = [
+            (n, content) for n, content in page_xmls.items() if "[[vid:lec1]]" in content
+        ]
+        assert len(canonical) == 1  # built once, not once per occurrence
+        canonical_name, _ = canonical[0]
+        canonical_id = re.search(r"page_(\d+)/", canonical_name).group(1)
+
+        url_xmls = {
+            n: tar.extractfile(n).read().decode()
+            for n in names
+            if re.match(r"activities/url_\d+/url\.xml", n)
+        }
+        link_stubs = [
+            content
+            for content in url_xmls.values()
+            if f"$@PAGEVIEWBYID*{canonical_id}@$" in content
+        ]
+        assert len(link_stubs) == 2  # both subjects link, including the first occurrence
+        assert all("<display>5</display>" in content for content in link_stubs)
+
+        section_xmls = [
+            tar.extractfile(n).read().decode()
+            for n in names
+            if re.match(r"sections/section_\d+/section\.xml", n)
+        ]
+        hidden_sections = [s for s in section_xmls if "<visible>0</visible>" in s]
+        assert len(hidden_sections) == 1
+        assert canonical_id in hidden_sections[0]

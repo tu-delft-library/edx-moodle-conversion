@@ -111,6 +111,10 @@ class MBZBuilder:
         # what populates.
         wp_readings = self._build_wp_readings_subsection(c, ids, strategy, overview_section)
 
+        # Same ordering requirement as wp_readings, for strategy._dedup_page_ids: currently only
+        # WP lectures dedup this way (any content type linked from more than one place could).
+        wp_dedup = self._build_wp_dedup_section(c, ids, strategy)
+
         all_sections, sub_mods, pages = strategy.build()
         strategy_section_count = len(all_sections)
         resources: list[dict] = []
@@ -143,6 +147,17 @@ class MBZBuilder:
             all_sections.append(child_sec)
             sub_mods.append(subsection)
             pages = readings_pages + pages
+
+        next_number = section_offset + strategy_section_count + (
+            1 if (c.readings or wp_readings is not None) else 0
+        )
+        if wp_dedup is not None:
+            section, dedup_pages = wp_dedup
+            section["number"] = next_number
+            for p in dedup_pages:
+                p["sec_num"] = next_number
+            all_sections.append(section)
+            pages = dedup_pages + pages
 
         file_entries = self._build_file_entries(c, pages + resources, ids)
         self._write_all(
@@ -277,6 +292,44 @@ class MBZBuilder:
         }
         overview_section["modules"].append(sub_mod_id)
         return subsection, pages
+
+    def _build_wp_dedup_section(
+        self, c: BaseParser, ids: _Counter, strategy: SectionStrategy
+    ) -> tuple[dict, list[dict]] | None:
+        """Build one hidden, unlisted top-level section holding a real page per deduplicated
+        content item (currently: WP lectures -- see `c.dedup_pages`).
+
+        The section's `visible` is 0 and every page module inside it stays `visible=1` (the
+        default), which makes each page a Moodle "stealth" activity: reachable by direct link,
+        listed nowhere in the course. Every subject's reference resolves to a `mod_url` redirect
+        stub instead (see `SectionStrategy._build_dedup_url`), so N references to the same item
+        cost one real page, not N.
+
+        Reuses `strategy._build_page` (rather than duplicating its HTML-processing pipeline) so
+        each page's mod_id is registered in `strategy._dedup_page_ids` as a side effect -- this
+        must run before `strategy.build()` walks the source chapters, so every in-course link
+        resolves to a real, already-built target. `section["number"]` is left as a placeholder
+        for `_populate` to set once every other section number is known. Returns `None` when the
+        parsed course has no dedup pages.
+        """
+        if not c.dedup_pages:
+            return None
+        sec_id = ids.next()
+        pages = [
+            page
+            for vert in c.dedup_pages
+            if (page := strategy._build_page(vert, sec_id, 0)) is not None
+        ]
+        if not pages:
+            return None
+        section = {
+            "id": sec_id,
+            "name": "Hidden",
+            "modules": [p["id"] for p in pages],
+            "number": 0,
+            "visible": 0,
+        }
+        return section, pages
 
     def _build_file_entries(
         self, c: BaseParser, pages: list[dict], ids: _Counter
@@ -631,7 +684,12 @@ class MBZBuilder:
         """
         d = tmp / "sections" / f"section_{sec['id']}"
         d.mkdir(parents=True, exist_ok=True)
-        tmpl = templates.CHILD_SECTION_XML if "itemid" in sec else templates.SECTION_XML
+        if "itemid" in sec:
+            tmpl = templates.CHILD_SECTION_XML
+        elif sec.get("visible") == 0:
+            tmpl = templates.HIDDEN_SECTION_XML
+        else:
+            tmpl = templates.SECTION_XML
         xml = tmpl.format(
             id=sec["id"],
             number=idx,

@@ -161,6 +161,21 @@ SECTION_XML = """\
   <timemodified>{ts}</timemodified>
 </section>"""
 
+HIDDEN_SECTION_XML = """\
+<?xml version="1.0" encoding="UTF-8"?>
+<section id="{id}">
+  <number>{number}</number>
+  <name>{name}</name>
+  <summary>{summary}</summary>
+  <summaryformat>1</summaryformat>
+  <sequence>{sequence}</sequence>
+  <visible>0</visible>
+  <availabilityjson>$@NULL@$</availabilityjson>
+  <component>$@NULL@$</component>
+  <itemid>$@NULL@$</itemid>
+  <timemodified>{ts}</timemodified>
+</section>"""
+
 COURSE_ROLES_XML = '<?xml version="1.0" encoding="UTF-8"?>\n<roles>\n  <role_overrides/>\n  <role_assignments/>\n</roles>'
 COURSE_FILTERS_XML = """\
 <?xml version="1.0" encoding="UTF-8"?>
