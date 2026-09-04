@@ -87,17 +87,25 @@ class MBZBuilder:
         stores it in its returned record, and later writers reuse that stored ID for cross-file
         references.
 
-        The build order is: Overview (with Readings nested inside it when the course has any),
-        source-derived sections and pages, file entries, then XML manifests. One timestamp is
-        shared by every generated record.
+        IDs are allocated in three course-wide phases -- every section, then every
+        subsection-activity, then every page/resource. Within the section phase, every
+        subsection-linked (`mod_subsection`) child section -- Readings, and every
+        `NestedSectionStrategy` chapter's child -- gets a number past every regular section's,
+        never inside that range: Moodle 5.1's restore always relocates a `mod_subsection` child
+        section to the end of the course during restore regardless of its declared number (core's
+        `restore_section_structure_step::process_section()`: "The section number will be always
+        the last of the course, no matter the case"), so a child section's declared number is
+        never honoured -- but if something else's IS declared inside the range a child leaves
+        behind, restore backfills it with a blank "ghost" section to keep numbering contiguous.
+        Keeping the regular (non-subsection) range gap-free avoids that. Within the page phase,
+        Readings and Hidden pages are built before `strategy.build_pages()` so their mod_ids are
+        already registered in `strategy._reading_page_ids`/`_dedup_page_ids` when the source
+        chapters' in-course links need to resolve to them. One timestamp is shared by every
+        generated record.
         """
         ids = _Counter()
         ts = int(time.time())
         c = self.course
-
-        # Overview always occupies section 0, even with no syllabus and empty modules, so both
-        # OLX and WP courses get the same predictable numbering offset.
-        overview_section, syllabus_page = self._build_overview_section(c, ids)
         section_offset = 1
 
         strategy = (
@@ -106,73 +114,128 @@ class MBZBuilder:
             else NestedSectionStrategy(c, ids, section_offset)
         )
 
-        # Built before strategy.build() walks the source chapters: every WP reading occurrence
-        # there is an in-course link, resolved via strategy._reading_page_ids, which this call is
-        # what populates.
-        wp_readings = self._build_wp_readings_subsection(c, ids, strategy, overview_section)
+        overview_section, all_sections, dedup_section, readings_child_sec = (
+            self._alloc_sections(c, ids, strategy, section_offset)
+        )
+        sub_mods, readings_subsection = self._alloc_subsections(
+            ids, strategy, overview_section, readings_child_sec
+        )
 
-        # Same ordering requirement as wp_readings, for strategy._dedup_page_ids: currently only
-        # WP lectures dedup this way (any content type linked from more than one place could).
-        wp_dedup = self._build_wp_dedup_section(c, ids, strategy)
-
-        all_sections, sub_mods, pages = strategy.build()
-        strategy_section_count = len(all_sections)
+        # Phase 3: every page/resource ID.
         resources: list[dict] = []
+        readings_pages: list[dict] = []
+        if c.readings:
+            resources = self._build_readings_resources(c, ids, readings_child_sec)
+            readings_child_sec["modules"] = [r["id"] for r in resources]
+        elif c.reading_pages:
+            readings_pages = self._build_wp_readings_pages(c, strategy, readings_child_sec)
+            readings_child_sec["modules"] = [p["id"] for p in readings_pages]
+            if not readings_pages:
+                all_sections.remove(readings_child_sec)
+                sub_mods.remove(readings_subsection)
 
-        all_sections.insert(0, overview_section)
+        dedup_pages: list[dict] = []
+        if dedup_section is not None:
+            dedup_pages = [
+                page
+                for vert in c.dedup_pages
+                if (
+                    page := strategy._build_page(
+                        vert, dedup_section["id"], dedup_section["number"]
+                    )
+                )
+                is not None
+            ]
+            dedup_section["modules"] = [p["id"] for p in dedup_pages]
+            if not dedup_pages:
+                all_sections.remove(dedup_section)
+
+        syllabus_page = self._build_syllabus_page(c, ids, overview_section)
+        strategy_pages = strategy.build_pages()
+        pages = dedup_pages + readings_pages + strategy_pages
         if syllabus_page is not None:
             pages.insert(0, syllabus_page)
-
-        if c.readings:
-            subsection, readings_resources = self._build_readings_subsection(
-                c, ids, overview_section
-            )
-            child_sec = subsection["child_sec"]
-            # nested child section must be numbered after every number the
-            # strategy already used, to satisfy parent < child course-wide
-            child_sec["number"] = section_offset + strategy_section_count
-            for r in readings_resources:
-                r["sec_num"] = child_sec["number"]
-            subsection["parent_sec_num"] = 0
-            all_sections.append(child_sec)
-            sub_mods.append(subsection)
-            resources.extend(readings_resources)
-        elif wp_readings is not None:
-            subsection, readings_pages = wp_readings
-            child_sec = subsection["child_sec"]
-            child_sec["number"] = section_offset + strategy_section_count
-            for p in readings_pages:
-                p["sec_num"] = child_sec["number"]
-            subsection["parent_sec_num"] = 0
-            all_sections.append(child_sec)
-            sub_mods.append(subsection)
-            pages = readings_pages + pages
-
-        next_number = section_offset + strategy_section_count + (
-            1 if (c.readings or wp_readings is not None) else 0
-        )
-        if wp_dedup is not None:
-            section, dedup_pages = wp_dedup
-            section["number"] = next_number
-            for p in dedup_pages:
-                p["sec_num"] = next_number
-            all_sections.append(section)
-            pages = dedup_pages + pages
 
         file_entries = self._build_file_entries(c, pages + resources, ids)
         self._write_all(
             tmp, c, all_sections, sub_mods, pages, resources, file_entries, ts, ids
         )
 
-    def _build_overview_section(
-        self, c: BaseParser, ids: _Counter
-    ) -> tuple[dict, dict | None]:
-        """Build the Overview section, and its Syllabus page when the course has one.
-        """
-        sec_id = ids.next()
-        overview_section = {"id": sec_id, "name": "Overview", "number": 0, "modules": []}
+    def _alloc_sections(
+        self, c: BaseParser, ids: _Counter, strategy: SectionStrategy, section_offset: int
+    ) -> tuple[dict, list[dict], dict | None, dict | None]:
+        """Phase 1: allocate every section ID in the course, including Overview/Readings/Hidden
+        which aren't part of `strategy`. See `_populate`'s docstring for the numbering rules."""
+        overview_section = {"id": ids.next(), "name": "Overview", "number": 0, "modules": []}
+        all_sections = strategy.build_sections()
+        all_sections.insert(0, overview_section)
+
+        # Hidden is a plain top-level section (no component), so it's a "regular" section whose
+        # declared number Moodle actually honours -- keep it right after the strategy's regular
+        # sections, with no gap.
+        dedup_section = None
+        if c.dedup_pages:
+            dedup_section = {
+                "id": ids.next(),
+                "name": "Hidden",
+                "modules": [],
+                "visible": 0,
+                "number": section_offset + strategy.regular_section_count,
+            }
+            all_sections.append(dedup_section)
+
+        # Readings is always subsection-linked (see `_populate`'s docstring), so its declared
+        # number is never honoured either -- it belongs in the same "past every regular section"
+        # range as the strategy's own child sections, not right after them like Hidden.
+        readings_child_sec = None
+        if c.readings or c.reading_pages:
+            readings_child_sec = {"id": ids.next(), "name": "Readings", "modules": []}
+            all_sections.append(readings_child_sec)
+
+        tail_start = (
+            section_offset
+            + strategy.regular_section_count
+            + (1 if dedup_section is not None else 0)
+        )
+        strategy.relocate_child_sections(tail_start)
+        if readings_child_sec is not None:
+            readings_child_sec["number"] = tail_start + strategy.child_section_count
+
+        return overview_section, all_sections, dedup_section, readings_child_sec
+
+    def _alloc_subsections(
+        self,
+        ids: _Counter,
+        strategy: SectionStrategy,
+        overview_section: dict,
+        readings_child_sec: dict | None,
+    ) -> tuple[list[dict], dict | None]:
+        """Phase 2: allocate every subsection-activity ID, now that every section ID exists."""
+        sub_mods = strategy.build_subsections()
+        readings_subsection = None
+        if readings_child_sec is not None:
+            sub_mod_id, sub_ctx_id, sub_int_id = ids.next(), ids.next(), ids.next()
+            readings_child_sec["itemid"] = sub_int_id
+            readings_child_sec["parent_mod_id"] = sub_mod_id
+            readings_subsection = {
+                "mod_id": sub_mod_id,
+                "ctx": sub_ctx_id,
+                "internal_id": sub_int_id,
+                "name": "Readings",
+                "parent_sec_id": overview_section["id"],
+                "parent_sec_num": 0,
+                "child_sec": readings_child_sec,
+            }
+            overview_section["modules"].append(sub_mod_id)
+            sub_mods.append(readings_subsection)
+        return sub_mods, readings_subsection
+
+    def _build_syllabus_page(
+        self, c: BaseParser, ids: _Counter, overview_section: dict
+    ) -> dict | None:
+        """Build the Syllabus page inside `overview_section`, when the course has one."""
         if c.syllabus_html is None:
-            return overview_section, None
+            return None
 
         warn_external_edx_urls(
             c.syllabus_html, context="Syllabus", static_files=c.static_files
@@ -190,146 +253,56 @@ class MBZBuilder:
         )
         mod_id, ctx_id = ids.next(), ids.next()
         overview_section["modules"].append(mod_id)
-        syllabus_page = {
+        return {
             "id": mod_id,
             "ctx": ctx_id,
-            "sec_id": sec_id,
+            "sec_id": overview_section["id"],
             "sec_num": 0,
             "name": c.syllabus_title,
             "content": content,
             "file_refs": re.findall(r'@@PLUGINFILE@@/([^"\'>\s]+)', content),
             "file_ids": [],
         }
-        return overview_section, syllabus_page
 
-    def _build_readings_subsection(
-        self, c: BaseParser, ids: _Counter, overview_section: dict
-    ) -> tuple[dict, list[dict]]:
-        """Build a Readings subsection under `overview_section` and its resource activities.
-
-        Allocates the child section first because every resource references it, then allocates
-        each resource module and context, and finally allocates the subsection module, context,
-        and internal IDs. The subsection module is appended to the parent section before both
-        records are returned.
-        """
+    def _build_readings_resources(
+        self, c: BaseParser, ids: _Counter, child_sec: dict
+    ) -> list[dict]:
+        """Build one resource activity per OLX reading, inside the already-built `child_sec`."""
         resources: list[dict] = []
-        child_sec_id = ids.next()
         for reading in c.readings:
             mod_id, ctx_id = ids.next(), ids.next()
             resources.append(
                 {
                     "id": mod_id,
                     "ctx": ctx_id,
-                    "sec_id": child_sec_id,
-                    "sec_num": 0,  # placeholder, set in _populate
+                    "sec_id": child_sec["id"],
+                    "sec_num": child_sec["number"],
                     "name": reading["title"],
                     "file_refs": [reading["name"]],
                     "file_ids": [],
                     "component": "mod_resource",
                 }
             )
-        sub_mod_id, sub_ctx_id, sub_int_id = ids.next(), ids.next(), ids.next()
-        child_sec = {
-            "id": child_sec_id,
-            "name": "Readings",
-            "modules": [r["id"] for r in resources],
-            "itemid": sub_int_id,
-            "parent_mod_id": sub_mod_id,
-            "number": 0,
-        }
-        subsection = {
-            "mod_id": sub_mod_id,
-            "ctx": sub_ctx_id,
-            "internal_id": sub_int_id,
-            "name": "Readings",
-            "parent_sec_id": overview_section["id"],
-            "child_sec": child_sec,
-        }
-        overview_section["modules"].append(sub_mod_id)
-        return subsection, resources
+        return resources
 
-    def _build_wp_readings_subsection(
-        self, c: BaseParser, ids: _Counter, strategy: SectionStrategy, overview_section: dict
-    ) -> tuple[dict, list[dict]] | None:
-        """Build a Readings subsection under `overview_section`, one real page per WP reading
-        page -- the WP counterpart of `_build_readings_subsection`, holding real pages instead
-        of bare resource activities.
+    def _build_wp_readings_pages(
+        self, c: BaseParser, strategy: SectionStrategy, child_sec: dict
+    ) -> list[dict]:
+        """Build one real page per WP reading, inside the already-built `child_sec` -- the WP
+        counterpart of `_build_readings_resources`, holding real pages instead of bare resource
+        activities.
 
         Reuses `strategy._build_page` (rather than duplicating its HTML-processing pipeline) so
         each reading page's mod_id is registered in `strategy._reading_page_ids` as a side
-        effect -- this must run before `strategy.build()` walks the source chapters, so every
-        subject's in-course link to a reading resolves to a real, already-built target.
-        `child_sec["number"]` is left as a placeholder for `_populate` to set once every chapter
-        section number is known, same as `_build_readings_subsection`. Returns `None` when the
-        parsed course has no WP reading pages.
+        effect -- this must run before `strategy.build_pages()` walks the source chapters, so
+        every subject's in-course link to a reading resolves to a real, already-built target.
         """
-        if not c.reading_pages:
-            return None
-        child_sec_id = ids.next()
-        pages = [
+        return [
             page
             for vert in c.reading_pages
-            if (page := strategy._build_page(vert, child_sec_id, 0)) is not None
+            if (page := strategy._build_page(vert, child_sec["id"], child_sec["number"]))
+            is not None
         ]
-        if not pages:
-            return None
-        sub_mod_id, sub_ctx_id, sub_int_id = ids.next(), ids.next(), ids.next()
-        child_sec = {
-            "id": child_sec_id,
-            "name": "Readings",
-            "modules": [p["id"] for p in pages],
-            "itemid": sub_int_id,
-            "parent_mod_id": sub_mod_id,
-            "number": 0,
-        }
-        subsection = {
-            "mod_id": sub_mod_id,
-            "ctx": sub_ctx_id,
-            "internal_id": sub_int_id,
-            "name": "Readings",
-            "parent_sec_id": overview_section["id"],
-            "child_sec": child_sec,
-        }
-        overview_section["modules"].append(sub_mod_id)
-        return subsection, pages
-
-    def _build_wp_dedup_section(
-        self, c: BaseParser, ids: _Counter, strategy: SectionStrategy
-    ) -> tuple[dict, list[dict]] | None:
-        """Build one hidden, unlisted top-level section holding a real page per deduplicated
-        content item (currently: WP lectures -- see `c.dedup_pages`).
-
-        The section's `visible` is 0 and every page module inside it stays `visible=1` (the
-        default), which makes each page a Moodle "stealth" activity: reachable by direct link,
-        listed nowhere in the course. Every subject's reference resolves to a `mod_url` redirect
-        stub instead (see `SectionStrategy._build_dedup_url`), so N references to the same item
-        cost one real page, not N.
-
-        Reuses `strategy._build_page` (rather than duplicating its HTML-processing pipeline) so
-        each page's mod_id is registered in `strategy._dedup_page_ids` as a side effect -- this
-        must run before `strategy.build()` walks the source chapters, so every in-course link
-        resolves to a real, already-built target. `section["number"]` is left as a placeholder
-        for `_populate` to set once every other section number is known. Returns `None` when the
-        parsed course has no dedup pages.
-        """
-        if not c.dedup_pages:
-            return None
-        sec_id = ids.next()
-        pages = [
-            page
-            for vert in c.dedup_pages
-            if (page := strategy._build_page(vert, sec_id, 0)) is not None
-        ]
-        if not pages:
-            return None
-        section = {
-            "id": sec_id,
-            "name": "Hidden",
-            "modules": [p["id"] for p in pages],
-            "number": 0,
-            "visible": 0,
-        }
-        return section, pages
 
     def _build_file_entries(
         self, c: BaseParser, pages: list[dict], ids: _Counter
