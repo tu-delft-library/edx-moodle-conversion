@@ -1,3 +1,4 @@
+from collections import Counter
 from pathlib import Path
 
 import pytest
@@ -342,6 +343,7 @@ def test_same_reading_linked_from_multiple_subjects_dedups_to_one_page_and_both_
 
 def test_same_lecture_linked_from_multiple_subjects_dedups_to_one_page_and_both_link():
     course = _course({})
+    course._lecture_ref_counts = Counter({"https://x/lec1/": 2})
     fetch_calls = []
 
     def _counting_fetch(url):
@@ -360,6 +362,41 @@ def test_same_lecture_linked_from_multiple_subjects_dedups_to_one_page_and_both_
     assert second == stub
     assert len(course.dedup_pages) == 1
     assert course.dedup_pages[0]["dedup_url"] == "https://x/lec1/"
+
+
+def test_singly_referenced_lecture_builds_inline_not_via_dedup():
+    course = _course({})
+    course._fetch_page = lambda url: BeautifulSoup(LECTURE_YOUTUBE, "lxml")
+    result = course._parse_lecture("https://x/lec1/", "Lecture 1", "Ch 1", "Seq 1")
+    assert not any(c["type"] == "dedup_link" for c in result["components"])
+    assert any(c["type"] == "video" for c in result["components"])
+    assert course.dedup_pages == []
+
+
+def test_count_lecture_references_counts_across_subject_pages():
+    course = _course(
+        {
+            "https://x/subj1/": SUBJECT_PAGE,
+            "https://x/subj2/": SUBJECT_PAGE,
+        }
+    )
+    counts = course._count_lecture_references(["https://x/subj1/", "https://x/subj2/"])
+    assert counts == {"https://ocw.tudelft.nl/course-lectures/lec1/": 2}
+
+
+def test_parse_prescans_lecture_references_so_single_occurrence_builds_inline():
+    pages = {
+        "https://ocw.tudelft.nl/courses/example/": HOME,
+        "https://ocw.tudelft.nl/courses/example/subjects/1-intro/": SUBJECT_PAGE,
+        "https://ocw.tudelft.nl/course-lectures/lec1/": LECTURE_YOUTUBE,
+        "https://ocw.tudelft.nl/course-readings/read1/": READING_NO_ATTACHMENT,
+    }
+    course = _course(pages)
+    course.parse()
+    verticals = course.chapters[0]["sequentials"][0]["verticals"]
+    lecture = next(v for v in verticals if v["display_name"] == "Lecture 1")
+    assert not any(c["type"] == "dedup_link" for c in lecture["components"])
+    assert course.dedup_pages == []
 
 
 def test_subject_page_intro_text_becomes_chapter_summary():
@@ -446,6 +483,35 @@ def test_inline_image_left_unchanged_when_fetch_fails():
     result = course._parse_reading_uncached("https://x/read1/", "Bio")
     content = result["components"][0]["content"]
     assert 'src="https://ocw.tudelft.nl/wp-content/uploads/diagram.png"' in content
+
+
+def test_localized_inline_image_not_flagged_as_content_loss(caplog):
+    course = _course({})
+    course.fetcher = _FakeFetcher(Path("/tmp/dest/diagram.png"))
+    course._fetch_page = lambda url: BeautifulSoup(
+        '<article><p>Text</p><img src="https://ocw.tudelft.nl/wp-content/uploads/diagram.png">'
+        "</article>",
+        "lxml",
+    )
+    with caplog.at_level("WARNING"):
+        course._parse_reading_uncached("https://x/read1/", "Bio")
+    assert "not captured in any component" not in caplog.text
+
+
+def test_inline_image_srcset_candidates_are_fetched_and_rewritten():
+    course = _course({})
+    course.fetcher = _FakeFetcher(Path("/tmp/dest/diagram-300x200.png"))
+    course._fetch_page = lambda url: BeautifulSoup(
+        '<article><p>Text</p><img src="https://ocw.tudelft.nl/wp-content/uploads/diagram.png" '
+        'srcset="https://ocw.tudelft.nl/wp-content/uploads/diagram-300x200.png 300w, '
+        'https://ocw.tudelft.nl/wp-content/uploads/diagram-768x512.png 768w"></article>',
+        "lxml",
+    )
+    result = course._parse_reading_uncached("https://x/read1/", "Bio")
+    content = result["components"][0]["content"]
+    assert "/static/diagram-300x200.png 300w" in content
+    assert "/static/diagram-300x200.png 768w" in content
+    assert "ocw.tudelft.nl" not in content
 
 
 def test_reading_with_pdf_and_text_returns_page_with_body_and_download_box():
