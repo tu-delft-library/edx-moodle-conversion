@@ -167,6 +167,10 @@ class MBZBuilder:
         """Phase 1: allocate every section ID in the course, including Overview/Readings/Hidden
         which aren't part of `strategy`. See `_populate`'s docstring for the numbering rules."""
         overview_section = {"id": ids.next(), "name": "Overview", "number": 0, "modules": []}
+        if c.overview_summary_html:
+            overview_section["summary"] = strategy._process_html(
+                c.overview_summary_html, context="Overview"
+            )
         all_sections = strategy.build_sections()
         all_sections.insert(0, overview_section)
 

@@ -76,6 +76,7 @@ class WPCourse(BaseParser):
         """Parse the course home page, its subject pages, and all video components."""
         home = self._fetch_page(self.root)
         self.course_name = home.select_one("h1").get_text(strip=True)
+        self._parse_home_summary(home)
         subjects = self._parse_subjects_sidebar(home)
         self._lecture_ref_counts = self._count_lecture_references(
             url for url, _ in subjects
@@ -95,6 +96,30 @@ class WPCourse(BaseParser):
             for comp in page["components"]
             if comp["type"] == "video"
         ]
+
+    def _parse_home_summary(self, home: BeautifulSoup) -> None:
+        """Extract the home page's course description into `overview_summary_html`, so
+        `MBZBuilder._alloc_sections` puts it directly in the Overview section's own summary body
+        -- otherwise that section shows no description at all.
+
+        WPBakery tabs widgets (`vc_tta-container`) wrap the "Overview"/"What you will learn"
+        panels' real content in `.vc_tta-panel-body`; the tab labels and accordion headings are
+        siblings of those, not descendants, so selecting just the panel bodies drops the
+        tab-switcher chrome. Pages without a tabs widget fall back to the whole article.
+        """
+        article = home.select_one("article")
+        if article is None:
+            return
+        self._clean_article(article)
+        panels = article.select(".vc_tta-panel-body")
+        elements = panels if panels else [article]
+        html = "".join(
+            "".join(str(child) for child in el.contents) for el in elements
+        ).strip()
+        if not html:
+            return
+        warn_external_wp_urls(html, context="course overview")
+        self.overview_summary_html = html
 
     def _parse_subjects_sidebar(self, home: BeautifulSoup) -> list[tuple[str, str]]:
         """Return top-level chapter URLs and titles from the course navigation.

@@ -34,6 +34,11 @@ class BaseParser(ABC):
         self.language: str = ""
         self.license: str = ""
         self.summary_html: str | None = None
+        # WP only: the home page's course description, shown directly in the Overview section's
+        # own body text. Distinct from `summary_html` (a short course.xml-level blurb -- for OLX,
+        # deliberately not the same content as its Syllabus tab) and from `syllabus_html` (a
+        # separate page inside Overview).
+        self.overview_summary_html: str | None = None
         self.instructors: list[dict] = []
 
     @abstractmethod
