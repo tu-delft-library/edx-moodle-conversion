@@ -34,6 +34,9 @@ class SectionStrategy(ABC):
         # "reading_link" stubs (built after their canonical page, per source parse order) can
         # resolve their target.
         self._reading_page_ids: dict[str, int] = {}
+        # dedup URL -> canonical page's mod_id, same mechanism as `_reading_page_ids` but for any
+        # other content type that can be linked from more than one place (currently: lectures).
+        self._dedup_page_ids: dict[str, int] = {}
 
     @abstractmethod
     def build(self) -> tuple[list[dict], list[dict], list[dict]]:
@@ -78,6 +81,10 @@ class SectionStrategy(ABC):
             return self._build_reading_url(
                 vert, components[0]["reading_url"], sec_id, sec_num
             )
+        if len(components) == 1 and components[0]["type"] == "dedup_link":
+            return self._build_dedup_url(
+                vert, components[0]["dedup_url"], sec_id, sec_num
+            )
         parts = []
         for comp in components:
             if comp["type"] == "html":
@@ -98,6 +105,8 @@ class SectionStrategy(ABC):
         mod_id, ctx_id = self.ids.next(), self.ids.next()
         if vert.get("reading_url"):
             self._reading_page_ids[vert["reading_url"]] = mod_id
+        if vert.get("dedup_url"):
+            self._dedup_page_ids[vert["dedup_url"]] = mod_id
         combined = "".join(parts)
         file_refs = re.findall(r'@@PLUGINFILE@@/([^"\'>\s]+)', combined)
         return {
@@ -131,6 +140,33 @@ class SectionStrategy(ABC):
         if target_id is None:
             log.warning(
                 "No canonical page built yet for reading '%s'; dropping link", reading_url
+            )
+            return None
+        mod_id, ctx_id = self.ids.next(), self.ids.next()
+        return {
+            "id": mod_id,
+            "ctx": ctx_id,
+            "sec_id": sec_id,
+            "sec_num": sec_num,
+            "name": vert["display_name"],
+            "kind": "url",
+            "externalurl": f"$@PAGEVIEWBYID*{target_id}@$",
+            "file_refs": [],
+            "file_ids": [],
+        }
+
+    def _build_dedup_url(
+        self, vert: dict, dedup_url: str, sec_id: int, sec_num: int
+    ) -> dict | None:
+        """Build a `mod_url` record that redirects straight to the canonical deduplicated page in
+        the hidden dedup section (see `_build_reading_url` for the redirect mechanism itself).
+
+        Returns `None` when the target's canonical page hasn't been built yet.
+        """
+        target_id = self._dedup_page_ids.get(dedup_url)
+        if target_id is None:
+            log.warning(
+                "No canonical page built yet for '%s'; dropping link", dedup_url
             )
             return None
         mod_id, ctx_id = self.ids.next(), self.ids.next()

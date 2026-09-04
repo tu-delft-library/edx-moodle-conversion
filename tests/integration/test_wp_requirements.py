@@ -273,7 +273,7 @@ def test_wp_cc7_no_download_tool_widget_is_a_no_op():
     course = site.course()
     course.parse()
 
-    lecture = course.chapters[0]["sequentials"][0]["verticals"][0]
+    lecture = course.dedup_pages[0]
     html_components = [
         c["content"] for c in lecture["components"] if c["type"] == "html"
     ]
@@ -333,7 +333,7 @@ def test_wp_c2_image_sibling_of_video_iframe_still_captured(caplog):
         course.parse()
 
     assert not any("not captured" in r.message for r in caplog.records)
-    lecture = course.chapters[0]["sequentials"][0]["verticals"][0]
+    lecture = course.dedup_pages[0]
     html_components = [
         c["content"] for c in lecture["components"] if c["type"] == "html"
     ]
@@ -427,7 +427,7 @@ def test_wp_c3_multiple_downloads_in_one_row_all_captured(tmp_path, caplog):
 
     assert not any("download" in r.message for r in caplog.records)
 
-    lecture = course.chapters[0]["sequentials"][0]["verticals"][0]
+    lecture = course.dedup_pages[0]
     html_components = [c["content"] for c in lecture["components"] if c["type"] == "html"]
 
  
@@ -474,6 +474,6 @@ def test_wp_c3_no_download_css_on_page_without_downloads():
     course = site.course()
     course.parse()
 
-    lecture = course.chapters[0]["sequentials"][0]["verticals"][0]
+    lecture = course.dedup_pages[0]
     html_components = [c["content"] for c in lecture["components"] if c["type"] == "html"]
     assert not any(h.startswith("<style>") for h in html_components)

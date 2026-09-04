@@ -63,6 +63,8 @@ class WPCourse(BaseParser):
         self._session = requests.Session()
         # URL -> parsed canonical reading vertical (or None), for dedup across subject pages.
         self._reading_pages: dict[str, dict | None] = {}
+        # URL -> parsed canonical lecture vertical, for dedup across subject pages.
+        self._lecture_pages: dict[str, dict] = {}
 
     def parse(self) -> None:
         """Parse the course home page, its subject pages, and all video components."""
@@ -76,6 +78,11 @@ class WPCourse(BaseParser):
             for sequential in chapter["sequentials"]
             for vertical in sequential["verticals"]
             for comp in vertical["components"]
+            if comp["type"] == "video"
+        ] + [
+            comp
+            for page in self.dedup_pages
+            for comp in page["components"]
             if comp["type"] == "video"
         ]
 
@@ -149,6 +156,21 @@ class WPCourse(BaseParser):
         self._apply_wp_image_alignment(article)
         self._replace_separators(article)
         self._fix_download_tool_widgets(article)
+        self._localize_images(article)
+
+    def _localize_images(self, article) -> None:
+        """Fetch external `<img>` sources locally and rewrite `src` to the `/static/` convention.
+
+        Images that cannot be fetched (unsupported type, request failure) are left pointing at
+        their original source.
+        """
+        for img in article.select("img"):
+            src = img.get("src")
+            if not src or not src.startswith("http"):
+                continue
+            name = self._resolve_and_fetch(src)
+            if name:
+                img["src"] = f"/static/{name}"
 
     _TUD_HOST_CHECK = 'TUD_location.indexOf("ocw.tudelft.nl")!=-1'
     _TUD_HOST_CHECK_FORCED = "true"
@@ -313,6 +335,27 @@ class WPCourse(BaseParser):
     def _parse_lecture(
         self, url: str, title: str, chapter_name: str, sequential_name: str
     ) -> dict:
+        """Every occurrence of `url` (including the first) returns an in-course link, resolved
+        to a Moodle page ID at build time (see `SectionStrategy._build_dedup_url`).
+
+        `url`'s real page is built at most once, into `self.dedup_pages`, for
+        `MBZBuilder._build_wp_dedup_section` to place in one hidden, unlisted section -- a
+        lecture linked from N subjects should exist once in the backup, not N times.
+        """
+        if url not in self._lecture_pages:
+            result = self._parse_lecture_uncached(
+                url, title, chapter_name, sequential_name
+            )
+            self._lecture_pages[url] = result
+            self.dedup_pages.append(result)
+        return {
+            "display_name": title,
+            "components": [{"type": "dedup_link", "dedup_url": url}],
+        }
+
+    def _parse_lecture_uncached(
+        self, url: str, title: str, chapter_name: str, sequential_name: str
+    ) -> dict:
         """Parse one lecture page into a vertical record.
 
         Preserves descriptive HTML in source order, extracts YouTube or Collegerama videos, and
@@ -380,7 +423,7 @@ class WPCourse(BaseParser):
             found_downloads=found_downloads,
         )
         self._warn_external_wp_links(components, title)
-        return {"display_name": title, "components": components}
+        return {"display_name": title, "components": components, "dedup_url": url}
 
     def _warn_external_wp_links(self, components: list[dict], context: str) -> None:
         """Warn about any `html` component still linking back to ocw.tudelft.nl."""
@@ -522,12 +565,8 @@ class WPCourse(BaseParser):
         multiple: bool,
         video_index,
     ) -> list[tuple[dict, str]]:
-        """Build one (video component, source iframe src) pair per playable (YouTube/Collegerama)
-        iframe in `iframes`. `src` is returned only for content-loss auditing.
-
-        `video_index` is a shared, page-wide counter (see `_classify_lecture_child`); each video
-        gets an index suffix on its routing key only when `multiple` (the whole page embeds more
-        than one), so single-video pages keep their existing key.
+        """Build one (component, source iframe src) pair per iframe in `iframes`. `src` is
+        returned only for content-loss auditing.
         """
         videos = [el for el in iframes if el.get("src")]
         results = []
@@ -556,6 +595,8 @@ class WPCourse(BaseParser):
                     index=index,
                 )
                 results.append((component, src))
+            else:
+                results.append(({"type": "html", "content": str(iframe)}, src))
         return results
 
     def _video_component(
