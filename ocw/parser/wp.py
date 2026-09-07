@@ -98,15 +98,7 @@ class WPCourse(BaseParser):
         ]
 
     def _parse_home_summary(self, home: BeautifulSoup) -> None:
-        """Extract the home page's course description into `overview_summary_html`, so
-        `MBZBuilder._alloc_sections` puts it directly in the Overview section's own summary body
-        -- otherwise that section shows no description at all.
-
-        WPBakery tabs widgets (`vc_tta-container`) wrap the "Overview"/"What you will learn"
-        panels' real content in `.vc_tta-panel-body`; the tab labels and accordion headings are
-        siblings of those, not descendants, so selecting just the panel bodies drops the
-        tab-switcher chrome. Pages without a tabs widget fall back to the whole article.
-        """
+        """Extract the home page's course description into `overview_summary_html`."""
         article = home.select_one("article")
         if article is None:
             return
@@ -122,11 +114,7 @@ class WPCourse(BaseParser):
         self.overview_summary_html = html
 
     def _parse_subjects_sidebar(self, home: BeautifulSoup) -> list[tuple[str, str]]:
-        """Return top-level chapter URLs and titles from the course navigation.
-
-        Matches the stable `ul.activities` wrapper because the heading above it varies between
-        sites.
-        """
+        """Return top-level chapter URLs and titles from the course navigation."""
         activities = home.select_one("ul.activities")
         if activities is None:
             log.warning("No chapter list found on %s", self.root)
@@ -156,13 +144,7 @@ class WPCourse(BaseParser):
             text_div.insert_before(summary)
 
     def _apply_wp_image_alignment(self, article) -> None:
-        """Translate WordPress `alignleft`/`alignright`/`aligncenter` image classes into inline
-        float styles, since Moodle's theme has no CSS for WordPress's align classes.
-
-        WPBakery's `vc_single_image` shortcode puts the alignment class (`vc_align_left`/
-        `vc_align_right`/`vc_align_center`) on an ancestor wrapper div instead of the `<img>`
-        itself, so that case is checked separately.
-        """
+        """Translate WordPress alignment classes into inline float styles."""
         for img in article.select("img"):
             classes = img.get("class") or []
             align = next((c for c in classes if c in self._ALIGN_STYLES), None)
@@ -194,12 +176,7 @@ class WPCourse(BaseParser):
         self._localize_images(article)
 
     def _localize_images(self, article) -> None:
-        """Fetch external `<img>` sources (`src` and `srcset`) locally and rewrite them to the
-        `/static/` convention.
-
-        Images that cannot be fetched (unsupported type, request failure) are left pointing at
-        their original source.
-        """
+        """Fetch external image sources locally and rewrite them to the `/static/` convention."""
         for img in article.select("img"):
             src = img.get("src")
             if src and src.startswith("http"):
@@ -230,13 +207,7 @@ class WPCourse(BaseParser):
     _TUD_HOST_CHECK_FORCED = "true"
 
     def _fix_download_tool_widgets(self, article) -> None:
-        """Patch WordPress's `#download_tool` widget so it actually works when served from Moodle.
-
-        The widget's own bootstrap script branches on whether `location.href` contains
-        "ocw.tudelft.nl": the true branch loads jQuery itself before using it; the false branch
-        (taken on Moodle) assumes jQuery is already global, which is only true on WP. Forcing the
-        host check permanently true makes the widget always take the self-contained branch.
-        """
+        """Patch WordPress's `#download_tool` widget to work when served from Moodle."""
         for widget in article.select("#download_tool"):
             for script in widget.select("script"):
                 if script.string and self._TUD_HOST_CHECK in script.string:
@@ -245,12 +216,7 @@ class WPCourse(BaseParser):
                     )
 
     def _excluded_imgs(self, article) -> set[str]:
-        """Return image srcs the parser already intentionally drops on purpose, so the
-        content-loss audit doesn't flag them as false positives.
-
-        Covers the licence footer's CC badge (`section.license`, skipped in
-        `_classify_lecture_child`/`_reading_body_html`).
-        """
+        """Return image srcs the parser intentionally drops, for the content-loss audit to skip."""
         excluded: set[str] = set()
         for region in article.select("section.license"):
             excluded.update(
@@ -269,20 +235,7 @@ class WPCourse(BaseParser):
         expected_downloads: int = 0,
         found_downloads: int = 0,
     ) -> None:
-        """Warn about img/iframe/separator/download content present on the source page but
-        missing from the built components. Detection only — never changes what gets built.
-
-        Expected sets/counts must be captured before `_clean_article` mutates the article
-        (separator divs are replaced in place, so a post-clean count is always zero).
-
-        `found_iframe_srcs` covers iframes already pulled out into their own video components
-        (the lecture path); iframes left embedded raw inside an `"html"` component (the reading
-        path, which doesn't route through `_lecture_videos` at all) are picked up here instead.
-
-        `expected_downloads`/`found_downloads` cover `vc_download` blocks; only the lecture path
-        passes real values (readings resolve their own single download separately, outside this
-        loop, and are warned about there instead).
-        """
+        """Warn about img/iframe/separator/download content present on the source page but missing from the built components."""
         found_imgs: set[str] = set()
         found_iframe_srcs = set(found_iframe_srcs)
         found_hrs = 0
@@ -338,13 +291,7 @@ class WPCourse(BaseParser):
         return None
 
     def _count_lecture_references(self, subject_urls) -> "Counter[str]":
-        """Pre-scan every subject page and count how many link to each lecture URL.
-
-        Must run before any subject page is fully parsed, so `_parse_lecture` can tell a lecture
-        referenced from exactly one subject (build inline, like a normal page) from one
-        referenced from several (route through the dedup/Hidden-section mechanism instead of
-        duplicating it once per subject).
-        """
+        """Pre-scan every subject page and count how many link to each lecture URL."""
         counts: Counter[str] = Counter()
         for url in subject_urls:
             soup = self._fetch_page(url)
@@ -356,11 +303,7 @@ class WPCourse(BaseParser):
         return counts
 
     def _parse_subject_page(self, url: str, title: str) -> dict:
-        """Parse one subject page into a chapter record.
-
-        Content before the activity list becomes the chapter summary. Activity groups become
-        sequentials and their links become verticals.
-        """
+        """Parse one subject page into a chapter record."""
         soup = self._fetch_page(url)
         article = soup.select_one("article")
         if article is not None:
@@ -419,18 +362,7 @@ class WPCourse(BaseParser):
     def _parse_lecture(
         self, url: str, title: str, chapter_name: str, sequential_name: str
     ) -> dict:
-        """Build `url`'s lecture vertical, deduping it only if it's genuinely referenced from
-        multiple subjects.
-
-        A URL referenced from 2+ subjects (per `self._lecture_ref_counts`, populated by
-        `parse()`'s pre-scan) returns an in-course link on every occurrence (including the
-        first), resolved to a Moodle page ID at build time (see
-        `SectionStrategy._build_dedup_url`); its real page is built at most once, into
-        `self.dedup_pages`, for `MBZBuilder._build_wp_dedup_section` to place in one hidden,
-        unlisted section -- it should exist once in the backup, not N times. A URL referenced
-        from just one subject (or parsed directly, bypassing `parse()`'s pre-scan -- e.g. unit
-        tests) builds inline instead, exactly like any other page.
-        """
+        """Build `url`'s lecture vertical, deduping it only if referenced from multiple subjects."""
         if self._lecture_ref_counts.get(url, 0) >= 2:
             if url not in self._lecture_pages:
                 result = self._parse_lecture_uncached(
@@ -454,11 +386,7 @@ class WPCourse(BaseParser):
     def _parse_lecture_uncached(
         self, url: str, title: str, chapter_name: str, sequential_name: str
     ) -> dict:
-        """Parse one lecture page into a vertical record.
-
-        Preserves descriptive HTML in source order, extracts YouTube or Collegerama videos, and
-        turns a linked PDF into a local file link when it can be resolved.
-        """
+        """Parse one lecture page into a vertical record."""
         soup = self._fetch_page(url)
         article = soup.select_one("article")
         expected_imgs = (
@@ -530,11 +458,7 @@ class WPCourse(BaseParser):
                 warn_external_wp_urls(comp["content"], context=context)
 
     def _download_link_component(self, name: str, block: dict) -> dict:
-        """Build the vc_download-style HTML block for one resolved download link.
-
-        Uses the block's own caption/filename (never the lecture/page title) so multiple
-        downloads on one page get distinct, meaningful link text.
-        """
+        """Build the vc_download-style HTML block for one resolved download link."""
         caption = block["caption"] or block["filename"]
         return {
             "type": "html",
@@ -569,22 +493,7 @@ class WPCourse(BaseParser):
         multiple: bool,
         video_index,
     ) -> list[tuple[str, object]]:
-        """Classify one top-level lecture element into zero or more (kind, value) results.
-
-        `kind` is `"component"` (a page or video component), `"pdf_url_group"` (one or more
-        `vc_download` blocks found together under this element, kept together so sibling
-        downloads from the same WPBakery row render side by side), or `"video_src"`. An
-        element carrying one or more playable iframes and no other real content (WPBakery's
-        `wpb_video_widget` wrapper) is consumed whole as video. An element that mixes iframe(s)
-        with other real content -- WPBakery nests video and text/image columns several layout-div
-        levels deep inside one shared row -- is recursed into instead, so its non-video siblings
-        aren't swallowed along with the video.
-
-        `multiple` and `video_index` are shared across the whole page (computed once in
-        `_parse_lecture`) rather than reset per element, so pages that lay out each video in its
-        own separate top-level row (instead of one shared wrapper) still get a unique routing key
-        per video instead of every video colliding on the same unsuffixed key.
-        """
+        """Classify one top-level lecture element into zero or more (kind, value) results."""
         if child.name == "h1":
             return []
         if child.name == "section" and "license" in (child.get("class") or []):
@@ -708,12 +617,7 @@ class WPCourse(BaseParser):
         collegeramaid: str | None = None,
         index: int | None = None,
     ) -> dict:
-        """Build a video-routing record for a WordPress lecture page.
-
-        The routing key derives from the page URL slug, suffixed with `index` when the page
-        embeds more than one video so each gets a distinct key. WordPress supplies YouTube or
-        Collegerama IDs, while edX, SRT, and TUD download identifiers remain unset.
-        """
+        """Build a video-routing record for a WordPress lecture page."""
         slug = url.rstrip("/").rsplit("/", 1)[-1]
         if index is not None:
             slug = f"{slug}-{index}"
@@ -731,14 +635,7 @@ class WPCourse(BaseParser):
         }
 
     def _parse_reading(self, url: str, title: str) -> dict | None:
-        """Every occurrence of `url` (including the first) returns an in-course link, resolved
-        to a Moodle page ID at build time (see `SectionStrategy._build_page`).
-
-        `url`'s real page is built at most once, into `self.reading_pages`, for
-        `MBZBuilder._build_wp_readings_section` to place in a standalone Readings section --
-        mirroring the OLX layout instead of leaving the canonical page inline in whichever
-        subject happened to link it first.
-        """
+        """Return an in-course link to `url`'s canonical reading page, building it at most once."""
         if url not in self._reading_pages:
             result = self._parse_reading_uncached(url, title)
             self._reading_pages[url] = result
@@ -820,11 +717,7 @@ class WPCourse(BaseParser):
         return html
 
     def _resolve_and_fetch(self, asset_url: str) -> str | None:
-        """Return the local static-file name for an asset (PDF, download, webfont...), fetching
-        it when configured.
-
-        Successfully fetched assets are registered in `static_files`.
-        """
+        """Return the local static-file name for an asset, fetching it when configured."""
         name = resolve_asset_name(asset_url)
         if name in self.static_files:
             return name
@@ -837,12 +730,7 @@ class WPCourse(BaseParser):
         return fetched.name
 
     def _find_download_link(self, node) -> list[dict]:
-        """Return one entry per WordPress `vc_download` block in or below `node`.
-
-        Each entry is `{"href": str, "caption": str | None, "filename": str}`. `caption` is the
-        block's `<strong>` text when present; `filename` is the anchor's remaining direct text
-        (falls back to the href's basename when the source page has none).
-        """
+        """Return one entry per WordPress `vc_download` block in or below `node`."""
         classes = node.get("class") or []
         containers = (
             [node] if "vc_download" in classes else node.select("div.vc_download")

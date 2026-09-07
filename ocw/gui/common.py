@@ -266,11 +266,7 @@ class ConverterApp:
         )
 
     def _convert_worker(self) -> None:
-        """Convert every queued source independently and report its result.
-
-        Failures are logged per course so the remaining batch continues. Tk updates are scheduled
-        through the queue or `root.after()`.
-        """
+        """Convert every queued source independently and report its result."""
         for idx, course_path in enumerate(self.input_paths):
             key = f"course_{idx}"
             self._mark_course(key)
@@ -291,11 +287,7 @@ class ConverterApp:
         raise NotImplementedError
 
     def _drain_log_queue(self) -> None:
-        """Apply queued worker events to Tk widgets in first-in, first-out order.
-
-        A course marker is placed immediately before its first queued log line, keeping sidebar
-        navigation aligned with the corresponding conversion block.
-        """
+        """Apply queued worker events to Tk widgets in first-in, first-out order."""
         while not self._log_queue.empty():
             kind, payload = self._log_queue.get()
             if kind == "log":
@@ -328,11 +320,7 @@ class ConverterApp:
             self.log_box.yview(key)
 
     def _insert_log_line(self, message: str) -> None:
-        """Append one message to the log using colours for timestamps, levels, and outcomes.
-
-        Structured logger output is split into timestamp, level, and body. Plain status messages
-        use their `OK:` or `FAILED:` prefix.
-        """
+        """Append one message to the log, coloured by timestamp, level, and outcome."""
         match = _LOG_LINE_RE.match(message)
         if match:
             ts, level, body = match.groups()

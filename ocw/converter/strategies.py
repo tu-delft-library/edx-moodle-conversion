@@ -52,24 +52,10 @@ class SectionStrategy(ABC):
 
     @abstractmethod
     def build_subsections(self) -> list[dict]:
-        """Allocate every subsection-activity ID linking sections built by `build_sections()`.
-
-        Must run only after every section ID in the whole course -- not just this strategy's own
-        sections -- has already been allocated.
-        """
+        """Allocate every subsection-activity ID linking sections built by `build_sections()`."""
 
     def relocate_child_sections(self, start: int) -> None:
-        """Renumber this strategy's subsection-linked child sections starting at `start`.
-
-        Moodle 5.1's restore always relocates a `mod_subsection` child section to the end of the
-        course during restore, overwriting whatever `<number>` the backup declared for it (see
-        `restore_section_structure_step::process_section()` in Moodle core: "The section number
-        will be always the last of the course, no matter the case"). So the number given here has
-        no effect on final placement -- this only keeps it clear of `regular_section_count`'s
-        range, so nothing ends up reserving a section number that restore will never actually
-        fill, which is what produces Moodle's blank "ghost" filler sections. The default is a
-        no-op for strategies with no subsection-linked sections.
-        """
+        """Renumber this strategy's subsection-linked child sections starting at `start`."""
 
     @abstractmethod
     def build_pages(self) -> list[dict]:
@@ -86,11 +72,7 @@ class SectionStrategy(ABC):
         return all_sections, sub_mods, pages
 
     def _process_html(self, content: str, context: str = "") -> str:
-        """Apply the standard source-to-Moodle HTML transformation pipeline.
-
-        All page and summary HTML passes through this method so asset rewriting, external-host
-        warnings, unsupported embeds, and presentation fixes are handled consistently.
-        """
+        """Apply the standard source-to-Moodle HTML transformation pipeline."""
         warn_external_edx_urls(
             content, context=context, static_files=self.c.static_files
         )
@@ -109,13 +91,7 @@ class SectionStrategy(ABC):
         )
 
     def _build_page(self, vert: dict, sec_id: int, sec_num: int) -> dict | None:
-        """Convert one source vertical into a Moodle page record.
-
-        HTML components are transformed and video components become routing tokens. Allocates the
-        page module and context IDs when the vertical contains supported content, otherwise
-        returns `None`. A vertical whose only component is a `reading_link` is built as a
-        redirecting URL activity instead (see `_build_reading_url`).
-        """
+        """Convert one source vertical into a Moodle page record."""
         components = vert["components"]
         if len(components) == 1 and components[0]["type"] == "reading_link":
             return self._build_reading_url(
@@ -163,19 +139,7 @@ class SectionStrategy(ABC):
     def _build_reading_url(
         self, vert: dict, reading_url: str, sec_id: int, sec_num: int
     ) -> dict | None:
-        """Build a `mod_url` record that redirects straight to the canonical reading page.
-
-        A `mod_page` containing only a link makes the reader click twice (open the page, then
-        click the link inside it). `mod_url` with `display=5` ("Open") redirects on the first
-        click instead -- confirmed against Moodle's own source: `mod/url/view.php` calls
-        `redirect($fullurl)` immediately when `display` resolves to `RESOURCELIB_DISPLAY_OPEN`.
-        The restore-time `$@PAGEVIEWBYID*id@$` placeholder resolves here exactly as it does inside
-        page content, since `restore_decode_processor` scans every module's registered
-        decode-content fields (mod_url's `externalurl` included) against the full set of decode
-        rules from every module (mod_page's `PAGEVIEWBYID` rule included).
-
-        Returns `None` when the reading's canonical page hasn't been built yet.
-        """
+        """Build a `mod_url` record that redirects to the canonical reading page."""
         target_id = self._reading_page_ids.get(reading_url)
         if target_id is None:
             log.warning(
@@ -198,11 +162,7 @@ class SectionStrategy(ABC):
     def _build_dedup_url(
         self, vert: dict, dedup_url: str, sec_id: int, sec_num: int
     ) -> dict | None:
-        """Build a `mod_url` record that redirects straight to the canonical deduplicated page in
-        the hidden dedup section (see `_build_reading_url` for the redirect mechanism itself).
-
-        Returns `None` when the target's canonical page hasn't been built yet.
-        """
+        """Build a `mod_url` record that redirects to the canonical deduplicated page."""
         target_id = self._dedup_page_ids.get(dedup_url)
         if target_id is None:
             log.warning(

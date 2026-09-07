@@ -28,11 +28,7 @@ def strip_blacklisted_classes(html: str) -> str:
 
 
 def strip_templated_iframes(html: str) -> str:
-    """Remove iframes whose source URL contains an unresolved template placeholder.
-
-    These source-platform placeholders cannot resolve after Moodle import, so the entire iframe is
-    omitted rather than leaving a broken embed.
-    """
+    """Remove iframes whose source URL contains an unresolved template placeholder."""
     def _drop(m: re.Match) -> str:
         open_tag = m.group(1)
         return "" if re.search(r'src="[^"]*%%[A-Z_]+%%[^"]*"', open_tag) else m.group(0)
@@ -41,11 +37,7 @@ def strip_templated_iframes(html: str) -> str:
 
 
 def constrain_img_size(html: str) -> str:
-    """Ensure images fit Moodle's content width while preserving their aspect ratio.
-
-    Adds `max-width:100%` and `height:auto` before any existing inline styles, overriding fixed
-    author-supplied dimensions when needed.
-    """
+    """Constrain images to Moodle's content width while preserving aspect ratio."""
     def _inject(m: re.Match) -> str:
         tag = m.group(0)
         if "style=" in tag:
@@ -58,11 +50,7 @@ def constrain_img_size(html: str) -> str:
 
 
 def constrain_table_size(html: str) -> str:
-    """Constrain tables to Moodle's content width without rewriting their cell dimensions.
-
-    Applying `max-width:100%` to the table leaves its automatic layout intact, allowing columns to
-    shrink proportionally when fixed-width source tables would otherwise overflow.
-    """
+    """Constrain tables to Moodle's content width without rewriting cell dimensions."""
     def _inject(m: re.Match) -> str:
         tag = m.group(0)
         if "style=" in tag:
@@ -87,11 +75,7 @@ def mark_hyperlinks_nomediaplugin(html: str) -> str:
 
 
 def style_figcaption(html: str) -> str:
-    """Style headings inside figure captions as caption text.
-
-    Captions sometimes use heading tags in source HTML. Their font size and weight are overridden
-    so they render as secondary text instead of section headings.
-    """
+    """Style headings inside figure captions as caption text."""
     def _inject_heading_style(hm: re.Match) -> str:
         tag = hm.group(0)
         if "style=" in tag:
