@@ -62,11 +62,7 @@ class AssetFetcher:
         return self._cache[url]
 
     def _fetch_uncached(self, url: str) -> Path | None:
-        """Download one uncached supported asset and validate its response type.
-
-        Returns `None` and logs a warning for request failures or content types that do not match
-        the requested extension.
-        """
+        """Download one uncached supported asset and validate its response type."""
         ext = Path(urlparse(url).path).suffix.lower()
         if ext not in FETCHABLE_EXTENSIONS:
             return None
