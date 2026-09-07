@@ -1,5 +1,6 @@
 """Parse WordPress course sites into the normalised data consumed by `MBZBuilder`."""
 
+import copy
 import itertools
 import logging
 from collections import Counter
@@ -494,11 +495,7 @@ class WPCourse(BaseParser):
         video_index,
     ) -> list[tuple[str, object]]:
         """Classify one top-level lecture element into zero or more (kind, value) results."""
-        if child.name == "h1":
-            return []
-        if child.name == "section" and "license" in (child.get("class") or []):
-            return []
-        if child.name == "p" and "article__link-list" in (child.get("class") or []):
+        if self._is_boilerplate_child(child):
             return []
 
         iframes = [child] if child.name == "iframe" else child.select("iframe")
@@ -535,7 +532,11 @@ class WPCourse(BaseParser):
 
         dl_blocks = self._find_download_link(child)
         if dl_blocks:
-            return [("pdf_url_group", dl_blocks)]
+            results = [("pdf_url_group", dl_blocks)]
+            leftover = self._non_download_remainder(child)
+            if leftover is not None:
+                results.insert(0, ("component", {"type": "html", "content": leftover}))
+            return results
 
         if (
             child.get_text(strip=True)
@@ -544,6 +545,33 @@ class WPCourse(BaseParser):
         ):
             return [("component", {"type": "html", "content": str(child)})]
         return []
+
+    @staticmethod
+    def _is_boilerplate_child(child) -> bool:
+        """True for a lecture-page child that carries no course content -- the page title, the
+        licence footer, or the subject link list -- and should be skipped outright."""
+        if child.name == "h1":
+            return True
+        if child.name == "section" and "license" in (child.get("class") or []):
+            return True
+        if child.name == "p" and "article__link-list" in (child.get("class") or []):
+            return True
+        return False
+
+    @staticmethod
+    def _non_download_remainder(child) -> str | None:
+        """Return `child`'s HTML with all `div.vc_download` blocks stripped out, or `None` when
+        nothing real -- text, image, or `<hr>` -- is left once they're removed."""
+        remainder = copy.copy(child)
+        for dl in remainder.select("div.vc_download"):
+            dl.decompose()
+        if (
+            remainder.get_text(strip=True)
+            or remainder.select("img")
+            or remainder.select("hr")
+        ):
+            return str(remainder)
+        return None
 
     @staticmethod
     def _is_video_only(child, iframes: list) -> bool:
