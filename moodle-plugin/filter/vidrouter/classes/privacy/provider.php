@@ -15,14 +15,34 @@
 // along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
 
 /**
- * Strings for component 'local_vidrouter'
+ * Privacy Subsystem implementation for filter_vidrouter.
  *
- * @package    local_vidrouter
+ * @package    filter_vidrouter
  * @copyright  2026 TU Delft
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 
+namespace filter_vidrouter\privacy;
+
 defined('MOODLE_INTERNAL') || die();
 
-$string['pluginname'] = 'Video Router (course restore hook)';
-$string['privacy:metadata'] = 'This plugin only carries backup/restore hooks and stores no data of its own.';
+/**
+ * Privacy Subsystem for filter_vidrouter implementing null_provider.
+ *
+ * This plugin stores a video-key to embed-source routing table with no user identifier.
+ *
+ * @copyright  2026 TU Delft
+ * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
+ */
+class provider implements \core_privacy\local\metadata\null_provider {
+
+    /**
+     * Get the language string identifier with the component's language
+     * file to explain why this plugin stores no data.
+     *
+     * @return  string
+     */
+    public static function get_reason(): string {
+        return 'privacy:metadata';
+    }
+}

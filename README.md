@@ -203,6 +203,18 @@ Collegerama, then shows an unavailable-video message when neither source is avai
 When Moodle duplicates or restores an existing Moodle course, `local_vidrouter` _should_ preserve the resolved video
 HTML in the course backup.
 
+## Running the PHP tests
+
+The plugin tests run inside a Moodle install (e.g. via [moodle-docker](https://github.com/moodlehq/moodle-docker)),
+not from this repo directly. Symlink or copy `moodle-plugin/filter/vidrouter` and `moodle-plugin/local/vidrouter`
+into that Moodle checkout's `filter/` and `local/` directories, run PHPUnit init once, then run the plugin's tests
+with an explicit test suffix (a bare directory path does not inherit the suffix from the generated `phpunit.xml`):
+
+```bash
+php public/admin/tool/phpunit/cli/init.php
+vendor/bin/phpunit --test-suffix=_test.php public/filter/vidrouter/tests
+```
+
 # 7. Documentation
 
 The implementation documentation includes Markdown pages and generated Python and PHP API reference.
