@@ -36,7 +36,7 @@ def _fetcher(tmp_path, session) -> AssetFetcher:
 def test_unsupported_extension_returns_none_without_request(tmp_path):
     session = _FakeSession(response=_FakeResponse())
     fetcher = _fetcher(tmp_path, session)
-    assert fetcher.fetch("https://x/file.docx") is None
+    assert fetcher.fetch("https://x/file.mp4") is None
     assert session.calls == []
 
 

@@ -53,13 +53,7 @@ def safe_vidkey(raw: str) -> str:
 
 
 def esc(s: str | None) -> str:
-    """Escape a value for XML text or attribute insertion.
-
-    `None` becomes an empty string. Strips control characters illegal in XML 1.0 (everything
-    below `\\x20` except tab/newline/CR) that source content sometimes contains -- e.g. a
-    mis-decoded "fi" ligature leaving a literal `\\x0c` form-feed -- since entity-escaping only
-    covers `&<>"` and can't make an otherwise-illegal byte well-formed.
-    """
+    """Escape a value for XML text or attribute insertion."""
     return (
         _XML_ILLEGAL_CHARS_RE.sub("", s or "")
         .replace("&", "&amp;")
@@ -102,11 +96,7 @@ _RELATIVE_ASSET_RE = re.compile(
 
 
 def resolve_asset_name(url: str) -> str:
-    """Return the local filename represented by a source asset reference.
-
-    Recognises `/static/`, edX asset-v1, and legacy c4x forms. Unknown absolute URLs fall back to
-    their final path segment.
-    """
+    """Return the local filename represented by a source asset reference."""
     if url.startswith("http"):
         match = _ABSOLUTE_ASSET_RE.search(url)
         return match.group(1) if match else (Path(urlparse(url).path).name or url)
@@ -115,11 +105,7 @@ def resolve_asset_name(url: str) -> str:
 
 
 def rewrite_static_urls(html: str, static_files: dict[str, Path] | None = None) -> str:
-    """Rewrite embedded local assets to Moodle's `@@PLUGINFILE@@` placeholder.
-
-    `/static/` references are always local. Asset-v1 and c4x references are rewritten only when
-    their resolved filename exists in `static_files`, leaving unresolved external references intact.
-    """
+    """Rewrite embedded local assets to Moodle's `@@PLUGINFILE@@` placeholder."""
     html = re.sub(r'/static/([^"\'>\s]+)', r"@@PLUGINFILE@@/\1", html)
     if not static_files:
         return html
@@ -146,16 +132,28 @@ _EDX_HOST_RE = re.compile(
 def warn_external_edx_urls(
     html: str, context: str = "", static_files: dict[str, Path] | None = None
 ) -> None:
-    """Warn about EdX-hosted URLs that will remain external after conversion.
-
-    Locally packaged or fetched assets are skipped because `rewrite_static_urls()` embeds them in
-    the Moodle backup instead.
-    """
+    """Warn about EdX-hosted URLs that will remain external after conversion."""
     for match in _EDX_HOST_RE.findall(html):
         if static_files and resolve_asset_name(match) in static_files:
             continue
         log.warning(
             "Content still hosted on edX%s: '%s'",
+            f" on page '{context}'" if context else "",
+            match,
+        )
+
+
+# The WP source domain. By the time content is finalised, resolved assets and reading links have
+# already been rewritten to `/static/` or `$@PAGEVIEWBYID*...@$`, so any surviving match here is a
+# genuinely unresolved link back to the source site.
+_WP_HOST_RE = re.compile(r'https?://(?:[\w-]+\.)*ocw\.tudelft\.nl[^"\'>\s]*')
+
+
+def warn_external_wp_urls(html: str, context: str = "") -> None:
+    """Warn about ocw.tudelft.nl-hosted URLs that will remain external after conversion."""
+    for match in _WP_HOST_RE.findall(html):
+        log.warning(
+            "Content still hosted on ocw.tudelft.nl%s: '%s'",
             f" on page '{context}'" if context else "",
             match,
         )

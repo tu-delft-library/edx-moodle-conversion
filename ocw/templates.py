@@ -111,7 +111,7 @@ COURSE_XML = """\
 <course id="1" contextid="1">
   <shortname>{course_id}</shortname>
   <fullname>{course_name}</fullname>
-  <idnumber></idnumber>
+  <idnumber>{course_id}</idnumber>
   <summary>{summary}</summary>
   <summaryformat>1</summaryformat>
   <format>topics</format>
@@ -135,7 +135,7 @@ COURSE_XML = """\
   <requested>0</requested>
   <enablecompletion>0</enablecompletion>
   <completionnotify>0</completionnotify>
-  <hiddensections>0</hiddensections>
+  <hiddensections>1</hiddensections>
   <coursedisplay>0</coursedisplay>
   <category id="1">
     <name>Miscellaneous</name>
@@ -155,6 +155,21 @@ SECTION_XML = """\
   <summaryformat>1</summaryformat>
   <sequence>{sequence}</sequence>
   <visible>1</visible>
+  <availabilityjson>$@NULL@$</availabilityjson>
+  <component>$@NULL@$</component>
+  <itemid>$@NULL@$</itemid>
+  <timemodified>{ts}</timemodified>
+</section>"""
+
+HIDDEN_SECTION_XML = """\
+<?xml version="1.0" encoding="UTF-8"?>
+<section id="{id}">
+  <number>{number}</number>
+  <name>{name}</name>
+  <summary>{summary}</summary>
+  <summaryformat>1</summaryformat>
+  <sequence>{sequence}</sequence>
+  <visible>0</visible>
   <availabilityjson>$@NULL@$</availabilityjson>
   <component>$@NULL@$</component>
   <itemid>$@NULL@$</itemid>
@@ -339,6 +354,51 @@ RESOURCE_MODULE_XML = """\
 <?xml version="1.0" encoding="UTF-8"?>
 <module id="{id}" version="{moodle_version}">
   <modulename>resource</modulename>
+  <sectionid>{sec_id}</sectionid>
+  <sectionnumber>{sec_num}</sectionnumber>
+  <idnumber>$@NULL@$</idnumber>
+  <added>{ts}</added>
+  <score>0</score>
+  <indent>0</indent>
+  <visible>1</visible>
+  <visibleoncoursepage>1</visibleoncoursepage>
+  <visibleold>1</visibleold>
+  <groupmode>0</groupmode>
+  <groupingid>0</groupingid>
+  <completion>0</completion>
+  <completiongradeitemnumber>$@NULL@$</completiongradeitemnumber>
+  <completionpassgrade>0</completionpassgrade>
+  <completionview>0</completionview>
+  <completionexpected>0</completionexpected>
+  <availability>$@NULL@$</availability>
+  <showdescription>0</showdescription>
+  <downloadcontent>1</downloadcontent>
+  <lang>$@NULL@$</lang>
+  <enableaitools>$@NULL@$</enableaitools>
+  <enabledaiactions>$@NULL@$</enabledaiactions>
+  <tags>
+  </tags>
+</module>"""
+
+URL_XML = """\
+<?xml version="1.0" encoding="UTF-8"?>
+<activity id="{id}" moduleid="{id}" modulename="url" contextid="{ctx}">
+  <url id="{id}">
+    <name>{name}</name>
+    <intro/>
+    <introformat>1</introformat>
+    <externalurl>{externalurl}</externalurl>
+    <display>5</display>
+    <displayoptions>a:0:{{}}</displayoptions>
+    <parameters>a:0:{{}}</parameters>
+    <timemodified>{ts}</timemodified>
+  </url>
+</activity>"""
+
+URL_MODULE_XML = """\
+<?xml version="1.0" encoding="UTF-8"?>
+<module id="{id}" version="{moodle_version}">
+  <modulename>url</modulename>
   <sectionid>{sec_id}</sectionid>
   <sectionnumber>{sec_num}</sectionnumber>
   <idnumber>$@NULL@$</idnumber>

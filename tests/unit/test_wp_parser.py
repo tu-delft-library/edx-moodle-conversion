@@ -1,3 +1,4 @@
+from collections import Counter
 from pathlib import Path
 
 import pytest
@@ -138,6 +139,10 @@ LECTURE_COLLEGERAMA = """
 <article><iframe src="https://collegerama.tudelft.nl/Mediasite/Play/xyz789"></iframe></article>
 """
 
+LECTURE_SLIDESHARE = """
+<article><iframe src="//www.slideshare.net/slideshow/embed_code/key/abc123"></iframe></article>
+"""
+
 LECTURE_WITH_SURROUNDING_TEXT = """
 <article>
 <h1>Lecture 1</h1>
@@ -173,6 +178,12 @@ READING_WITH_PDF_AND_TEXT = """
 
 READING_NO_ATTACHMENT = """
 <article><p>Just inline text, no download link.</p></article>
+"""
+
+READING_WITH_DANGLING_WP_LINK = """
+<article>
+<p>See also <a href="https://ocw.tudelft.nl/courses/other-course/subjects/2-more/">this subject</a>.</p>
+</article>
 """
 
 READING_WITH_ALIGNED_IMAGE_AND_SEPARATOR = """
@@ -239,7 +250,7 @@ def test_exercise_link_dropped():
 def test_youtube_lecture_becomes_video_component():
     course = _course({})
     course._fetch_page = lambda url: BeautifulSoup(LECTURE_YOUTUBE, "lxml")
-    result = course._parse_lecture("https://x/lec1/", "Lecture 1", "Ch 1", "Seq 1")
+    result = course._parse_lecture_uncached("https://x/lec1/", "Lecture 1", "Ch 1", "Seq 1")
     video = next(c for c in result["components"] if c["type"] == "video")
     assert video["youtubeid"] == "abc123"
     assert video["tuddownloadid"] is None
@@ -251,12 +262,21 @@ def test_youtube_lecture_becomes_video_component():
 def test_collegerama_lecture_becomes_video_component():
     course = _course({})
     course._fetch_page = lambda url: BeautifulSoup(LECTURE_COLLEGERAMA, "lxml")
-    result = course._parse_lecture("https://x/lec2/", "Lecture 2", "Ch 1", "Seq 1")
+    result = course._parse_lecture_uncached("https://x/lec2/", "Lecture 2", "Ch 1", "Seq 1")
     video = next(c for c in result["components"] if c["type"] == "video")
     assert video["collegeramaid"] == "xyz789"
     assert video["tuddownloadid"] is None
     assert video["youtubeid"] is None
     assert video["vidkey"] == "lec2"
+
+
+def test_unrecognized_iframe_provider_kept_as_raw_embed_not_dropped():
+    course = _course({})
+    course._fetch_page = lambda url: BeautifulSoup(LECTURE_SLIDESHARE, "lxml")
+    result = course._parse_lecture_uncached("https://x/lec3/", "Lecture 3", "Ch 1", "Seq 1")
+    assert not any(c["type"] == "video" for c in result["components"])
+    html = next(c for c in result["components"] if c["type"] == "html")
+    assert "slideshare.net" in html["content"]
 
 
 def test_weeks_heading_still_discovered_via_activities_wrapper():
@@ -274,34 +294,109 @@ def test_weeks_heading_still_discovered_via_activities_wrapper():
     assert course.chapters[0]["display_name"] == "1. Intro"
 
 
-def test_reading_with_download_block_becomes_readings_entry():
+def test_reading_with_download_block_becomes_page_with_download_box():
     course = _course({})
     course.static_files["Chapter.pdf"] = Path("/tmp/Chapter.pdf")
     course._fetch_page = lambda url: BeautifulSoup(READING_WITH_PDF, "lxml")
-    result = course._parse_reading("https://x/read1/", "Chapter 1")
-    assert result is None  # lives in self.readings, not a vertical
-    assert course.readings == [{"title": "Chapter 1", "name": "Chapter.pdf"}]
+    result = course._parse_reading_uncached("https://x/read1/", "Chapter 1")
+    assert result is not None
+    assert result["reading_url"] == "https://x/read1/"
+    assert any(
+        c["type"] == "html" and "/static/Chapter.pdf" in c["content"]
+        for c in result["components"]
+    )
+    assert course.readings == []
 
 
 def test_reading_without_download_block_becomes_html_component():
     course = _course({})
     course._fetch_page = lambda url: BeautifulSoup(READING_NO_ATTACHMENT, "lxml")
-    result = course._parse_reading("https://x/read1/", "Chapter 1")
+    result = course._parse_reading_uncached("https://x/read1/", "Chapter 1")
     assert result is not None
     assert result["components"][0]["type"] == "html"
     assert course.readings == []
 
 
-def test_same_pdf_linked_from_multiple_subjects_appends_twice_no_dedup():
+def test_same_reading_linked_from_multiple_subjects_dedups_to_one_page_and_both_link():
     course = _course({})
     course.static_files["Chapter.pdf"] = Path("/tmp/Chapter.pdf")
-    course._fetch_page = lambda url: BeautifulSoup(READING_WITH_PDF, "lxml")
-    course._parse_reading("https://x/read1/", "Chapter 1")
-    course._parse_reading("https://x/read1/", "Chapter 1")
-    assert course.readings == [
-        {"title": "Chapter 1", "name": "Chapter.pdf"},
-        {"title": "Chapter 1", "name": "Chapter.pdf"},
-    ]
+    fetch_calls = []
+
+    def _counting_fetch(url):
+        fetch_calls.append(url)
+        return BeautifulSoup(READING_WITH_PDF, "lxml")
+
+    course._fetch_page = _counting_fetch
+    stub = {
+        "display_name": "Chapter 1",
+        "components": [{"type": "reading_link", "reading_url": "https://x/read1/"}],
+    }
+    first = course._parse_reading("https://x/read1/", "Chapter 1")
+    second = course._parse_reading("https://x/read1/", "Chapter 1")
+    assert fetch_calls == ["https://x/read1/"]  # fetched once, not per occurrence
+    assert first == stub  # even the first occurrence links, it doesn't inline the page
+    assert second == stub
+    assert course.readings == []
+    assert len(course.reading_pages) == 1
+    assert course.reading_pages[0]["reading_url"] == "https://x/read1/"
+
+
+def test_same_lecture_linked_from_multiple_subjects_dedups_to_one_page_and_both_link():
+    course = _course({})
+    course._lecture_ref_counts = Counter({"https://x/lec1/": 2})
+    fetch_calls = []
+
+    def _counting_fetch(url):
+        fetch_calls.append(url)
+        return BeautifulSoup(LECTURE_YOUTUBE, "lxml")
+
+    course._fetch_page = _counting_fetch
+    stub = {
+        "display_name": "Lecture 1",
+        "components": [{"type": "dedup_link", "dedup_url": "https://x/lec1/"}],
+    }
+    first = course._parse_lecture("https://x/lec1/", "Lecture 1", "Ch 1", "Seq 1")
+    second = course._parse_lecture("https://x/lec1/", "Lecture 1", "Ch 1", "Seq 1")
+    assert fetch_calls == ["https://x/lec1/"]  # fetched once, not per occurrence
+    assert first == stub  # even the first occurrence links, it doesn't inline the page
+    assert second == stub
+    assert len(course.dedup_pages) == 1
+    assert course.dedup_pages[0]["dedup_url"] == "https://x/lec1/"
+
+
+def test_singly_referenced_lecture_builds_inline_not_via_dedup():
+    course = _course({})
+    course._fetch_page = lambda url: BeautifulSoup(LECTURE_YOUTUBE, "lxml")
+    result = course._parse_lecture("https://x/lec1/", "Lecture 1", "Ch 1", "Seq 1")
+    assert not any(c["type"] == "dedup_link" for c in result["components"])
+    assert any(c["type"] == "video" for c in result["components"])
+    assert course.dedup_pages == []
+
+
+def test_count_lecture_references_counts_across_subject_pages():
+    course = _course(
+        {
+            "https://x/subj1/": SUBJECT_PAGE,
+            "https://x/subj2/": SUBJECT_PAGE,
+        }
+    )
+    counts = course._count_lecture_references(["https://x/subj1/", "https://x/subj2/"])
+    assert counts == {"https://ocw.tudelft.nl/course-lectures/lec1/": 2}
+
+
+def test_parse_prescans_lecture_references_so_single_occurrence_builds_inline():
+    pages = {
+        "https://ocw.tudelft.nl/courses/example/": HOME,
+        "https://ocw.tudelft.nl/courses/example/subjects/1-intro/": SUBJECT_PAGE,
+        "https://ocw.tudelft.nl/course-lectures/lec1/": LECTURE_YOUTUBE,
+        "https://ocw.tudelft.nl/course-readings/read1/": READING_NO_ATTACHMENT,
+    }
+    course = _course(pages)
+    course.parse()
+    verticals = course.chapters[0]["sequentials"][0]["verticals"]
+    lecture = next(v for v in verticals if v["display_name"] == "Lecture 1")
+    assert not any(c["type"] == "dedup_link" for c in lecture["components"])
+    assert course.dedup_pages == []
 
 
 def test_subject_page_intro_text_becomes_chapter_summary():
@@ -322,27 +417,26 @@ def test_subject_page_without_intro_has_no_summary_key():
 def test_lecture_text_captured_in_order_around_video():
     course = _course({})
     course._fetch_page = lambda url: BeautifulSoup(LECTURE_WITH_SURROUNDING_TEXT, "lxml")
-    result = course._parse_lecture("https://x/lec1/", "Lecture 1", "Ch 1", "Seq 1")
-    # nav list (kept), intro text, video, follow-up text, in document order
-    assert [c["type"] for c in result["components"]] == ["html", "html", "video", "html"]
-    assert "Course subject(s)" in result["components"][0]["content"]
-    assert "Intro paragraph before the video." in result["components"][1]["content"]
-    assert "Follow-up paragraph after the video." in result["components"][3]["content"]
+    result = course._parse_lecture_uncached("https://x/lec1/", "Lecture 1", "Ch 1", "Seq 1")
+    # nav list dropped; intro text, video, follow-up text, in document order
+    assert [c["type"] for c in result["components"]] == ["html", "video", "html"]
+    assert "Intro paragraph before the video." in result["components"][0]["content"]
+    assert "Follow-up paragraph after the video." in result["components"][2]["content"]
 
 
-def test_lecture_nav_list_kept_license_excluded_from_text():
+def test_lecture_nav_list_and_license_excluded_from_text():
     course = _course({})
     course._fetch_page = lambda url: BeautifulSoup(LECTURE_WITH_SURROUNDING_TEXT, "lxml")
-    result = course._parse_lecture("https://x/lec1/", "Lecture 1", "Ch 1", "Seq 1")
+    result = course._parse_lecture_uncached("https://x/lec1/", "Lecture 1", "Ch 1", "Seq 1")
     combined = " ".join(c.get("content", "") for c in result["components"])
-    assert "Course subject(s)" in combined
+    assert "Course subject(s)" not in combined
     assert "CC license text" not in combined
 
 
 def test_expandable_text_converted_to_details_spoiler():
     course = _course({})
     course._fetch_page = lambda url: BeautifulSoup(READING_WITH_EXPANDABLE_TEXT, "lxml")
-    result = course._parse_reading("https://x/read1/", "Reading 1")
+    result = course._parse_reading_uncached("https://x/read1/", "Reading 1")
     assert result is not None
     content = result["components"][0]["content"]
     assert "<details>" in content
@@ -357,24 +451,84 @@ def test_aligned_image_gets_float_style_and_separator_dropped():
     course._fetch_page = lambda url: BeautifulSoup(
         READING_WITH_ALIGNED_IMAGE_AND_SEPARATOR, "lxml"
     )
-    result = course._parse_reading("https://x/read1/", "Bio")
+    result = course._parse_reading_uncached("https://x/read1/", "Bio")
     content = result["components"][0]["content"]
     assert 'style="float:left' in content
     assert "vc_separator" not in content
     assert "<hr" in content
 
 
-def test_reading_with_pdf_and_text_returns_both_readings_entry_and_page():
+def test_inline_image_is_fetched_and_src_rewritten_to_static():
+    course = _course({})
+    course.fetcher = _FakeFetcher(Path("/tmp/dest/diagram.png"))
+    course._fetch_page = lambda url: BeautifulSoup(
+        '<article><p>Text</p><img src="https://ocw.tudelft.nl/wp-content/uploads/diagram.png">'
+        "</article>",
+        "lxml",
+    )
+    result = course._parse_reading_uncached("https://x/read1/", "Bio")
+    content = result["components"][0]["content"]
+    assert 'src="/static/diagram.png"' in content
+    assert course.static_files["diagram.png"] == Path("/tmp/dest/diagram.png")
+
+
+def test_inline_image_left_unchanged_when_fetch_fails():
+    course = _course({})
+    course.fetcher = _FakeFetcher(None)
+    course._fetch_page = lambda url: BeautifulSoup(
+        '<article><p>Text</p><img src="https://ocw.tudelft.nl/wp-content/uploads/diagram.png">'
+        "</article>",
+        "lxml",
+    )
+    result = course._parse_reading_uncached("https://x/read1/", "Bio")
+    content = result["components"][0]["content"]
+    assert 'src="https://ocw.tudelft.nl/wp-content/uploads/diagram.png"' in content
+
+
+def test_localized_inline_image_not_flagged_as_content_loss(caplog):
+    course = _course({})
+    course.fetcher = _FakeFetcher(Path("/tmp/dest/diagram.png"))
+    course._fetch_page = lambda url: BeautifulSoup(
+        '<article><p>Text</p><img src="https://ocw.tudelft.nl/wp-content/uploads/diagram.png">'
+        "</article>",
+        "lxml",
+    )
+    with caplog.at_level("WARNING"):
+        course._parse_reading_uncached("https://x/read1/", "Bio")
+    assert "not captured in any component" not in caplog.text
+
+
+def test_inline_image_srcset_candidates_are_fetched_and_rewritten():
+    course = _course({})
+    course.fetcher = _FakeFetcher(Path("/tmp/dest/diagram-300x200.png"))
+    course._fetch_page = lambda url: BeautifulSoup(
+        '<article><p>Text</p><img src="https://ocw.tudelft.nl/wp-content/uploads/diagram.png" '
+        'srcset="https://ocw.tudelft.nl/wp-content/uploads/diagram-300x200.png 300w, '
+        'https://ocw.tudelft.nl/wp-content/uploads/diagram-768x512.png 768w"></article>',
+        "lxml",
+    )
+    result = course._parse_reading_uncached("https://x/read1/", "Bio")
+    content = result["components"][0]["content"]
+    assert "/static/diagram-300x200.png 300w" in content
+    assert "/static/diagram-300x200.png 768w" in content
+    assert "ocw.tudelft.nl" not in content
+
+
+def test_reading_with_pdf_and_text_returns_page_with_body_and_download_box():
     course = _course({})
     course.static_files["Chapter.pdf"] = Path("/tmp/Chapter.pdf")
     course._fetch_page = lambda url: BeautifulSoup(READING_WITH_PDF_AND_TEXT, "lxml")
-    result = course._parse_reading("https://x/read1/", "Chapter 1")
-    assert course.readings == [{"title": "Chapter 1", "name": "Chapter.pdf"}]
+    result = course._parse_reading_uncached("https://x/read1/", "Chapter 1")
+    assert course.readings == []
     assert result is not None
-    content = result["components"][0]["content"]
-    assert "Some descriptive text about the reading." in content
-    assert "Course subject(s)" in content
-    assert "CC license text" not in content
+    body = result["components"][0]["content"]
+    assert "Some descriptive text about the reading." in body
+    assert "Course subject(s)" not in body
+    assert "CC license text" not in body
+    assert any(
+        c["type"] == "html" and "/static/Chapter.pdf" in c["content"]
+        for c in result["components"]
+    )
 
 
 def test_no_chapter_list_on_home_page_logs_warning_and_returns_empty(caplog):
@@ -396,6 +550,16 @@ def test_subject_page_without_activities_list_logs_warning_and_returns_empty_seq
     assert "No activities list found" in caplog.text
 
 
+def test_reading_with_dangling_wp_link_logs_warning(caplog):
+    course = _course({})
+    course._fetch_page = lambda url: BeautifulSoup(READING_WITH_DANGLING_WP_LINK, "lxml")
+    with caplog.at_level("WARNING"):
+        result = course._parse_reading_uncached("https://x/read1/", "Reading 1")
+    assert result is not None
+    assert "still hosted on ocw.tudelft.nl" in caplog.text
+    assert "ocw.tudelft.nl/courses/other-course/subjects/2-more/" in caplog.text
+
+
 def test_unhandled_icon_type_logs_warning_and_is_dropped(caplog):
     course = _course({})
     course._fetch_page = lambda url: BeautifulSoup(
@@ -412,7 +576,7 @@ def test_empty_expandable_widget_is_removed():
     course._fetch_page = lambda url: BeautifulSoup(
         READING_EMPTY_EXPANDABLE_WIDGET, "lxml"
     )
-    result = course._parse_reading("https://x/read1/", "Reading 1")
+    result = course._parse_reading_uncached("https://x/read1/", "Reading 1")
     assert result is not None
     content = result["components"][0]["content"]
     assert "Kept text." in content
@@ -424,7 +588,7 @@ def test_image_without_align_class_gets_no_float_style():
     course._fetch_page = lambda url: BeautifulSoup(
         READING_PLAIN_IMAGE_NO_ALIGN_CLASS, "lxml"
     )
-    result = course._parse_reading("https://x/read1/", "Bio")
+    result = course._parse_reading_uncached("https://x/read1/", "Bio")
     content = result["components"][0]["content"]
     assert "style=" not in content
 
@@ -441,7 +605,7 @@ def test_lecture_with_download_block_resolves_pdf_into_link_component():
     course = _course({})
     course.fetcher = _FakeFetcher(Path("/tmp/slides.pdf"))
     course._fetch_page = lambda url: BeautifulSoup(LECTURE_WITH_PDF, "lxml")
-    result = course._parse_lecture("https://x/lec1/", "Lecture 1", "Ch 1", "Seq 1")
+    result = course._parse_lecture_uncached("https://x/lec1/", "Lecture 1", "Ch 1", "Seq 1")
     contents = [c["content"] for c in result["components"] if c["type"] == "html"]
     assert any('href="/static/slides.pdf"' in c for c in contents)
     assert course.static_files["slides.pdf"] == Path("/tmp/slides.pdf")
@@ -452,7 +616,7 @@ def test_reading_with_unresolvable_pdf_logs_warning_and_omits_readings_entry(cap
     course.fetcher = None
     course._fetch_page = lambda url: BeautifulSoup(READING_WITH_UNRESOLVABLE_PDF, "lxml")
     with caplog.at_level("WARNING"):
-        result = course._parse_reading("https://x/read1/", "Reading 1")
+        result = course._parse_reading_uncached("https://x/read1/", "Reading 1")
     assert course.readings == []
     assert "Missing pdf for Readings entry 'Reading 1'" in caplog.text
     assert result is not None

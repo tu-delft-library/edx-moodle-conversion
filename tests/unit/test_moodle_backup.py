@@ -234,6 +234,11 @@ def test_course_format_topics(mbz):
     assert _parse(mbz, "course/course.xml").findtext("format") == "topics"
 
 
+def test_course_idnumber_matches_shortname(mbz):
+    course = _parse(mbz, "course/course.xml")
+    assert course.findtext("idnumber") == course.findtext("shortname")
+
+
 @pytest.fixture(scope="module")
 def spaced_mbz(tmp_path_factory):
     root = tmp_path_factory.mktemp("smbz")
@@ -431,9 +436,12 @@ def test_chapter_numbers_shift_past_overview_flat(syllabus_flat_mbz):
     assert min(non_overview_nums) == 2
 
 
-def test_no_overview_section_without_syllabus(multi_chapter_mbz):
+def test_overview_section_present_but_empty_without_syllabus(multi_chapter_mbz):
+    """Overview always exists, even with no syllabus content -- it's just empty."""
     sections = _section_xmls(multi_chapter_mbz)
-    assert not any(s.findtext("name") == "Overview" for s in sections)
+    overview = next(s for s in sections if s.findtext("name") == "Overview")
+    assert overview.findtext("number") == "0"
+    assert not [m for m in (overview.findtext("sequence") or "").split(",") if m]
 
 
 # ── G: Readings section (pdf_textbooks -> mod_resource) ──────────────────────
@@ -483,21 +491,22 @@ def _backup_xml(mbz_path) -> ET.Element:
         return ET.parse(tar.extractfile("moodle_backup.xml")).getroot()
 
 
-def test_readings_section_numbered_zero_without_overview(readings_only_mbz):
-    """No-Overview fallback: Readings stays a standalone top-level section,
-    not a mod_subsection — there's nothing to nest it into."""
+def test_readings_nests_under_overview_without_syllabus(readings_only_mbz):
+    """Overview always exists now, so Readings always nests as a mod_subsection
+    inside it, even when the course has no syllabus content."""
     sections = _section_xmls(readings_only_mbz)
-    readings = [s for s in sections if s.findtext("name") == "Readings"]
-    assert len(readings) == 1
-    assert readings[0].findtext("number") == "0"
-    assert readings[0].findtext("component") == "$@NULL@$"
+    overview = next(s for s in sections if s.findtext("name") == "Overview")
+    readings = next(s for s in sections if s.findtext("name") == "Readings")
+    assert overview.findtext("number") == "0"
+    assert readings.findtext("component") == "mod_subsection"
+    assert readings.findtext("itemid") not in (None, "", "$@NULL@$")
 
 
-def test_readings_resource_insubsection_empty_without_overview(readings_only_mbz):
+def test_readings_resource_insubsection_set_without_syllabus(readings_only_mbz):
     acts = _backup_xml(readings_only_mbz).findall(".//activities/activity")
     resource_acts = [a for a in acts if a.findtext("modulename") == "resource"]
     assert resource_acts
-    assert all(a.findtext("insubsection") == "" for a in resource_acts)
+    assert all(a.findtext("insubsection") == "1" for a in resource_acts)
 
 
 def test_readings_nested_as_subsection_under_overview(overview_and_readings_mbz):

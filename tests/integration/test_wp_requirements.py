@@ -382,3 +382,225 @@ def test_wp_c2_no_false_positive_on_image_only_page(caplog):
         course.parse()
 
     assert not any("not captured" in r.message for r in caplog.records)
+
+
+# WP-C3
+def test_wp_c3_multiple_downloads_in_one_row_all_captured(tmp_path, caplog):
+    """Reproduces the shape found live in `breakwaters-and-closure-dams` (`6-data-collection`):
+    two `vc_download` blocks side by side in one `vc_row`, as WPBakery column siblings rather
+    than at the article's top level. Both must be fetched, keep their own caption/filename
+    (never the lecture title), and stay in source order relative to surrounding text."""
+    site = WPFixtureSite()
+    site.add_static_file("ct530806.pdf", b"%PDF-1.4 fake")
+    site.add_static_file("GumbelWeibull__1_.xls", b"fake xls bytes")
+    site.add_static_file("fontawesome-webfont.woff2", b"fake woff2 bytes")
+    site.add_static_file("fontawesome-webfont.woff", b"fake woff bytes")
+    site.add_home([(SUBJECT_URL, "1. Intro")])
+    site.add_subject_page(
+        SUBJECT_URL,
+        _activities_html(
+            f'<li><a class="icon icon--lecture" href="{LECTURE_URL}">Lecture 1</a></li>'
+        ),
+    )
+    site.add_lecture_page(
+        LECTURE_URL,
+        '<p>before text</p>'
+        '<div class="vc_row wpb_row vc_row-fluid">'
+        '<div class="wpb_column vc_column_container vc_col-sm-6"><div class="vc_column-inner">'
+        '<div class="wpb_wrapper"><div class="vc_download">'
+        '<a class="icon fa-file" target="_blank" '
+        'href="https://ocw.tudelft.nl/wp-content/uploads/ct530806.pdf">'
+        '<strong>Download of the presentation</strong>ct530806.pdf</a>'
+        '</div></div></div></div>'
+        '<div class="wpb_column vc_column_container vc_col-sm-6"><div class="vc_column-inner">'
+        '<div class="wpb_wrapper"><div class="vc_download">'
+        '<a class="icon fa-file" target="_blank" '
+        'href="https://ocw.tudelft.nl/wp-content/uploads/GumbelWeibull__1_.xls">'
+        '<strong>Download of the presentation</strong>GumbelWeibull__1_.xls</a>'
+        '</div></div></div></div>'
+        '</div>'
+        '<p>after text</p>',
+    )
+    course = site.course()
+    with caplog.at_level(logging.WARNING, logger="ocw.wp_parser"):
+        course.parse()
+
+    assert not any("download" in r.message for r in caplog.records)
+
+    lecture = course.chapters[0]["sequentials"][0]["verticals"][0]
+    html_components = [c["content"] for c in lecture["components"] if c["type"] == "html"]
+
+ 
+    row_html = next(h for h in html_components if "ct530806.pdf" in h)
+    assert "GumbelWeibull__1_.xls" in row_html
+    assert row_html.startswith('<div class="ocw-vc-row">')
+    assert "Download of the presentation" in row_html
+    assert "Lecture 1" not in row_html
+    pdf_pos = row_html.index("ct530806.pdf")
+    xls_pos = row_html.index("GumbelWeibull__1_.xls")
+    assert pdf_pos < xls_pos  # source order preserved within the row
+
+    before_i = next(i for i, h in enumerate(html_components) if "before text" in h)
+    row_i = html_components.index(row_html)
+    after_i = next(i for i, h in enumerate(html_components) if "after text" in h)
+    assert before_i < row_i < after_i
+
+    style_components = [h for h in html_components if h.startswith("<style>")]
+    assert len(style_components) == 1
+    assert "fontawesome-webfont.woff2" in style_components[0]
+
+    out = tmp_path / "course.mbz"
+    MBZBuilder(course).build(out)
+    with tarfile.open(out) as tar:
+        files_xml = ET.parse(tar.extractfile("files.xml")).getroot()
+        filenames = [f.findtext("filename") for f in files_xml.findall("file")]
+    assert filenames.count("ct530806.pdf") == 1
+    assert filenames.count("GumbelWeibull__1_.xls") == 1
+    assert filenames.count("fontawesome-webfont.woff2") == 1
+    assert filenames.count("fontawesome-webfont.woff") == 1
+
+
+# WP-C4
+def test_wp_c4_sibling_text_survives_alongside_grouped_downloads(tmp_path):
+    """Reproduces the shape found live on `introduction-development-cooperation`: a row with a
+    non-download column (a bullet-list link) sitting beside several `vc_download` columns.
+    `_find_download_link`'s descendant-wide search used to make `_classify_lecture_child`
+    swallow the whole row into one `pdf_url_group`, silently dropping the bullet list. The
+    downloads must still end up grouped in one `ocw-vc-row` and the bullet list must survive as
+    its own component."""
+    site = WPFixtureSite()
+    site.add_static_file("Report.pdf", b"%PDF-1.4 fake")
+    site.add_static_file("Summary.pdf", b"%PDF-1.4 fake")
+    site.add_static_file("fontawesome-webfont.woff2", b"fake woff2 bytes")
+    site.add_static_file("fontawesome-webfont.woff", b"fake woff bytes")
+    site.add_home([(SUBJECT_URL, "1. Intro")])
+    site.add_subject_page(
+        SUBJECT_URL,
+        _activities_html(
+            f'<li><a class="icon icon--lecture" href="{LECTURE_URL}">Lecture 1</a></li>'
+        ),
+    )
+    site.add_lecture_page(
+        LECTURE_URL,
+        '<div class="vc_row wpb_row vc_row-fluid">'
+        '<div class="wpb_column vc_column_container vc_col-sm-3"><div class="vc_column-inner">'
+        '<div class="wpb_wrapper"><div class="wpb_text_column"><div class="wpb_wrapper">'
+        '<ul><li>The website: <a href="http://www.actionaid.org/">www.actionaid.org</a></li></ul>'
+        '</div></div></div></div></div>'
+        '<div class="wpb_column vc_column_container vc_col-sm-3"><div class="vc_column-inner">'
+        '<div class="wpb_wrapper"><div class="vc_download">'
+        '<a class="icon fa-file" target="_blank" '
+        'href="https://ocw.tudelft.nl/wp-content/uploads/Report.pdf">'
+        '<strong>The Report</strong>Report.pdf</a>'
+        '</div></div></div></div>'
+        '<div class="wpb_column vc_column_container vc_col-sm-3"><div class="vc_column-inner">'
+        '<div class="wpb_wrapper"><div class="vc_download">'
+        '<a class="icon fa-file" target="_blank" '
+        'href="https://ocw.tudelft.nl/wp-content/uploads/Summary.pdf">'
+        '<strong>The Summary</strong>Summary.pdf</a>'
+        '</div></div></div></div>'
+        '</div>',
+    )
+    course = site.course()
+    course.parse()
+
+    lecture = course.chapters[0]["sequentials"][0]["verticals"][0]
+    html_components = [c["content"] for c in lecture["components"] if c["type"] == "html"]
+
+    bullet_html = next(h for h in html_components if "actionaid.org" in h)
+    assert "website" in bullet_html
+
+    row_html = next(h for h in html_components if "Report.pdf" in h)
+    assert "Summary.pdf" in row_html
+    assert row_html.startswith('<div class="ocw-vc-row">')
+
+    out = tmp_path / "course.mbz"
+    MBZBuilder(course).build(out)
+    with tarfile.open(out) as tar:
+        files_xml = ET.parse(tar.extractfile("files.xml")).getroot()
+        filenames = [f.findtext("filename") for f in files_xml.findall("file")]
+    assert filenames.count("Report.pdf") == 1
+    assert filenames.count("Summary.pdf") == 1
+
+
+# WP-C4 (nested case)
+def test_wp_c4_heading_survives_above_nested_download_row(tmp_path):
+    """Reproduces the shape found live on `field-visit-kitui-kenya`: a heading + paragraph sit
+    above a nested `vc_row vc_inner` containing several `vc_download` blocks, all inside one
+    shared top-level row. The heading/paragraph must survive as their own component and the
+    nested downloads must still end up grouped together."""
+    site = WPFixtureSite()
+    site.add_static_file("Mission.pdf", b"%PDF-1.4 fake")
+    site.add_static_file("Villagers.pdf", b"%PDF-1.4 fake")
+    site.add_static_file("fontawesome-webfont.woff2", b"fake woff2 bytes")
+    site.add_static_file("fontawesome-webfont.woff", b"fake woff bytes")
+    site.add_home([(SUBJECT_URL, "1. Intro")])
+    site.add_subject_page(
+        SUBJECT_URL,
+        _activities_html(
+            f'<li><a class="icon icon--lecture" href="{LECTURE_URL}">Lecture 1</a></li>'
+        ),
+    )
+    site.add_lecture_page(
+        LECTURE_URL,
+        '<div class="vc_row wpb_row vc_row-fluid">'
+        '<div class="wpb_column vc_column_container vc_col-sm-12"><div class="vc_column-inner">'
+        '<div class="wpb_wrapper">'
+        '<div class="wpb_text_column"><div class="wpb_wrapper">'
+        '<h2>Senegal Roleplay material</h2><p>.</p>'
+        '</div></div>'
+        '<div class="vc_row wpb_row vc_inner vc_row-fluid">'
+        '<div class="wpb_column vc_column_container vc_col-sm-4"><div class="vc_column-inner">'
+        '<div class="wpb_wrapper"><div class="vc_download">'
+        '<a class="icon fa-file" target="_blank" '
+        'href="https://ocw.tudelft.nl/wp-content/uploads/Mission.pdf">'
+        '<strong>Mission</strong>Mission.pdf</a>'
+        '</div></div></div></div>'
+        '<div class="wpb_column vc_column_container vc_col-sm-4"><div class="vc_column-inner">'
+        '<div class="wpb_wrapper"><div class="vc_download">'
+        '<a class="icon fa-file" target="_blank" '
+        'href="https://ocw.tudelft.nl/wp-content/uploads/Villagers.pdf">'
+        '<strong>Villagers General</strong>Villagers.pdf</a>'
+        '</div></div></div></div>'
+        '</div>'
+        '</div></div></div></div>',
+    )
+    course = site.course()
+    course.parse()
+
+    lecture = course.chapters[0]["sequentials"][0]["verticals"][0]
+    html_components = [c["content"] for c in lecture["components"] if c["type"] == "html"]
+
+    heading_html = next(h for h in html_components if "Senegal Roleplay material" in h)
+    assert "<h2>" in heading_html
+
+    row_html = next(h for h in html_components if "Mission.pdf" in h)
+    assert "Villagers.pdf" in row_html
+    assert row_html.startswith('<div class="ocw-vc-row">')
+
+    out = tmp_path / "course.mbz"
+    MBZBuilder(course).build(out)
+    with tarfile.open(out) as tar:
+        files_xml = ET.parse(tar.extractfile("files.xml")).getroot()
+        filenames = [f.findtext("filename") for f in files_xml.findall("file")]
+    assert filenames.count("Mission.pdf") == 1
+    assert filenames.count("Villagers.pdf") == 1
+
+
+# WP-C3 (negative case)
+def test_wp_c3_no_download_css_on_page_without_downloads():
+    site = WPFixtureSite()
+    site.add_home([(SUBJECT_URL, "1. Intro")])
+    site.add_subject_page(
+        SUBJECT_URL,
+        _activities_html(
+            f'<li><a class="icon icon--lecture" href="{LECTURE_URL}">Lecture 1</a></li>'
+        ),
+    )
+    site.add_lecture_page(LECTURE_URL, "<p>content</p>")
+    course = site.course()
+    course.parse()
+
+    lecture = course.chapters[0]["sequentials"][0]["verticals"][0]
+    html_components = [c["content"] for c in lecture["components"] if c["type"] == "html"]
+    assert not any(h.startswith("<style>") for h in html_components)

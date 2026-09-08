@@ -12,8 +12,28 @@ from ocw.utils import _UNSAFE_FILENAME_RE, resolve_asset_name
 log = logging.getLogger("ocw.fetcher")
 
 # Supported download types and their expected MIME types. Keep the mappings in sync.
-FETCHABLE_EXTENSIONS = frozenset({".pdf"})
-_CONTENT_TYPE_BY_EXT = {".pdf": "application/pdf"}
+FETCHABLE_EXTENSIONS = frozenset({
+    ".pdf", ".xls", ".xlsx", ".doc", ".docx", ".ppt", ".pptx", ".zip", ".woff2", ".woff",
+    ".jpg", ".jpeg", ".png", ".gif", ".svg", ".webp",
+})
+_CONTENT_TYPE_BY_EXT = {
+    ".pdf": "application/pdf",
+    ".xls": "application/vnd.ms-excel",
+    ".xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    ".doc": "application/msword",
+    ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    ".ppt": "application/vnd.ms-powerpoint",
+    ".pptx": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+    ".zip": "application/zip",
+    ".woff2": "font/woff2",
+    ".woff": "font/woff",
+    ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg",
+    ".png": "image/png",
+    ".gif": "image/gif",
+    ".svg": "image/svg+xml",
+    ".webp": "image/webp",
+}
 
 _MIN_HOST_INTERVAL = 1.0
 _TIMEOUT = 15
@@ -42,11 +62,7 @@ class AssetFetcher:
         return self._cache[url]
 
     def _fetch_uncached(self, url: str) -> Path | None:
-        """Download one uncached supported asset and validate its response type.
-
-        Returns `None` and logs a warning for request failures or content types that do not match
-        the requested extension.
-        """
+        """Download one uncached supported asset and validate its response type."""
         ext = Path(urlparse(url).path).suffix.lower()
         if ext not in FETCHABLE_EXTENSIONS:
             return None
