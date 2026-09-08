@@ -26,11 +26,12 @@ defined('MOODLE_INTERNAL') || die();
 
 $string['pluginname'] = 'Video Router Filter';
 $string['filtername'] = 'Video Router Filter';
+$string['privacy:metadata'] = 'The Video Router Filter plugin stores a video-key to embed-source routing table with no user identifier, so it does not store any personal data.';
 
 $string['manage'] = 'Manage video mappings';
 $string['managedesc'] = 'Manage the mappings between video shortcodes and their sources (YouTube, edX, TU Delft).';
 
-$string['capability:manage'] = 'Manage video routes and mappings';
+$string['vidrouter:manage'] = 'Manage video routes and mappings';
 
 $string['table_vidkey'] = 'Video Key';
 $string['table_title'] = 'Title';

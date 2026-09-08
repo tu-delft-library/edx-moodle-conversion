@@ -18,6 +18,7 @@ namespace filter_vidrouter;
 
 defined('MOODLE_INTERNAL') || die();
 
+global $CFG;
 require_once($CFG->dirroot . '/filter/vidrouter/classes/form/edit_form.php');
 
 /**
