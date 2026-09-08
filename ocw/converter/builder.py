@@ -19,7 +19,11 @@ from ocw.converter.html import (
     strip_templated_iframes,
     style_figcaption,
 )
-from ocw.converter.strategies import FlatSectionStrategy, NestedSectionStrategy
+from ocw.converter.strategies import (
+    FlatSectionStrategy,
+    NestedSectionStrategy,
+    SectionStrategy,
+)
 from ocw.parser.base import BaseParser
 from ocw.utils import (
     _Counter,
@@ -76,81 +80,145 @@ class MBZBuilder:
             shutil.rmtree(tmp, ignore_errors=True)
 
     def _populate(self, tmp: Path) -> None:
-        """Materialise the complete MBZ tree in `tmp`.
-
-        One `_Counter` is created for the entire build and passed to every structural builder and
-        XML writer. A helper allocates each Moodle record ID exactly once through that counter,
-        stores it in its returned record, and later writers reuse that stored ID for cross-file
-        references.
-
-        The build order is: optional overview/readings structures, source-derived sections and
-        pages, file entries, then XML manifests. One timestamp is shared by every generated
-        record.
-        """
+        """Materialise the complete MBZ tree in `tmp`."""
         ids = _Counter()
         ts = int(time.time())
         c = self.course
-
-        overview = self._build_overview_section(c, ids)
-        # at most one synthetic section now occupies the top slot: either
-        # Overview (with Readings nested inside it), or standalone Readings
-        # as the no-Overview fallback, or Overview alone
-        section_offset = 1 if (overview is not None or c.readings) else 0
+        section_offset = 1
 
         strategy = (
             FlatSectionStrategy(c, ids, section_offset)
             if self.sequential_sections
             else NestedSectionStrategy(c, ids, section_offset)
         )
-        all_sections, sub_mods, pages = strategy.build()
-        strategy_section_count = len(all_sections)
+
+        overview_section, all_sections, dedup_section, readings_child_sec = (
+            self._alloc_sections(c, ids, strategy, section_offset)
+        )
+        sub_mods, readings_subsection = self._alloc_subsections(
+            ids, strategy, overview_section, readings_child_sec
+        )
+
+        # Phase 3: every page/resource ID.
         resources: list[dict] = []
+        readings_pages: list[dict] = []
+        if c.readings:
+            resources = self._build_readings_resources(c, ids, readings_child_sec)
+            readings_child_sec["modules"] = [r["id"] for r in resources]
+        elif c.reading_pages:
+            readings_pages = self._build_wp_readings_pages(c, strategy, readings_child_sec)
+            readings_child_sec["modules"] = [p["id"] for p in readings_pages]
+            if not readings_pages:
+                all_sections.remove(readings_child_sec)
+                sub_mods.remove(readings_subsection)
 
-        if overview is not None:
-            overview_section, syllabus_page = overview
-            all_sections.insert(0, overview_section)
-            pages.insert(0, syllabus_page)
-
-            if c.readings:
-                subsection, readings_resources = self._build_readings_subsection(
-                    c, ids, overview_section
+        dedup_pages: list[dict] = []
+        if dedup_section is not None:
+            dedup_pages = [
+                page
+                for vert in c.dedup_pages
+                if (
+                    page := strategy._build_page(
+                        vert, dedup_section["id"], dedup_section["number"]
+                    )
                 )
-                child_sec = subsection["child_sec"]
-                # nested child section must be numbered after every number the
-                # strategy already used, to satisfy parent < child course-wide
-                child_sec["number"] = section_offset + strategy_section_count
-                for r in readings_resources:
-                    r["sec_num"] = child_sec["number"]
-                subsection["parent_sec_num"] = 0
-                all_sections.append(child_sec)
-                sub_mods.append(subsection)
-                resources.extend(readings_resources)
-        else:
-            readings = self._build_readings_section(c, ids)
-            if readings is not None:
-                readings_section, readings_resources = readings
-                readings_section["number"] = 0
-                for r in readings_resources:
-                    r["sec_num"] = 0
-                all_sections.insert(0, readings_section)
-                resources.extend(readings_resources)
+                is not None
+            ]
+            dedup_section["modules"] = [p["id"] for p in dedup_pages]
+            if not dedup_pages:
+                all_sections.remove(dedup_section)
+
+        syllabus_page = self._build_syllabus_page(c, ids, overview_section)
+        strategy_pages = strategy.build_pages()
+        pages = dedup_pages + readings_pages + strategy_pages
+        if syllabus_page is not None:
+            pages.insert(0, syllabus_page)
 
         file_entries = self._build_file_entries(c, pages + resources, ids)
         self._write_all(
             tmp, c, all_sections, sub_mods, pages, resources, file_entries, ts, ids
         )
 
-    def _build_overview_section(
-        self, c: BaseParser, ids: _Counter
-    ) -> tuple[dict, dict] | None:
-        """Build the optional Overview section and its Syllabus page.
+    def _alloc_sections(
+        self, c: BaseParser, ids: _Counter, strategy: SectionStrategy, section_offset: int
+    ) -> tuple[dict, list[dict], dict | None, dict | None]:
+        """Phase 1: allocate every section ID in the course, including Overview/Readings/Hidden
+        which aren't part of `strategy`. See `_populate`'s docstring for the numbering rules."""
+        overview_section = {"id": ids.next(), "name": "Overview", "number": 0, "modules": []}
+        if c.overview_summary_html:
+            overview_section["summary"] = strategy._process_html(
+                c.overview_summary_html, context="Overview"
+            )
+        all_sections = strategy.build_sections()
+        all_sections.insert(0, overview_section)
 
-        Allocates the section, module, and module-context IDs together so the returned records
-        already contain their required references. Returns `None` when the parsed course has no
-        syllabus HTML.
-        """
+        # Hidden is a plain top-level section (no component), so it's a "regular" section whose
+        # declared number Moodle actually honours -- keep it right after the strategy's regular
+        # sections, with no gap.
+        dedup_section = None
+        if c.dedup_pages:
+            dedup_section = {
+                "id": ids.next(),
+                "name": "Hidden",
+                "modules": [],
+                "visible": 0,
+                "number": section_offset + strategy.regular_section_count,
+            }
+            all_sections.append(dedup_section)
+
+        # Readings is always subsection-linked (see `_populate`'s docstring), so its declared
+        # number is never honoured either -- it belongs in the same "past every regular section"
+        # range as the strategy's own child sections, not right after them like Hidden.
+        readings_child_sec = None
+        if c.readings or c.reading_pages:
+            readings_child_sec = {"id": ids.next(), "name": "Readings", "modules": []}
+            all_sections.append(readings_child_sec)
+
+        tail_start = (
+            section_offset
+            + strategy.regular_section_count
+            + (1 if dedup_section is not None else 0)
+        )
+        strategy.relocate_child_sections(tail_start)
+        if readings_child_sec is not None:
+            readings_child_sec["number"] = tail_start + strategy.child_section_count
+
+        return overview_section, all_sections, dedup_section, readings_child_sec
+
+    def _alloc_subsections(
+        self,
+        ids: _Counter,
+        strategy: SectionStrategy,
+        overview_section: dict,
+        readings_child_sec: dict | None,
+    ) -> tuple[list[dict], dict | None]:
+        """Phase 2: allocate every subsection-activity ID, now that every section ID exists."""
+        sub_mods = strategy.build_subsections()
+        readings_subsection = None
+        if readings_child_sec is not None:
+            sub_mod_id, sub_ctx_id, sub_int_id = ids.next(), ids.next(), ids.next()
+            readings_child_sec["itemid"] = sub_int_id
+            readings_child_sec["parent_mod_id"] = sub_mod_id
+            readings_subsection = {
+                "mod_id": sub_mod_id,
+                "ctx": sub_ctx_id,
+                "internal_id": sub_int_id,
+                "name": "Readings",
+                "parent_sec_id": overview_section["id"],
+                "parent_sec_num": 0,
+                "child_sec": readings_child_sec,
+            }
+            overview_section["modules"].append(sub_mod_id)
+            sub_mods.append(readings_subsection)
+        return sub_mods, readings_subsection
+
+    def _build_syllabus_page(
+        self, c: BaseParser, ids: _Counter, overview_section: dict
+    ) -> dict | None:
+        """Build the Syllabus page inside `overview_section`, when the course has one."""
         if c.syllabus_html is None:
             return None
+
         warn_external_edx_urls(
             c.syllabus_html, context="Syllabus", static_files=c.static_files
         )
@@ -165,37 +233,23 @@ class MBZBuilder:
                 )
             )
         )
-        sec_id, mod_id, ctx_id = ids.next(), ids.next(), ids.next()
-        overview_section = {
-            "id": sec_id,
-            "name": "Overview",
-            "number": 0,
-            "modules": [mod_id],
-        }
-        syllabus_page = {
+        mod_id, ctx_id = ids.next(), ids.next()
+        overview_section["modules"].append(mod_id)
+        return {
             "id": mod_id,
             "ctx": ctx_id,
-            "sec_id": sec_id,
+            "sec_id": overview_section["id"],
             "sec_num": 0,
             "name": c.syllabus_title,
             "content": content,
             "file_refs": re.findall(r'@@PLUGINFILE@@/([^"\'>\s]+)', content),
             "file_ids": [],
         }
-        return overview_section, syllabus_page
 
-    def _build_readings_section(
-        self, c: BaseParser, ids: _Counter
-    ) -> tuple[dict, list[dict]] | None:
-        """Build a standalone Readings section and one resource activity per reading.
-
-        Allocates one section ID, then a module and module-context ID for each resource. The
-        returned resources reference that section. Returns `None` when the parsed course has no
-        readings.
-        """
-        if not c.readings:
-            return None
-        sec_id = ids.next()
+    def _build_readings_resources(
+        self, c: BaseParser, ids: _Counter, child_sec: dict
+    ) -> list[dict]:
+        """Build one resource activity per OLX reading, inside the already-built `child_sec`."""
         resources: list[dict] = []
         for reading in c.readings:
             mod_id, ctx_id = ids.next(), ids.next()
@@ -203,77 +257,31 @@ class MBZBuilder:
                 {
                     "id": mod_id,
                     "ctx": ctx_id,
-                    "sec_id": sec_id,
-                    "sec_num": 0,
+                    "sec_id": child_sec["id"],
+                    "sec_num": child_sec["number"],
                     "name": reading["title"],
                     "file_refs": [reading["name"]],
                     "file_ids": [],
                     "component": "mod_resource",
                 }
             )
-        readings_section = {
-            "id": sec_id,
-            "name": "Readings",
-            "number": 0,
-            "modules": [r["id"] for r in resources],
-        }
-        return readings_section, resources
+        return resources
 
-    def _build_readings_subsection(
-        self, c: BaseParser, ids: _Counter, overview_section: dict
-    ) -> tuple[dict, list[dict]]:
-        """Build a Readings subsection under `overview_section` and its resource activities.
-
-        Allocates the child section first because every resource references it, then allocates
-        each resource module and context, and finally allocates the subsection module, context,
-        and internal IDs. The subsection module is appended to the parent section before both
-        records are returned.
-        """
-        resources: list[dict] = []
-        child_sec_id = ids.next()
-        for reading in c.readings:
-            mod_id, ctx_id = ids.next(), ids.next()
-            resources.append(
-                {
-                    "id": mod_id,
-                    "ctx": ctx_id,
-                    "sec_id": child_sec_id,
-                    "sec_num": 0,  # placeholder, set in _populate
-                    "name": reading["title"],
-                    "file_refs": [reading["name"]],
-                    "file_ids": [],
-                    "component": "mod_resource",
-                }
-            )
-        sub_mod_id, sub_ctx_id, sub_int_id = ids.next(), ids.next(), ids.next()
-        child_sec = {
-            "id": child_sec_id,
-            "name": "Readings",
-            "modules": [r["id"] for r in resources],
-            "itemid": sub_int_id,
-            "parent_mod_id": sub_mod_id,
-            "number": 0,
-        }
-        subsection = {
-            "mod_id": sub_mod_id,
-            "ctx": sub_ctx_id,
-            "internal_id": sub_int_id,
-            "name": "Readings",
-            "parent_sec_id": overview_section["id"],
-            "child_sec": child_sec,
-        }
-        overview_section["modules"].append(sub_mod_id)
-        return subsection, resources
+    def _build_wp_readings_pages(
+        self, c: BaseParser, strategy: SectionStrategy, child_sec: dict
+    ) -> list[dict]:
+        """Build one real page per WP reading, inside the already-built `child_sec`."""
+        return [
+            page
+            for vert in c.reading_pages
+            if (page := strategy._build_page(vert, child_sec["id"], child_sec["number"]))
+            is not None
+        ]
 
     def _build_file_entries(
         self, c: BaseParser, pages: list[dict], ids: _Counter
     ) -> list[dict]:
-        """Build MBZ file records for locally resolved files referenced by pages or resources.
-
-        Each file record receives one ID from `ids`, which is also appended to its owning
-        activity's `file_ids`. Missing local files are omitted so no backup record refers to
-        absent content.
-        """
+        """Build MBZ file records for locally resolved files referenced by pages or resources."""
         file_entries: list[dict] = []
         for page in pages:
             for name in page["file_refs"]:
@@ -310,12 +318,7 @@ class MBZBuilder:
         ts: int,
         ids: _Counter,
     ) -> None:
-        """Write every XML manifest, activity directory, and referenced file into `tmp`.
-
-        All structural records must already hold their final IDs and relationships before this
-        method is called. The same `ids` counter remains available for course-level records
-        written here, such as custom fields.
-        """
+        """Write every XML manifest, activity directory, and referenced file into `tmp`."""
         self._write_moodle_backup(tmp, c, all_sections, sub_mods, pages, resources, ts)
         self._write_static_manifests(tmp)
         self._write_course_xml(tmp, c, ts, ids)
@@ -324,7 +327,10 @@ class MBZBuilder:
         for sub in sub_mods:
             self._write_subsection(tmp, sub, ts)
         for page in pages:
-            self._write_page(tmp, page, ts)
+            if page.get("kind") == "url":
+                self._write_url(tmp, page, ts)
+            else:
+                self._write_page(tmp, page, ts)
         for resource in resources:
             self._write_resource(tmp, resource, ts)
         self._write_files_xml(tmp, file_entries, ts)
@@ -337,12 +343,7 @@ class MBZBuilder:
         pages: list[dict],
         resources: list[dict],
     ) -> list[str]:
-        """Serialise activity manifest entries in each section's declared module order.
-
-        Moodle reconstructs a section's activity sequence from this order during restore. Module
-        IDs resolve to page, resource, or subsection records. Activities inside child sections
-        are marked as nested.
-        """
+        """Serialise activity manifest entries in each section's declared module order."""
         child_sec_ids = {sub["child_sec"]["id"] for sub in sub_mods}
         subs_by_mod_id = {sub["mod_id"]: sub for sub in sub_mods}
         pages_by_id = {p["id"]: p for p in pages}
@@ -362,10 +363,11 @@ class MBZBuilder:
                 elif mod_id in pages_by_id:
                     p = pages_by_id[mod_id]
                     insub = "1" if p["sec_id"] in child_sec_ids else ""
+                    modulename = "url" if p.get("kind") == "url" else "page"
                     lines.append(
                         f"      <activity><moduleid>{p['id']}</moduleid><sectionid>{p['sec_id']}</sectionid>"
-                        f"<modulename>page</modulename><title>{esc(p['name'])}</title>"
-                        f"<directory>activities/page_{p['id']}</directory>"
+                        f"<modulename>{modulename}</modulename><title>{esc(p['name'])}</title>"
+                        f"<directory>activities/{modulename}_{p['id']}</directory>"
                         f"<insubsection>{insub}</insubsection></activity>"
                     )
                 elif mod_id in resources_by_id:
@@ -380,11 +382,7 @@ class MBZBuilder:
         return lines
 
     def _section_lines(self, sections: list[dict], sub_mods: list[dict]) -> list[str]:
-        """Serialise the section manifest, including parent links for child sections.
-
-        A child section points to its enclosing subsection module through `parentcmid` and is
-        labelled as a subsection. Top-level sections have neither value.
-        """
+        """Serialise the section manifest, including parent links for child sections."""
         child_sec_ids = {sub["child_sec"]["id"]: sub["mod_id"] for sub in sub_mods}
         return [
             f"      <section><sectionid>{s['id']}</sectionid><title>{esc(s['name'])}</title>"
@@ -402,12 +400,7 @@ class MBZBuilder:
         pages: list[dict],
         resources: list[dict],
     ) -> list[str]:
-        """Generate backup settings for the course, its sections, and its activities.
-
-        Moodle uses these entries during restore to decide which structures to include. Section
-        and activity setting identifiers must match the corresponding manifest directory
-        identifiers.
-        """
+        """Generate backup settings for the course, its sections, and its activities."""
         root_settings = [
             ("filename", esc(c.course_name)),
             ("imscc11", "0"),
@@ -445,7 +438,8 @@ class MBZBuilder:
                 f"      <setting><level>activity</level><activity>{aid}</activity><name>{aid}_userinfo</name><value>0</value></setting>",
             ]
         for page in pages:
-            aid = f"page_{page['id']}"
+            modulename = "url" if page.get("kind") == "url" else "page"
+            aid = f"{modulename}_{page['id']}"
             lines += [
                 f"      <setting><level>activity</level><activity>{aid}</activity><name>{aid}_included</name><value>1</value></setting>",
                 f"      <setting><level>activity</level><activity>{aid}</activity><name>{aid}_userinfo</name><value>0</value></setting>",
@@ -468,11 +462,7 @@ class MBZBuilder:
         resources: list,
         ts: int,
     ) -> None:
-        """Write the root `moodle_backup.xml` manifest.
-
-        The manifest indexes every section and activity, declares their restore settings, and
-        records the Moodle and OCW version metadata needed to identify the archive.
-        """
+        """Write the root `moodle_backup.xml` manifest."""
         acts = "\n".join(self._activity_lines(sections, sub_mods, pages, resources))
         secs = "\n".join(self._section_lines(sections, sub_mods))
         settings = "\n".join(
@@ -493,11 +483,7 @@ class MBZBuilder:
         (tmp / "moodle_backup.xml").write_text(xml, encoding="utf-8")
 
     def _write_static_manifests(self, tmp: Path) -> None:
-        """Write the required empty root-level manifests for unsupported Moodle subsystems.
-
-        These files have no source-course data in this converter, but Moodle expects them to exist
-        in a valid course backup.
-        """
+        """Write the required empty root-level manifests for unsupported Moodle subsystems."""
         for name, content in (
             ("roles.xml", templates.ROLES_XML),
             ("gradebook.xml", templates.GRADEBOOK_XML),
@@ -510,11 +496,7 @@ class MBZBuilder:
             (tmp / name).write_text(content, encoding="utf-8")
 
     def _build_vidrouter_block(self, c: BaseParser) -> str:
-        """Build the course-level video-routing data for parsed video components.
-
-        Each entry stores a `vidkey` and its available provider identifiers. Returns an empty
-        string when the course contains no videos.
-        """
+        """Build the course-level video-routing XML block for parsed video components."""
         if not c.videos:
             return ""
         videos_xml = "\n".join(
@@ -544,12 +526,7 @@ class MBZBuilder:
         return f"  <plugin_local_vidrouter_course>\n{videos_xml}\n  </plugin_local_vidrouter_course>\n"
 
     def _build_customfields_block(self, c: BaseParser, ids: _Counter) -> str:
-        """Build course custom-field records from source metadata.
-
-        Each non-empty field receives an ID from `ids` and is identified by its registered
-        shortname and field type during restore. Returns an empty string when custom-field export
-        is disabled.
-        """
+        """Build course custom-field XML records from source metadata."""
 
         if self.disable_custom_fields:
             return ""
@@ -577,11 +554,7 @@ class MBZBuilder:
     def _write_course_xml(
         self, tmp: Path, c: BaseParser, ts: int, ids: _Counter
     ) -> None:
-        """Write the course record and its course-level extension data.
-
-        Custom-field records are allocated here when enabled. Video-routing data is included when
-        the parsed course contains videos.
-        """
+        """Write the course record and its course-level extension data."""
         d = tmp / "course"
         d.mkdir(exist_ok=True)
         (d / "course.xml").write_text(
@@ -606,14 +579,15 @@ class MBZBuilder:
         )
 
     def _write_section(self, tmp: Path, sec: dict, idx: int, ts: int) -> None:
-        """Write one section record and its empty information-reference manifest.
-
-        Selects the child-section schema when `sec` has an `itemid`. The section sequence
-        preserves the record's declared module order.
-        """
+        """Write one section record and its empty information-reference manifest."""
         d = tmp / "sections" / f"section_{sec['id']}"
         d.mkdir(parents=True, exist_ok=True)
-        tmpl = templates.CHILD_SECTION_XML if "itemid" in sec else templates.SECTION_XML
+        if "itemid" in sec:
+            tmpl = templates.CHILD_SECTION_XML
+        elif sec.get("visible") == 0:
+            tmpl = templates.HIDDEN_SECTION_XML
+        else:
+            tmpl = templates.SECTION_XML
         xml = tmpl.format(
             id=sec["id"],
             number=idx,
@@ -629,11 +603,7 @@ class MBZBuilder:
         )
 
     def _write_page(self, tmp: Path, page: dict, ts: int) -> None:
-        """Write a page activity and its required supporting manifests.
-
-        Its information-reference manifest links the activity to the file records identified by
-        `page["file_ids"]`.
-        """
+        """Write a page activity and its required supporting manifests."""
         d = tmp / "activities" / f"page_{page['id']}"
         d.mkdir(parents=True, exist_ok=True)
         xml = templates.PAGE_XML.format(
@@ -667,12 +637,38 @@ class MBZBuilder:
         )
         (d / "module.xml").write_text(module_xml, encoding="utf-8")
 
-    def _write_resource(self, tmp: Path, resource: dict, ts: int) -> None:
-        """Write a resource activity and its required supporting manifests.
+    def _write_url(self, tmp: Path, url_page: dict, ts: int) -> None:
+        """Write a URL activity that redirects to `url_page["externalurl"]` and its supporting manifests."""
+        d = tmp / "activities" / f"url_{url_page['id']}"
+        d.mkdir(parents=True, exist_ok=True)
+        xml = templates.URL_XML.format(
+            id=url_page["id"],
+            ctx=url_page["ctx"],
+            name=esc(url_page["name"]),
+            externalurl=url_page["externalurl"],
+            ts=ts,
+        )
+        (d / "url.xml").write_text(xml, encoding="utf-8")
+        (d / "inforef.xml").write_text(
+            '<?xml version="1.0" encoding="UTF-8"?>\n<inforef/>', encoding="utf-8"
+        )
+        (d / "grades.xml").write_text(templates.ACTIVITY_GRADES_XML, encoding="utf-8")
+        (d / "grade_history.xml").write_text(
+            templates.ACTIVITY_GRADE_HISTORY_XML, encoding="utf-8"
+        )
+        (d / "roles.xml").write_text(templates.ACTIVITY_ROLES_XML, encoding="utf-8")
+        (d / "filters.xml").write_text(templates.ACTIVITY_FILTERS_XML, encoding="utf-8")
+        module_xml = templates.URL_MODULE_XML.format(
+            id=url_page["id"],
+            moodle_version=MOODLE_VERSION,
+            sec_id=url_page["sec_id"],
+            sec_num=url_page["sec_num"],
+            ts=ts,
+        )
+        (d / "module.xml").write_text(module_xml, encoding="utf-8")
 
-        Its information-reference manifest links the activity to the file records identified by
-        `resource["file_ids"]`.
-        """
+    def _write_resource(self, tmp: Path, resource: dict, ts: int) -> None:
+        """Write a resource activity and its required supporting manifests."""
         d = tmp / "activities" / f"resource_{resource['id']}"
         d.mkdir(parents=True, exist_ok=True)
         xml = templates.RESOURCE_XML.format(
@@ -706,11 +702,7 @@ class MBZBuilder:
         (d / "module.xml").write_text(module_xml, encoding="utf-8")
 
     def _write_subsection(self, tmp: Path, sub: dict, ts: int) -> None:
-        """Write the subsection activity that links a parent section to a child section.
-
-        The subsection record reuses its allocated module, module-context, and internal IDs.
-        Supporting manifests are emitted alongside it as required by Moodle.
-        """
+        """Write the subsection activity that links a parent section to a child section."""
         d = tmp / "activities" / f"subsection_{sub['mod_id']}"
         d.mkdir(parents=True, exist_ok=True)
         (d / "subsection.xml").write_text(
@@ -752,11 +744,7 @@ class MBZBuilder:
         )
 
     def _write_files_xml(self, tmp: Path, file_entries: list, ts: int) -> None:
-        """Write the archive-wide catalogue for every embedded file.
-
-        Each entry reuses the allocated file ID and activity context from `file_entries`. Its SHA-1
-        identifies the payload written by `_copy_static()`.
-        """
+        """Write the archive-wide catalogue for every embedded file."""
         entries = "\n".join(
             templates.FILE_ENTRY.format(
                 id=f["id"],

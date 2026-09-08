@@ -11,18 +11,19 @@ from pathlib import Path
 from bs4 import BeautifulSoup
 
 from ocw.parser.wp import WPCourse
+from ocw.utils import resolve_asset_name
 
 ROOT = "https://ocw.tudelft.nl/courses/example/"
 
 
 class _FakeFetcher:
-    """Serve fixed PDF bytes for a URL, matching AssetFetcher.fetch's interface."""
+    """Serve fixed file bytes for a URL, matching AssetFetcher.fetch's interface."""
 
     def __init__(self, files: dict[str, bytes]):
         self._files = files
 
     def fetch(self, url: str) -> Path | None:
-        name = url.rsplit("/", 1)[-1]
+        name = resolve_asset_name(url)
         if name not in self._files:
             return None
         dest = Path(tempfile.mkdtemp()) / name
@@ -56,6 +57,11 @@ class WPFixtureSite:
 
     def add_lecture_page(self, url: str, body_html: str) -> None:
         self.pages[url] = f"<article>{body_html}</article>"
+
+    def add_static_file(self, name: str, content: bytes = b"%PDF-1.4 fake") -> None:
+        """Register a file so the fake fetcher can resolve any URL whose basename matches
+        `name` (lecture-page `vc_download` links, bundled webfonts, etc.)."""
+        self.pdf_files[name] = content
 
     def add_reading_page(
         self,

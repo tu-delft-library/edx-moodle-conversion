@@ -28,10 +28,7 @@ class CheckResult:
 
 
 def _expected_counts(olx_path: Path) -> tuple[int, int, int]:
-    """Return the section, subsection, and page counts the OLX export should produce.
-
-    Includes the synthetic Overview and Readings structures created by the MBZ builder.
-    """
+    """Return the section, subsection, and page counts the OLX export should produce."""
     course = Course(olx_path)
     course.parse()
     pages = sum(
@@ -42,14 +39,13 @@ def _expected_counts(olx_path: Path) -> tuple[int, int, int]:
         if any(c["type"] == "html" for c in vert["components"])
     )
     seqs = sum(len(ch["sequentials"]) for ch in course.chapters)
-    overview = 1 if course.syllabus_html is not None else 0
+    has_syllabus_page = course.syllabus_html is not None
     has_readings = bool(course.readings)
-    readings_section = 1 if has_readings and not overview else 0
-    readings_subsection = 1 if has_readings and overview else 0
+    readings_subsection = 1 if has_readings else 0
     return (
-        len(course.chapters) + overview + readings_section,
+        len(course.chapters) + 1,  # +1 for Overview, always present
         seqs + readings_subsection,
-        pages + overview,
+        pages + (1 if has_syllabus_page else 0),
     )
 
 
@@ -79,11 +75,7 @@ def run_hybrid_checks(olx_path: Path, mbz_path: Path) -> list[CheckResult]:
 
 
 def log_hybrid_checks(olx_path: Path, mbz_path: Path, log: logging.Logger) -> None:
-    """Run the parity checks and log every result.
-
-    All results use INFO when every check passes, otherwise WARNING so a failed check is visible
-    in normal conversion output.
-    """
+    """Run the parity checks and log every result."""
     results = run_hybrid_checks(olx_path, mbz_path)
     level = logging.INFO if all(r.passed for r in results) else logging.WARNING
     for r in results:

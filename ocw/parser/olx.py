@@ -61,11 +61,7 @@ class Course(BaseParser):
         self._b64_tmp_dir: Path | None = None
 
     def parse(self) -> None:
-        """Populate course metadata, source hierarchy, static assets, readings, and videos.
-
-        Resolves the OLX reference graph and stores the normalised records consumed by the MBZ
-        builder.
-        """
+        """Populate course metadata, source hierarchy, static assets, readings, and videos."""
         stub_path = self.root / "course.xml"
         if not stub_path.exists():
             stub_path = self.root / "course" / "course.xml"
@@ -107,21 +103,13 @@ class Course(BaseParser):
         ]
 
     def _parse_summary(self) -> None:
-        """Populate the course summary from `about/short_description.html`.
-
-        `overview.html` is deliberately not used because exports often retain its unedited Studio
-        boilerplate.
-        """
+        """Populate the course summary from `about/short_description.html`."""
         path = self.root / "about" / "short_description.html"
         if path.exists() and path.read_text(encoding="utf-8").strip():
             self.summary_html = path.read_text(encoding="utf-8")
 
     def _parse_syllabus(self, url_name: str) -> None:
-        """Populate optional instructor and syllabus data from the course policy.
-
-        Instructor information is read independently. A configured static tab supplies the
-        syllabus title and HTML when its corresponding tab file exists.
-        """
+        """Populate optional instructor and syllabus data from the course policy."""
         policy_path = self.root / "policies" / url_name / "policy.json"
         if not policy_path.exists():
             return
@@ -146,12 +134,7 @@ class Course(BaseParser):
         self.syllabus_title = tab.get("name") or "Syllabus"
 
     def _parse_readings(self, course: ET.Element) -> None:
-        """Build reading records from the course's optional `pdf_textbooks` metadata.
-
-        Each reading requires a matching local asset or a successfully fetched external PDF.
-        Missing files are warned about and omitted so the builder never creates an empty resource
-        activity.
-        """
+        """Build reading records from the course's optional `pdf_textbooks` metadata."""
         raw = course.get("pdf_textbooks")
         if not raw:
             return
@@ -285,11 +268,7 @@ class Course(BaseParser):
         sequential_name: str = "",
         chapter_name: str = "",
     ) -> dict | None:
-        """Dispatch one OLX component to its supported parser.
-
-        Known unsupported tags are skipped with debug logging. Unknown tags produce a warning so
-        new source component types are visible.
-        """
+        """Dispatch one OLX component to its supported parser."""
         url_name = child.get("url_name", "")
         match child.tag:
             case "html":
@@ -324,11 +303,7 @@ class Course(BaseParser):
         sequential_name: str = "",
         chapter_name: str = "",
     ) -> dict:
-        """Read one HTML component and resolve its referenced assets.
-
-        Absolute external assets may be fetched when configured. Every unresolved local or external
-        asset is reported with its chapter, sequential, and vertical location.
-        """
+        """Read one HTML component and resolve its referenced assets."""
         path = root / "html" / f"{url_name}.xml"
         if not path.exists():
             raise FileNotFoundError(f"Missing HTML XML: {url_name}")
@@ -380,12 +355,7 @@ class Course(BaseParser):
         sequential_name: str = "",
         chapter_name: str = "",
     ) -> dict:
-        """Read one OLX video component and construct its video-routing record.
-
-        Uses the edX video ID as the stable routing key when available and falls back to the
-        component URL name. The TUD download ID is attached later from vertical-level dframe
-        pairing. OLX exposes no Collegerama identifier.
-        """
+        """Read one OLX video component and construct its video-routing record."""
         path = root / "video" / f"{url_name}.xml"
         if not path.exists():
             raise FileNotFoundError(f"Missing Video XML: {url_name}")
