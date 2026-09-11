@@ -229,3 +229,81 @@ def test_c3_warns_missing_asset_v1_reference(tmp_path, caplog):
     with caplog.at_level(logging.WARNING, logger="ocw.parser"):
         Course(tmp_path / "course").parse()
     assert any("missing.png" in r.message for r in caplog.records)
+
+
+# CC5
+def test_cc5_course_image_and_banner_in_overviewfiles(tmp_path):
+    png = b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01\x08\x02\x00\x00\x00\x90wS\xde\x00\x00\x00\x0cIDATx\x9cc\xf8\x0f\x00\x00\x01\x01\x00\x05\x18\xd8N\x00\x00\x00\x00IEND\xaeB`\x82"
+    b = OLXFixtureBuilder(tmp_path / "course")
+    b.chapters = [
+        Chapter("ch1", "Ch 1", [Sequential("s1", "S1", [Vertical("v1", "V1", [])])])
+    ]
+    b.static_files = {"course_image.jpg": png, "banner.png": png}
+    b.course_image = "course_image.jpg"
+    b.banner_image = "/static/banner.png"
+    course = Course(b.build())
+    course.parse()
+    assert course.course_image_path == course.static_files["course_image.jpg"]
+    assert course.banner_image_path == course.static_files["banner.png"]
+
+    out = tmp_path / "out.mbz"
+    MBZBuilder(course).build(out)
+    with tarfile.open(out) as tar:
+        files_xml = next(
+            tar.extractfile(m).read().decode()
+            for m in tar.getmembers()
+            if m.name == "files.xml"
+        ).encode()
+        root = ET.fromstring(files_xml)
+
+    overview_files = {
+        f.findtext("filename"): f
+        for f in root.findall("file")
+        if f.findtext("component") == "course"
+        and f.findtext("filearea") == "overviewfiles"
+    }
+    assert set(overview_files) == {"course_image.jpg", "banner.png"}
+    ctxids = {f.findtext("contextid") for f in overview_files.values()}
+    assert len(ctxids) == 1
+    assert next(iter(ctxids)) != "1"
+    for f in overview_files.values():
+        assert f.findtext("itemid") == "0"
+    assert overview_files["course_image.jpg"].findtext("sortorder") == "0"
+    assert overview_files["banner.png"].findtext("sortorder") == "1"
+
+
+# CC5
+def test_cc5_no_course_image_declared_emits_no_overviewfiles(minimal_fixture, tmp_path):
+    course = Course(minimal_fixture)
+    course.parse()
+    assert course.course_image_path is None
+    assert course.banner_image_path is None
+
+    out = tmp_path / "out.mbz"
+    MBZBuilder(course).build(out)
+    with tarfile.open(out) as tar:
+        files_xml = next(
+            tar.extractfile(m).read().decode()
+            for m in tar.getmembers()
+            if m.name == "files.xml"
+        ).encode()
+        root = ET.fromstring(files_xml)
+
+    assert not [
+        f for f in root.findall("file") if f.findtext("component") == "course"
+    ]
+
+
+# CC5
+def test_cc5_warns_missing_course_image(tmp_path, caplog):
+    b = OLXFixtureBuilder(tmp_path / "course")
+    b.chapters = [
+        Chapter("ch1", "Ch 1", [Sequential("s1", "S1", [Vertical("v1", "V1", [])])])
+    ]
+    b.course_image = "missing.jpg"
+    b.build()
+    with caplog.at_level(logging.WARNING, logger="ocw.parser"):
+        course = Course(tmp_path / "course")
+        course.parse()
+    assert course.course_image_path is None
+    assert any("missing.jpg" in r.message for r in caplog.records)

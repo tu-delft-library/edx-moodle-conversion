@@ -92,6 +92,8 @@ class OLXFixtureBuilder:
         self.license: str = ""
         self.summary_html: str | None = None
         self.instructors: list[dict] = []
+        self.course_image: str | None = None
+        self.banner_image: str | None = None
 
     def build(self) -> Path:
         """Write the OLX tree to self.root and return it."""
@@ -136,10 +138,15 @@ class OLXFixtureBuilder:
             pdf_textbooks_attr = (
                 f' pdf_textbooks="{html.escape(json.dumps(payload), quote=True)}"'
             )
+        image_attrs = ""
+        if self.course_image:
+            image_attrs += f' course_image="{self.course_image}"'
+        if self.banner_image:
+            image_attrs += f' banner_image="{self.banner_image}"'
         (d / f"{self.run_name}.xml").write_text(
             f'<course display_name="{self.course_name}" course="{self.course_id}" '
             f'language="{self.language}" license="{self.license}"'
-            f'{pdf_textbooks_attr}>\n  {chapter_tags}\n</course>'
+            f'{pdf_textbooks_attr}{image_attrs}>\n  {chapter_tags}\n</course>'
         )
 
     def _write_policy(self) -> None:

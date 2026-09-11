@@ -26,7 +26,7 @@ MOODLE_BACKUP = """\
     <original_course_shortname>{course_id}</original_course_shortname>
     <original_course_startdate>{ts}</original_course_startdate>
     <original_course_enddate>0</original_course_enddate>
-    <original_course_contextid>1</original_course_contextid>
+    <original_course_contextid>{course_ctx}</original_course_contextid>
     <original_system_contextid>1</original_system_contextid>
     <details>
       <detail backup_id="0">
@@ -108,7 +108,7 @@ SCALES_XML = '<?xml version="1.0" encoding="UTF-8"?>\n<scales_definition/>'
 
 COURSE_XML = """\
 <?xml version="1.0" encoding="UTF-8"?>
-<course id="1" contextid="1">
+<course id="1" contextid="{course_ctx}">
   <shortname>{course_id}</shortname>
   <fullname>{course_name}</fullname>
   <idnumber>{course_id}</idnumber>
@@ -428,11 +428,11 @@ URL_MODULE_XML = """\
 FILE_ENTRY = (
     '  <file id="{id}"><contenthash>{sha1}</contenthash>'
     "<contextid>{ctx}</contextid><component>{component}</component>"
-    "<filearea>content</filearea><itemid>0</itemid>"
+    "<filearea>{filearea}</filearea><itemid>{itemid}</itemid>"
     "<filepath>/</filepath><filename>{name}</filename>"
     "<filesize>{size}</filesize><mimetype>{mime}</mimetype>"
     "<status>0</status><timecreated>{ts}</timecreated>"
-    "<timemodified>{ts}</timemodified><sortorder>0</sortorder>"
+    "<timemodified>{ts}</timemodified><sortorder>{sortorder}</sortorder>"
     "<userid>2</userid><repositorytype>$@NULL@$</repositorytype>"
     "<repositoryid>$@NULL@$</repositoryid>"
     "<source>$@NULL@$</source><author>$@NULL@$</author>"

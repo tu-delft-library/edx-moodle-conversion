@@ -40,6 +40,10 @@ class BaseParser(ABC):
         # separate page inside Overview).
         self.overview_summary_html: str | None = None
         self.instructors: list[dict] = []
+        # OLX only, for now: resolved local paths to the course-catalogue thumbnail and the
+        # (currently unwired -- no theme support yet) banner image.
+        self.course_image_path: Path | None = None
+        self.banner_image_path: Path | None = None
 
     @abstractmethod
     def parse(self) -> None:
