@@ -450,6 +450,8 @@ class WPCourse(BaseParser):
             found_downloads=found_downloads,
         )
         self._warn_external_wp_links(components, title)
+        if not components:
+            log.warning("Parsing WP: lecture '%s' at %s produced no components", title, url)
         return {"display_name": title, "components": components, "dedup_url": url}
 
     def _warn_external_wp_links(self, components: list[dict], context: str) -> None:
@@ -699,6 +701,7 @@ class WPCourse(BaseParser):
                 components.append(self._download_link_component(name, dl_blocks[0]))
 
         if not components:
+            log.warning("Parsing WP: reading '%s' at %s produced no components", title, url)
             return None
         return {"display_name": title, "components": components, "reading_url": url}
 
