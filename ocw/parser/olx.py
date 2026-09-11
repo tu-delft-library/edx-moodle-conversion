@@ -85,6 +85,9 @@ class Course(BaseParser):
                     self.static_files[f.name] = f
                     self.static_files[re.sub(r"[^-\w.]", "_", f.name)] = f
 
+        self.course_image_path = self._resolve_static_attr(course, "course_image")
+        self.banner_image_path = self._resolve_static_attr(course, "banner_image")
+
         for ref in course.findall("chapter"):
             self.chapters.append(
                 self._parse_chapter(self.root, ref.get("url_name", ""))
@@ -107,6 +110,19 @@ class Course(BaseParser):
         path = self.root / "about" / "short_description.html"
         if path.exists() and path.read_text(encoding="utf-8").strip():
             self.summary_html = path.read_text(encoding="utf-8")
+
+    def _resolve_static_attr(self, course: ET.Element, attr: str) -> Path | None:
+        """Resolve an OLX course-root attribute naming a `static/` asset to its local path."""
+        raw = course.get(attr)
+        if not raw:
+            return None
+        name = raw.removeprefix("/static/")
+        path = self.static_files.get(name)
+        if path is None:
+            log.warning(
+                "Parsing OLX: course declares %s=%r but no such static file exists", attr, raw
+            )
+        return path
 
     def _parse_syllabus(self, url_name: str) -> None:
         """Populate optional instructor and syllabus data from the course policy."""
