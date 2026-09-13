@@ -3,6 +3,7 @@
 import copy
 import itertools
 import logging
+import re
 from collections import Counter
 
 import requests
@@ -78,6 +79,7 @@ class WPCourse(BaseParser):
         home = self._fetch_page(self.root)
         self.course_name = home.select_one("h1").get_text(strip=True)
         self._parse_home_summary(home)
+        self._parse_home_banner_image(home)
         subjects = self._parse_subjects_sidebar(home)
         self._lecture_ref_counts = self._count_lecture_references(
             url for url, _ in subjects
@@ -113,6 +115,29 @@ class WPCourse(BaseParser):
             return
         warn_external_wp_urls(html, context="course overview")
         self.overview_summary_html = html
+
+    _BANNER_URL_RE = re.compile(r"background-image:\s*url\((['\"]?)(.*?)\1\)")
+
+    def _parse_home_banner_image(self, home: BeautifulSoup) -> None:
+        """Extract the home page's CSS background-image banner.
+
+        WP has no separate catalogue thumbnail, so this one image is registered as both
+        `course_image_path` and `banner_image_path`.
+        """
+        section = home.select_one("section.banner")
+        if section is None:
+            return
+        match = self._BANNER_URL_RE.search(str(section.get("style") or ""))
+        if not match:
+            return
+        url = match.group(2)
+        name = self._resolve_and_fetch(url)
+        if name is None:
+            log.warning("Parsing WP: banner image %r found but could not be resolved", url)
+            return
+        path = self.static_files[name]
+        self.course_image_path = path
+        self.banner_image_path = path
 
     def _parse_subjects_sidebar(self, home: BeautifulSoup) -> list[tuple[str, str]]:
         """Return top-level chapter URLs and titles from the course navigation."""
@@ -422,20 +447,7 @@ class WPCourse(BaseParser):
                 if kind == "component":
                     components.append(value)
                 elif kind == "pdf_url_group":
-                    boxes = []
-                    for block in value:
-                        name = self._resolve_and_fetch(block["href"])
-                        if name:
-                            boxes.append(self._download_link_component(name, block)["content"])
-                            found_downloads += 1
-                    if boxes:
-                        self._ensure_download_css(components)
-                        content = (
-                            f'<div class="ocw-vc-row">{"".join(boxes)}</div>'
-                            if len(boxes) > 1
-                            else boxes[0]
-                        )
-                        components.append({"type": "html", "content": content})
+                    found_downloads += self._append_pdf_group(value, components)
                 elif kind == "video_src":
                     found_iframe_srcs.add(value)
 
@@ -453,6 +465,26 @@ class WPCourse(BaseParser):
         if not components:
             log.warning("Parsing WP: lecture '%s' at %s produced no components", title, url)
         return {"display_name": title, "components": components, "dedup_url": url}
+
+    def _append_pdf_group(self, blocks: list[dict], components: list[dict]) -> int:
+        """Resolve a pdf_url_group's download blocks into one grouped HTML component.
+
+        Returns how many downloads were actually resolved and appended.
+        """
+        boxes = []
+        for block in blocks:
+            name = self._resolve_and_fetch(block["href"])
+            if name:
+                boxes.append(self._download_link_component(name, block)["content"])
+        if boxes:
+            self._ensure_download_css(components)
+            content = (
+                f'<div class="ocw-vc-row">{"".join(boxes)}</div>'
+                if len(boxes) > 1
+                else boxes[0]
+            )
+            components.append({"type": "html", "content": content})
+        return len(boxes)
 
     def _warn_external_wp_links(self, components: list[dict], context: str) -> None:
         """Warn about any `html` component still linking back to ocw.tudelft.nl."""
