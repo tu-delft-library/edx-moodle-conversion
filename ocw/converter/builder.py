@@ -28,6 +28,7 @@ from ocw.parser.base import BaseParser
 from ocw.utils import (
     _Counter,
     esc,
+    html_to_plain_text,
     rewrite_static_urls,
     sha1_of,
     warn_external_edx_urls,
@@ -582,6 +583,12 @@ class MBZBuilder:
             ("language", c.language),
             ("access", "open access"),
             ("license", c.license),
+            (
+                "summary",
+                html_to_plain_text(c.overview_summary_html)
+                if c.overview_summary_html
+                else "",
+            ),
         ]
         lines = [
             (
