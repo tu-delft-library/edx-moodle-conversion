@@ -665,3 +665,30 @@ def test_wp_cc8_no_banner_section_leaves_course_image_unset():
 
     assert course.course_image_path is None
     assert course.banner_image_path is None
+
+
+# WP-CC9
+def test_wp_cc9_summary_customfield_is_plain_text(tmp_path):
+    site = WPFixtureSite()
+    site.add_home([(SUBJECT_URL, "1. Intro")])
+    site.pages[site.root] += '<article><p>My <b>cool</b> course.</p></article>'
+    site.add_subject_page(
+        SUBJECT_URL,
+        _activities_html(
+            f'<li><a class="icon icon--lecture" href="{LECTURE_URL}">Lecture 1</a></li>'
+        ),
+    )
+    site.add_lecture_page(LECTURE_URL, "<p>content</p>")
+    course = site.course()
+    course.parse()
+    assert course.overview_summary_html == "<p>My <b>cool</b> course.</p>"
+
+    out = tmp_path / "course.mbz"
+    MBZBuilder(course).build(out)
+    with tarfile.open(out) as tar:
+        course_xml = next(
+            tar.extractfile(m).read().decode()
+            for m in tar.getmembers()
+            if m.name == "course/course.xml"
+        )
+    assert f"<shortname>summary</shortname>\n      <type>text</type>\n      <value>{esc('My cool course.')}</value>" in course_xml
