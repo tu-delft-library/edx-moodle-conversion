@@ -604,3 +604,64 @@ def test_wp_c3_no_download_css_on_page_without_downloads():
     lecture = course.chapters[0]["sequentials"][0]["verticals"][0]
     html_components = [c["content"] for c in lecture["components"] if c["type"] == "html"]
     assert not any(h.startswith("<style>") for h in html_components)
+
+
+# WP-CC8
+def test_wp_cc8_banner_image_registered_as_course_image_and_banner(tmp_path):
+    site = WPFixtureSite()
+    site.add_home(
+        [(SUBJECT_URL, "1. Intro")],
+        banner_url="https://ocw.tudelft.nl/wp-content/uploads/featured-Image.jpg",
+    )
+    site.add_static_file("featured-Image.jpg", content=b"\x89PNG\r\n\x1a\n")
+    site.add_subject_page(
+        SUBJECT_URL,
+        _activities_html(
+            f'<li><a class="icon icon--lecture" href="{LECTURE_URL}">Lecture 1</a></li>'
+        ),
+    )
+    site.add_lecture_page(LECTURE_URL, "<p>content</p>")
+    course = site.course()
+    course.parse()
+
+    assert course.course_image_path is not None
+    assert course.course_image_path.name == "featured-Image.jpg"
+    assert course.banner_image_path == course.course_image_path
+
+    out = tmp_path / "course.mbz"
+    MBZBuilder(course).build(out)
+    with tarfile.open(out) as tar:
+        files_xml = next(
+            tar.extractfile(m).read().decode()
+            for m in tar.getmembers()
+            if m.name == "files.xml"
+        ).encode()
+        root = ET.fromstring(files_xml)
+
+    overview_files = [
+        f
+        for f in root.findall("file")
+        if f.findtext("component") == "course" and f.findtext("filearea") == "overviewfiles"
+    ]
+    # Exactly one entry, not one per course_image_path/banner_image_path field: WP registers
+    # the same file under both, and a duplicate filename in one area would collide on restore.
+    assert len(overview_files) == 1
+    assert overview_files[0].findtext("filename") == "featured-Image.jpg"
+
+
+# WP-CC8
+def test_wp_cc8_no_banner_section_leaves_course_image_unset():
+    site = WPFixtureSite()
+    site.add_home([(SUBJECT_URL, "1. Intro")])
+    site.add_subject_page(
+        SUBJECT_URL,
+        _activities_html(
+            f'<li><a class="icon icon--lecture" href="{LECTURE_URL}">Lecture 1</a></li>'
+        ),
+    )
+    site.add_lecture_page(LECTURE_URL, "<p>content</p>")
+    course = site.course()
+    course.parse()
+
+    assert course.course_image_path is None
+    assert course.banner_image_path is None

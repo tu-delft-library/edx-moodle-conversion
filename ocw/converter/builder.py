@@ -322,11 +322,14 @@ class MBZBuilder:
 
         Thumbnail first (sortorder 0) so it's the one Moodle picks for the catalogue tile; the
         banner rides along at sortorder 1, embedded but not wired to any rendering path yet.
+        Deduplicated by path -- WP has only one image and registers it as both, and two entries
+        for the same file would collide on Moodle's per-area filename uniqueness.
         """
         entries: list[dict] = []
-        for sortorder, path in enumerate(
+        paths = dict.fromkeys(
             p for p in (c.course_image_path, c.banner_image_path) if p is not None
-        ):
+        )
+        for sortorder, path in enumerate(paths):
             entries.append(
                 {
                     "id": ids.next(),
