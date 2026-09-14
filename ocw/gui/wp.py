@@ -2,7 +2,7 @@ import argparse
 import shutil
 import tempfile
 from pathlib import Path
-from tkinter import Tk, Toplevel, ttk
+from tkinter import BooleanVar, Tk, Toplevel, ttk
 from tkinter.scrolledtext import ScrolledText
 
 from ocw.converter import MBZBuilder
@@ -18,6 +18,18 @@ class App(ConverterApp):
     """Provide the GUI workflow for converting WordPress course sites."""
 
     WINDOW_TITLE = WP_WINDOW_TITLE
+
+    def __init__(self, root: Tk, log_file: Path | None = None) -> None:
+        self.include_license_banner = BooleanVar(value=False)
+        super().__init__(root, log_file)
+
+    def _build_source_widgets(self, pad: dict) -> None:
+        """Add the Creative Commons license footer opt-in checkbox."""
+        ttk.Checkbutton(
+            self.root,
+            text="Keep Creative Commons license footer",
+            variable=self.include_license_banner,
+        ).pack(anchor="w", **pad)
 
     def _ask_urls(self) -> str | None:
         """Open a modal dialog for one course home-page URL per line.
@@ -85,7 +97,11 @@ class App(ConverterApp):
                 fetch_tmp = Path(tempfile.mkdtemp())
                 fetcher = AssetFetcher(fetch_tmp)
 
-            course = WPCourse(path, fetcher=fetcher)
+            course = WPCourse(
+                path,
+                fetcher=fetcher,
+                include_license_banner=self.include_license_banner.get(),
+            )
             course.parse()
             name = _input_label(path)
 

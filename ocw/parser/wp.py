@@ -61,8 +61,14 @@ class WPCourse(BaseParser):
         "</style>"
     )
 
-    def __init__(self, root: str, fetcher: AssetFetcher | None = None) -> None:
+    def __init__(
+        self,
+        root: str,
+        fetcher: AssetFetcher | None = None,
+        include_license_banner: bool = False,
+    ) -> None:
         super().__init__(root, fetcher)
+        self._include_license_banner = include_license_banner
         self._session = requests.Session()
         # URL -> parsed canonical reading vertical (or None), for dedup across subject pages.
         self._reading_pages: dict[str, dict | None] = {}
@@ -529,6 +535,8 @@ class WPCourse(BaseParser):
         video_index,
     ) -> list[tuple[str, object]]:
         """Classify one top-level lecture element into zero or more (kind, value) results."""
+        if self._is_license_section(child) and self._drop_license_section(child):
+            return []
         if self._is_boilerplate_child(child):
             return []
 
@@ -582,15 +590,49 @@ class WPCourse(BaseParser):
 
     @staticmethod
     def _is_boilerplate_child(child) -> bool:
-        """True for a lecture-page child that carries no course content -- the page title, the
-        licence footer, or the subject link list -- and should be skipped outright."""
+        """True for a lecture-page child that carries no course content -- the page title or
+        the subject link list -- and should be skipped outright."""
         if child.name == "h1":
-            return True
-        if child.name == "section" and "license" in (child.get("class") or []):
             return True
         if child.name == "p" and "article__link-list" in (child.get("class") or []):
             return True
         return False
+
+    @staticmethod
+    def _is_license_section(child) -> bool:
+        """True for the WP-boilerplate Creative Commons license footer `<section>`."""
+        return child.name == "section" and "license" in (child.get("class") or [])
+
+    def _drop_license_section(self, section) -> bool:
+        """True (and leave `section` untouched) when the flag is off. Otherwise inline the WP
+        theme's `.license` rule (centred, padded) since Moodle never loads WP's own CSS, strip
+        the dead "Based on a work at <source>" attribution line, and return False so the caller
+        keeps the section."""
+        if not self._include_license_banner:
+            return True
+        section["style"] = "text-align:center;padding-top:40px;padding-bottom:40px"
+        self._strip_source_line(section)
+        return False
+
+    @staticmethod
+    def _strip_source_line(section) -> None:
+        """Remove the "Based on a work at <source>." line and its leading `<br>` -- once the
+        content lives in Moodle, the link back to the WP source page is dead weight."""
+        link = section.find("a", attrs={"rel": "dct:source"})
+        if link is None:
+            return
+        trailing = link.next_sibling
+        if isinstance(trailing, NavigableString):
+            trailing.extract()
+        node = link.previous_sibling
+        link.extract()
+        while node is not None:
+            prev = node.previous_sibling
+            is_br = getattr(node, "name", None) == "br"
+            node.extract()
+            if is_br:
+                break
+            node = prev
 
     @staticmethod
     def _non_download_remainder(child) -> str | None:
@@ -755,7 +797,7 @@ class WPCourse(BaseParser):
         for child in article.find_all(recursive=False):
             if child.name == "h1":
                 continue
-            if child.name == "section" and "license" in (child.get("class") or []):
+            if self._is_license_section(child) and self._drop_license_section(child):
                 continue
             if child.name == "p" and "article__link-list" in (child.get("class") or []):
                 continue
