@@ -4,9 +4,10 @@ from ocw.cli import wp as cli_wp
 
 
 class _FakeCourse:
-    def __init__(self, root, fetcher=None):
+    def __init__(self, root, fetcher=None, include_license_banner=False):
         self.root = root
         self.fetcher = fetcher
+        self.include_license_banner = include_license_banner
 
     def parse(self):
         pass
@@ -48,9 +49,9 @@ def test_main_creates_fetcher_when_enabled(monkeypatch, tmp_path):
     seen_fetchers = []
 
     class _RecordingCourse(_FakeCourse):
-        def __init__(self, root, fetcher=None):
+        def __init__(self, root, fetcher=None, include_license_banner=False):
             seen_fetchers.append(fetcher)
-            super().__init__(root, fetcher)
+            super().__init__(root, fetcher, include_license_banner)
 
     monkeypatch.setattr(cli_wp, "WPCourse", _RecordingCourse)
     monkeypatch.setattr(cli_wp, "MBZBuilder", _FakeBuilder)
@@ -59,6 +60,32 @@ def test_main_creates_fetcher_when_enabled(monkeypatch, tmp_path):
     )
     cli_wp.main()
     assert seen_fetchers[0] is not None
+
+
+def test_main_passes_include_license_banner_flag(monkeypatch, tmp_path):
+    output = tmp_path / "out.mbz"
+    seen = []
+
+    class _RecordingCourse(_FakeCourse):
+        def __init__(self, root, fetcher=None, include_license_banner=False):
+            seen.append(include_license_banner)
+            super().__init__(root, fetcher, include_license_banner)
+
+    monkeypatch.setattr(cli_wp, "WPCourse", _RecordingCourse)
+    monkeypatch.setattr(cli_wp, "MBZBuilder", _FakeBuilder)
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "ocw-wp",
+            "https://x/",
+            "--output",
+            str(output),
+            "--no-fetch-external-assets",
+            "--include-license-banner",
+        ],
+    )
+    cli_wp.main()
+    assert seen == [True]
 
 
 def test_main_exits_nonzero_and_prints_error_on_failure(monkeypatch, capsys):

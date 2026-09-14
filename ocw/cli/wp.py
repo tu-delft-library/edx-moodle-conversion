@@ -36,6 +36,11 @@ def main() -> None:
         default=True,
         help="Download PDFs linked from the site (default: on)",
     )
+    ap.add_argument(
+        "--include-license-banner",
+        action="store_true",
+        help="Keep the Creative Commons license footer on lecture/reading pages (default: off)",
+    )
     args = ap.parse_args()
     setup_cli_logging(args.debug, Path("ocw.log"))
     log = logging.getLogger("ocw")
@@ -48,7 +53,11 @@ def main() -> None:
             fetch_tmp = Path(tempfile.mkdtemp())
             fetcher = AssetFetcher(fetch_tmp)
 
-        course = WPCourse(args.site_url, fetcher=fetcher)
+        course = WPCourse(
+            args.site_url,
+            fetcher=fetcher,
+            include_license_banner=args.include_license_banner,
+        )
         course.parse()
         output = versioned_output_path(args.output)
         MBZBuilder(
