@@ -6,6 +6,8 @@ import re
 from pathlib import Path
 from urllib.parse import urlparse
 
+from bs4 import BeautifulSoup
+
 from ocw._version import __version__
 
 log = logging.getLogger("ocw.converter")
@@ -61,6 +63,11 @@ def esc(s: str | None) -> str:
         .replace(">", "&gt;")
         .replace('"', "&quot;")
     )
+
+
+def html_to_plain_text(html: str) -> str:
+    """Collapse HTML markup down to plain text, for metadata fields that reject markup."""
+    return BeautifulSoup(html, "lxml").get_text(" ", strip=True)
 
 
 def sha1_of(path: Path) -> str:

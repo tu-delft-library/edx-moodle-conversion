@@ -28,6 +28,7 @@ from ocw.parser.base import BaseParser
 from ocw.utils import (
     _Counter,
     esc,
+    html_to_plain_text,
     rewrite_static_urls,
     sha1_of,
     warn_external_edx_urls,
@@ -85,6 +86,11 @@ class MBZBuilder:
         ts = int(time.time())
         c = self.course
         section_offset = 1
+        # Must be distinct from every other id allocated below, and in particular from 1 -- every
+        # Moodle site's own system context is permanently id 1, and restore pre-maps backup
+        # context id 1 straight to it. Reusing 1 here silently redirects course-context files
+        # (course image, overviewfiles) into the site's system context instead of the course.
+        course_ctx = ids.next()
 
         strategy = (
             FlatSectionStrategy(c, ids, section_offset)
@@ -135,8 +141,9 @@ class MBZBuilder:
             pages.insert(0, syllabus_page)
 
         file_entries = self._build_file_entries(c, pages + resources, ids)
+        file_entries += self._build_course_image_entries(c, ids, course_ctx)
         self._write_all(
-            tmp, c, all_sections, sub_mods, pages, resources, file_entries, ts, ids
+            tmp, c, all_sections, sub_mods, pages, resources, file_entries, ts, ids, course_ctx
         )
 
     def _alloc_sections(
@@ -301,10 +308,45 @@ class MBZBuilder:
                         "path": path,
                         "ctx": page["ctx"],
                         "component": page.get("component", "mod_page"),
+                        "filearea": "content",
+                        "itemid": 0,
+                        "sortorder": 0,
                     }
                 )
                 page["file_ids"].append(fid)
         return file_entries
+
+    def _build_course_image_entries(
+        self, c: BaseParser, ids: _Counter, course_ctx: int
+    ) -> list[dict]:
+        """Build course-context `overviewfiles` file records for the course image and banner.
+
+        Thumbnail first (sortorder 0) so it's the one Moodle picks for the catalogue tile; the
+        banner rides along at sortorder 1, embedded but not wired to any rendering path yet.
+        Deduplicated by path -- WP has only one image and registers it as both, and two entries
+        for the same file would collide on Moodle's per-area filename uniqueness.
+        """
+        entries: list[dict] = []
+        paths = dict.fromkeys(
+            p for p in (c.course_image_path, c.banner_image_path) if p is not None
+        )
+        for sortorder, path in enumerate(paths):
+            entries.append(
+                {
+                    "id": ids.next(),
+                    "sha1": sha1_of(path),
+                    "name": path.name,
+                    "size": path.stat().st_size,
+                    "mime": mimetypes.guess_type(path.name)[0] or "application/octet-stream",
+                    "path": path,
+                    "ctx": course_ctx,
+                    "component": "course",
+                    "filearea": "overviewfiles",
+                    "itemid": 0,
+                    "sortorder": sortorder,
+                }
+            )
+        return entries
 
     def _write_all(
         self,
@@ -317,11 +359,15 @@ class MBZBuilder:
         file_entries: list[dict],
         ts: int,
         ids: _Counter,
+        course_ctx: int,
     ) -> None:
         """Write every XML manifest, activity directory, and referenced file into `tmp`."""
-        self._write_moodle_backup(tmp, c, all_sections, sub_mods, pages, resources, ts)
+        self._write_moodle_backup(
+            tmp, c, all_sections, sub_mods, pages, resources, ts, course_ctx
+        )
         self._write_static_manifests(tmp)
-        self._write_course_xml(tmp, c, ts, ids)
+        course_file_ids = [f["id"] for f in file_entries if f["component"] == "course"]
+        self._write_course_xml(tmp, c, ts, ids, course_file_ids, course_ctx)
         for idx, sec in enumerate(all_sections):
             self._write_section(tmp, sec, sec.get("number", idx + 1), ts)
         for sub in sub_mods:
@@ -461,6 +507,7 @@ class MBZBuilder:
         pages: list,
         resources: list,
         ts: int,
+        course_ctx: int,
     ) -> None:
         """Write the root `moodle_backup.xml` manifest."""
         acts = "\n".join(self._activity_lines(sections, sub_mods, pages, resources))
@@ -479,6 +526,7 @@ class MBZBuilder:
             secs=secs,
             settings=settings,
             ocw_version=__version__,
+            course_ctx=course_ctx,
         )
         (tmp / "moodle_backup.xml").write_text(xml, encoding="utf-8")
 
@@ -535,6 +583,12 @@ class MBZBuilder:
             ("language", c.language),
             ("access", "open access"),
             ("license", c.license),
+            (
+                "summary",
+                html_to_plain_text(c.overview_summary_html)
+                if c.overview_summary_html
+                else "",
+            ),
         ]
         lines = [
             (
@@ -552,9 +606,21 @@ class MBZBuilder:
         return "\n".join(lines) + ("\n" if lines else "")
 
     def _write_course_xml(
-        self, tmp: Path, c: BaseParser, ts: int, ids: _Counter
+        self,
+        tmp: Path,
+        c: BaseParser,
+        ts: int,
+        ids: _Counter,
+        course_file_ids: list[int],
+        course_ctx: int,
     ) -> None:
-        """Write the course record and its course-level extension data."""
+        """Write the course record and its course-level extension data.
+
+        `course_file_ids` (course image/banner) must be declared here as `<fileref>` entries --
+        restore only loads a course-context file into `backup_files_temp` when its id appears in
+        the owning task's `inforef.xml`, an empty `<inforef/>` (the old default) means the file
+        is present in `files.xml` but never actually gets restored.
+        """
         d = tmp / "course"
         d.mkdir(exist_ok=True)
         (d / "course.xml").write_text(
@@ -565,12 +631,20 @@ class MBZBuilder:
                 customfields_block=self._build_customfields_block(c, ids),
                 ts=ts,
                 plugin_vidrouter_block=self._build_vidrouter_block(c),
+                course_ctx=course_ctx,
             ),
             encoding="utf-8",
         )
         (d / "roles.xml").write_text(templates.COURSE_ROLES_XML, encoding="utf-8")
         (d / "filters.xml").write_text(templates.COURSE_FILTERS_XML, encoding="utf-8")
-        (d / "inforef.xml").write_text(templates.COURSE_INFOREF_XML, encoding="utf-8")
+        if course_file_ids:
+            file_lines = "\n".join(
+                f"    <file><id>{fid}</id></file>" for fid in course_file_ids
+            )
+            inforef = f'<?xml version="1.0" encoding="UTF-8"?>\n<inforef>\n  <fileref>\n{file_lines}\n  </fileref>\n</inforef>'
+        else:
+            inforef = templates.COURSE_INFOREF_XML
+        (d / "inforef.xml").write_text(inforef, encoding="utf-8")
         (d / "completiondefaults.xml").write_text(
             templates.COURSE_COMPLETION_DEFAULTS_XML, encoding="utf-8"
         )
@@ -754,6 +828,9 @@ class MBZBuilder:
                 mime=esc(f["mime"]),
                 ctx=f["ctx"],
                 component=f["component"],
+                filearea=f["filearea"],
+                itemid=f["itemid"],
+                sortorder=f["sortorder"],
                 ts=ts,
             )
             for f in file_entries

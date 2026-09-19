@@ -42,10 +42,16 @@ class WPFixtureSite:
         self.pages: dict[str, str] = {}
         self.pdf_files: dict[str, bytes] = {}
 
-    def add_home(self, subjects: list[tuple[str, str]]) -> None:
+    def add_home(self, subjects: list[tuple[str, str]], banner_url: str | None = None) -> None:
         """subjects: list of (url, title) pairs shown in the sidebar nav."""
         links = "\n".join(f'<li><a href="{url}">{title}</a></li>' for url, title in subjects)
+        banner = (
+            f'<section class="banner" style="background-image: url(\'{banner_url}\');"></section>'
+            if banner_url
+            else ""
+        )
         self.pages[self.root] = f"""
+        {banner}
         <h1>Example Course</h1>
         <ul class="activities activities--bordered">
         <li><h4>Subjects</h4><ul>{links}</ul></li>
@@ -74,8 +80,10 @@ class WPFixtureSite:
         if pdf_name:
             self.pdf_files[pdf_name] = pdf_bytes
 
-    def course(self) -> WPCourse:
+    def course(self, include_license_banner: bool = False) -> WPCourse:
         fetcher = _FakeFetcher(self.pdf_files) if self.pdf_files else None
-        course = WPCourse(self.root, fetcher=fetcher)
+        course = WPCourse(
+            self.root, fetcher=fetcher, include_license_banner=include_license_banner
+        )
         course._fetch_page = lambda url: BeautifulSoup(self.pages[url], "lxml")
         return course

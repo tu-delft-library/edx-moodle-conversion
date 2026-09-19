@@ -3,6 +3,7 @@
 import copy
 import itertools
 import logging
+import re
 from collections import Counter
 
 import requests
@@ -60,8 +61,14 @@ class WPCourse(BaseParser):
         "</style>"
     )
 
-    def __init__(self, root: str, fetcher: AssetFetcher | None = None) -> None:
+    def __init__(
+        self,
+        root: str,
+        fetcher: AssetFetcher | None = None,
+        include_license_banner: bool = False,
+    ) -> None:
         super().__init__(root, fetcher)
+        self._include_license_banner = include_license_banner
         self._session = requests.Session()
         # URL -> parsed canonical reading vertical (or None), for dedup across subject pages.
         self._reading_pages: dict[str, dict | None] = {}
@@ -78,6 +85,7 @@ class WPCourse(BaseParser):
         home = self._fetch_page(self.root)
         self.course_name = home.select_one("h1").get_text(strip=True)
         self._parse_home_summary(home)
+        self._parse_home_banner_image(home)
         subjects = self._parse_subjects_sidebar(home)
         self._lecture_ref_counts = self._count_lecture_references(
             url for url, _ in subjects
@@ -113,6 +121,29 @@ class WPCourse(BaseParser):
             return
         warn_external_wp_urls(html, context="course overview")
         self.overview_summary_html = html
+
+    _BANNER_URL_RE = re.compile(r"background-image:\s*url\((['\"]?)(.*?)\1\)")
+
+    def _parse_home_banner_image(self, home: BeautifulSoup) -> None:
+        """Extract the home page's CSS background-image banner.
+
+        WP has no separate catalogue thumbnail, so this one image is registered as both
+        `course_image_path` and `banner_image_path`.
+        """
+        section = home.select_one("section.banner")
+        if section is None:
+            return
+        match = self._BANNER_URL_RE.search(str(section.get("style") or ""))
+        if not match:
+            return
+        url = match.group(2)
+        name = self._resolve_and_fetch(url)
+        if name is None:
+            log.warning("Parsing WP: banner image %r found but could not be resolved", url)
+            return
+        path = self.static_files[name]
+        self.course_image_path = path
+        self.banner_image_path = path
 
     def _parse_subjects_sidebar(self, home: BeautifulSoup) -> list[tuple[str, str]]:
         """Return top-level chapter URLs and titles from the course navigation."""
@@ -422,20 +453,7 @@ class WPCourse(BaseParser):
                 if kind == "component":
                     components.append(value)
                 elif kind == "pdf_url_group":
-                    boxes = []
-                    for block in value:
-                        name = self._resolve_and_fetch(block["href"])
-                        if name:
-                            boxes.append(self._download_link_component(name, block)["content"])
-                            found_downloads += 1
-                    if boxes:
-                        self._ensure_download_css(components)
-                        content = (
-                            f'<div class="ocw-vc-row">{"".join(boxes)}</div>'
-                            if len(boxes) > 1
-                            else boxes[0]
-                        )
-                        components.append({"type": "html", "content": content})
+                    found_downloads += self._append_pdf_group(value, components)
                 elif kind == "video_src":
                     found_iframe_srcs.add(value)
 
@@ -450,7 +468,29 @@ class WPCourse(BaseParser):
             found_downloads=found_downloads,
         )
         self._warn_external_wp_links(components, title)
+        if not components:
+            log.warning("Parsing WP: lecture '%s' at %s produced no components", title, url)
         return {"display_name": title, "components": components, "dedup_url": url}
+
+    def _append_pdf_group(self, blocks: list[dict], components: list[dict]) -> int:
+        """Resolve a pdf_url_group's download blocks into one grouped HTML component.
+
+        Returns how many downloads were actually resolved and appended.
+        """
+        boxes = []
+        for block in blocks:
+            name = self._resolve_and_fetch(block["href"])
+            if name:
+                boxes.append(self._download_link_component(name, block)["content"])
+        if boxes:
+            self._ensure_download_css(components)
+            content = (
+                f'<div class="ocw-vc-row">{"".join(boxes)}</div>'
+                if len(boxes) > 1
+                else boxes[0]
+            )
+            components.append({"type": "html", "content": content})
+        return len(boxes)
 
     def _warn_external_wp_links(self, components: list[dict], context: str) -> None:
         """Warn about any `html` component still linking back to ocw.tudelft.nl."""
@@ -495,6 +535,8 @@ class WPCourse(BaseParser):
         video_index,
     ) -> list[tuple[str, object]]:
         """Classify one top-level lecture element into zero or more (kind, value) results."""
+        if self._is_license_section(child) and self._drop_license_section(child):
+            return []
         if self._is_boilerplate_child(child):
             return []
 
@@ -548,15 +590,49 @@ class WPCourse(BaseParser):
 
     @staticmethod
     def _is_boilerplate_child(child) -> bool:
-        """True for a lecture-page child that carries no course content -- the page title, the
-        licence footer, or the subject link list -- and should be skipped outright."""
+        """True for a lecture-page child that carries no course content -- the page title or
+        the subject link list -- and should be skipped outright."""
         if child.name == "h1":
-            return True
-        if child.name == "section" and "license" in (child.get("class") or []):
             return True
         if child.name == "p" and "article__link-list" in (child.get("class") or []):
             return True
         return False
+
+    @staticmethod
+    def _is_license_section(child) -> bool:
+        """True for the WP-boilerplate Creative Commons license footer `<section>`."""
+        return child.name == "section" and "license" in (child.get("class") or [])
+
+    def _drop_license_section(self, section) -> bool:
+        """True (and leave `section` untouched) when the flag is off. Otherwise inline the WP
+        theme's `.license` rule (centred, padded) since Moodle never loads WP's own CSS, strip
+        the dead "Based on a work at <source>" attribution line, and return False so the caller
+        keeps the section."""
+        if not self._include_license_banner:
+            return True
+        section["style"] = "text-align:center;padding-top:40px;padding-bottom:40px"
+        self._strip_source_line(section)
+        return False
+
+    @staticmethod
+    def _strip_source_line(section) -> None:
+        """Remove the "Based on a work at <source>." line and its leading `<br>` -- once the
+        content lives in Moodle, the link back to the WP source page is dead weight."""
+        link = section.find("a", attrs={"rel": "dct:source"})
+        if link is None:
+            return
+        trailing = link.next_sibling
+        if isinstance(trailing, NavigableString):
+            trailing.extract()
+        node = link.previous_sibling
+        link.extract()
+        while node is not None:
+            prev = node.previous_sibling
+            is_br = getattr(node, "name", None) == "br"
+            node.extract()
+            if is_br:
+                break
+            node = prev
 
     @staticmethod
     def _non_download_remainder(child) -> str | None:
@@ -699,6 +775,7 @@ class WPCourse(BaseParser):
                 components.append(self._download_link_component(name, dl_blocks[0]))
 
         if not components:
+            log.warning("Parsing WP: reading '%s' at %s produced no components", title, url)
             return None
         return {"display_name": title, "components": components, "reading_url": url}
 
@@ -720,7 +797,7 @@ class WPCourse(BaseParser):
         for child in article.find_all(recursive=False):
             if child.name == "h1":
                 continue
-            if child.name == "section" and "license" in (child.get("class") or []):
+            if self._is_license_section(child) and self._drop_license_section(child):
                 continue
             if child.name == "p" and "article__link-list" in (child.get("class") or []):
                 continue
