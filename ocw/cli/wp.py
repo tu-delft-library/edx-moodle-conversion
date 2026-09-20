@@ -26,6 +26,12 @@ def main() -> None:
         help="one Moodle section per sequential instead of per chapter",
     )
     ap.add_argument(
+        "--authora",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Apply Authora layout changes: empty General section 0, Overview in section 1 (default: on)",
+    )
+    ap.add_argument(
         "--disable-custom-fields",
         action="store_true",
         help="Skip populating custom fields",
@@ -64,6 +70,7 @@ def main() -> None:
             course,
             sequential_sections=args.sequential_sections,
             disable_custom_fields=args.disable_custom_fields,
+            authora=args.authora,
         ).build(output)
     except Exception as e:
         print(f"error: {e}", file=sys.stderr)

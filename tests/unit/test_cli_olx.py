@@ -13,10 +13,13 @@ class _FakeCourse:
 
 
 class _FakeBuilder:
-    def __init__(self, course, sequential_sections=False, disable_custom_fields=False):
+    def __init__(
+        self, course, sequential_sections=False, disable_custom_fields=False, authora=True
+    ):
         self.course = course
         self.sequential_sections = sequential_sections
         self.disable_custom_fields = disable_custom_fields
+        self.authora = authora
 
     def build(self, output):
         output.write_text("mbz")
@@ -106,3 +109,34 @@ def test_main_creates_fetcher_when_fetch_external_assets_enabled(monkeypatch, tm
     monkeypatch.setattr("sys.argv", ["ocw", str(olx_dir), "--output", str(output)])
     cli_olx.main()
     assert seen_fetchers[0] is not None
+
+
+@pytest.mark.parametrize(
+    ("extra_args", "expected"),
+    [([], True), (["--authora"], True), (["--no-authora"], False)],
+)
+def test_main_passes_authora_flag_to_builder_and_hybrid_checks(
+    monkeypatch, tmp_path, extra_args, expected
+):
+    olx_dir = tmp_path / "course"
+    olx_dir.mkdir()
+    built = []
+    checked = []
+
+    class _RecordingBuilder(_FakeBuilder):
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, **kwargs)
+            built.append(self.authora)
+
+    monkeypatch.setattr(cli_olx, "Course", _FakeCourse)
+    monkeypatch.setattr(cli_olx, "MBZBuilder", _RecordingBuilder)
+    monkeypatch.setattr(
+        cli_olx, "log_hybrid_checks", lambda *a, **k: checked.append(k["authora"])
+    )
+    monkeypatch.setattr(
+        "sys.argv",
+        ["ocw", str(olx_dir), "--output", str(tmp_path / "out.mbz"), "--no-fetch-external-assets", *extra_args],
+    )
+    cli_olx.main()
+    assert built == [expected]
+    assert checked == [expected]

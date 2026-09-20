@@ -27,7 +27,7 @@ class CheckResult:
         return self.expected == self.actual
 
 
-def _expected_counts(olx_path: Path) -> tuple[int, int, int]:
+def _expected_counts(olx_path: Path, authora: bool = True) -> tuple[int, int, int]:
     """Return the section, subsection, and page counts the OLX export should produce."""
     course = Course(olx_path)
     course.parse()
@@ -43,7 +43,7 @@ def _expected_counts(olx_path: Path) -> tuple[int, int, int]:
     has_readings = bool(course.readings)
     readings_subsection = 1 if has_readings else 0
     return (
-        len(course.chapters) + 1,  # +1 for Overview, always present
+        len(course.chapters) + (2 if authora else 1),  # Overview always, plus empty General
         seqs + readings_subsection,
         pages + (1 if has_syllabus_page else 0),
     )
@@ -56,12 +56,12 @@ def _iter_section_xmls(tar: tarfile.TarFile) -> Iterator[ET.Element]:
             yield ET.parse(tar.extractfile(m)).getroot()
 
 
-def run_hybrid_checks(olx_path: Path, mbz_path: Path) -> list[CheckResult]:
+def run_hybrid_checks(olx_path: Path, mbz_path: Path, authora: bool = True) -> list[CheckResult]:
     """Compare the OLX-derived structural counts with the converted MBZ archive.
 
     Returns one result each for sections, subsections, and pages.
     """
-    expected_chapters, expected_seqs, expected_pages = _expected_counts(olx_path)
+    expected_chapters, expected_seqs, expected_pages = _expected_counts(olx_path, authora)
     with tarfile.open(mbz_path) as tar:
         section_roots = list(_iter_section_xmls(tar))
         actual_chapters = sum(1 for r in section_roots if r.findtext("component") != "mod_subsection")
@@ -74,9 +74,11 @@ def run_hybrid_checks(olx_path: Path, mbz_path: Path) -> list[CheckResult]:
     ]
 
 
-def log_hybrid_checks(olx_path: Path, mbz_path: Path, log: logging.Logger) -> None:
+def log_hybrid_checks(
+    olx_path: Path, mbz_path: Path, log: logging.Logger, authora: bool = True
+) -> None:
     """Run the parity checks and log every result."""
-    results = run_hybrid_checks(olx_path, mbz_path)
+    results = run_hybrid_checks(olx_path, mbz_path, authora)
     level = logging.INFO if all(r.passed for r in results) else logging.WARNING
     for r in results:
         status = "PASS" if r.passed else "FAIL"

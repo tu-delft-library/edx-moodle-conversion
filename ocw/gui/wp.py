@@ -110,6 +110,7 @@ class App(ConverterApp):
                 course,
                 sequential_sections=self.sequential_sections.get(),
                 disable_custom_fields=not self.enable_custom_fields.get(),
+                authora=self.authora.get(),
             ).build(out)
             return out
         finally:

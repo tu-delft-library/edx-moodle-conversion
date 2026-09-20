@@ -44,7 +44,7 @@ It reparses the source and compares its expected structure with the MBZ XML.
 
 | Check | Source count | MBZ count |
 | --- | --- | --- |
-| Chapter and section parity | OLX chapters plus generated Overview or Readings sections. | Moodle top level sections. |
+| Chapter and section parity | OLX chapters plus generated Overview, and the empty General section with `--authora`. | Moodle top level sections. |
 | Sequential and subsection parity | OLX sequentials plus generated Readings subsection. | Moodle subsection sections. |
 | Page parity | OLX HTML verticals plus generated syllabus page. | `page.xml` activity records. |
 

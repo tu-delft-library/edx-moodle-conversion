@@ -36,6 +36,8 @@ poetry run ocw-wp https://example.edu/course-home-page/ -o output.mbz
 | ---------------------------- | ------- | --------------------------------------------------------------------- |
 | `--sequential-sections`      | off     | One Moodle section per sequential, named `"Chapter - Sequential"`.    |
 | `--disable-custom-fields`    | off     | Skip populating eduSources custom fields.                             |
+| `--authora`                  | on      | Empty General section 0 and Overview in section 1 (Authora layout).   |
+| `--no-authora`               | off     | Overview stays in section 0, no empty General section.                |
 | `--fetch-external-assets`    | on      | Download externally hosted PDFs and files instead of only warning.    |
 | `--no-fetch-external-assets` | off     | Leave external assets as links and report them in the conversion log. |
 | `--debug`                    | off     | Write verbose logging to stderr and `ocw.log`.                        |

@@ -52,6 +52,8 @@ class MBZBuilder:
         sequential_sections: Create one Moodle section per source sequential instead of nested
             subsections.
         disable_custom_fields: Omit Edusources custom-field data from `course.xml`.
+        authora: Apply Authora layout changes: an empty General section 0, with Overview as
+            section 1 and every other section number shifted up by one.
     """
 
     def __init__(
@@ -60,10 +62,12 @@ class MBZBuilder:
         *,
         sequential_sections: bool = False,
         disable_custom_fields: bool = False,
+        authora: bool = True,
     ) -> None:
         self.course = course
         self.sequential_sections = sequential_sections
         self.disable_custom_fields = disable_custom_fields
+        self.authora = authora
         self.log = logging.getLogger("ocw.converter")
 
     def build(self, out: Path) -> None:
@@ -81,11 +85,15 @@ class MBZBuilder:
             shutil.rmtree(tmp, ignore_errors=True)
 
     def _populate(self, tmp: Path) -> None:
-        """Materialise the complete MBZ tree in `tmp`."""
+        """Materialise the complete MBZ tree in `tmp`.
+
+        Section numbering: an optional empty General at 0 (`authora`), then Overview at
+        `section_offset - 1`, then every source section from `section_offset`.
+        """
         ids = _Counter()
         ts = int(time.time())
         c = self.course
-        section_offset = 1
+        section_offset = 2 if self.authora else 1
         # Must be distinct from every other id allocated below, and in particular from 1 -- every
         # Moodle site's own system context is permanently id 1, and restore pre-maps backup
         # context id 1 straight to it. Reusing 1 here silently redirects course-context files
@@ -151,13 +159,22 @@ class MBZBuilder:
     ) -> tuple[dict, list[dict], dict | None, dict | None]:
         """Phase 1: allocate every section ID in the course, including Overview/Readings/Hidden
         which aren't part of `strategy`. See `_populate`'s docstring for the numbering rules."""
-        overview_section = {"id": ids.next(), "name": "Overview", "number": 0, "modules": []}
+        overview_section = {
+            "id": ids.next(),
+            "name": "Overview",
+            "number": section_offset - 1,
+            "modules": [],
+        }
         if c.overview_summary_html:
             overview_section["summary"] = strategy._process_html(
                 c.overview_summary_html, context="Overview"
             )
         all_sections = strategy.build_sections()
         all_sections.insert(0, overview_section)
+        if self.authora:
+            all_sections.insert(
+                0, {"id": ids.next(), "name": "", "number": 0, "modules": [], "visible": 0}
+            )
 
         # Hidden is a plain top-level section (no component), so it's a "regular" section whose
         # declared number Moodle actually honours -- keep it right after the strategy's regular
@@ -212,7 +229,7 @@ class MBZBuilder:
                 "internal_id": sub_int_id,
                 "name": "Readings",
                 "parent_sec_id": overview_section["id"],
-                "parent_sec_num": 0,
+                "parent_sec_num": overview_section["number"],
                 "child_sec": readings_child_sec,
             }
             overview_section["modules"].append(sub_mod_id)
@@ -246,7 +263,7 @@ class MBZBuilder:
             "id": mod_id,
             "ctx": ctx_id,
             "sec_id": overview_section["id"],
-            "sec_num": 0,
+            "sec_num": overview_section["number"],
             "name": c.syllabus_title,
             "content": content,
             "file_refs": re.findall(r'@@PLUGINFILE@@/([^"\'>\s]+)', content),

@@ -53,6 +53,7 @@ class ConverterApp:
         root.geometry("860x460")
 
         self.sequential_sections = BooleanVar(value=False)
+        self.authora = BooleanVar(value=True)
         self.enable_custom_fields = BooleanVar(value=True)
         self.debug = BooleanVar(value=False)
         self.fetch_external_assets = BooleanVar(value=True)
@@ -119,6 +120,12 @@ class ConverterApp:
             self.root,
             text="Flatten sub-sections (one section per sequential)",
             variable=self.sequential_sections,
+        ).pack(anchor="w", **pad)
+
+        ttk.Checkbutton(
+            self.root,
+            text="Authora layout",
+            variable=self.authora,
         ).pack(anchor="w", **pad)
 
         ttk.Checkbutton(

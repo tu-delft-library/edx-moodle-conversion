@@ -14,8 +14,11 @@ class _FakeCourse:
 
 
 class _FakeBuilder:
-    def __init__(self, course, sequential_sections=False, disable_custom_fields=False):
+    def __init__(
+        self, course, sequential_sections=False, disable_custom_fields=False, authora=True
+    ):
         self.course = course
+        self.authora = authora
 
     def build(self, output):
         output.write_text("mbz")
@@ -102,3 +105,32 @@ def test_main_exits_nonzero_and_prints_error_on_failure(monkeypatch, capsys):
         cli_wp.main()
     assert exc_info.value.code == 1
     assert "error: site unreachable" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize(
+    ("extra_args", "expected"),
+    [([], True), (["--authora"], True), (["--no-authora"], False)],
+)
+def test_main_passes_authora_flag_to_builder(monkeypatch, tmp_path, extra_args, expected):
+    built = []
+
+    class _RecordingBuilder(_FakeBuilder):
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, **kwargs)
+            built.append(self.authora)
+
+    monkeypatch.setattr(cli_wp, "WPCourse", _FakeCourse)
+    monkeypatch.setattr(cli_wp, "MBZBuilder", _RecordingBuilder)
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "ocw-wp",
+            "https://ocw.tudelft.nl/courses/example/",
+            "--output",
+            str(tmp_path / "out.mbz"),
+            "--no-fetch-external-assets",
+            *extra_args,
+        ],
+    )
+    cli_wp.main()
+    assert built == [expected]

@@ -93,8 +93,11 @@ class App(ConverterApp):
                 course,
                 sequential_sections=self.sequential_sections.get(),
                 disable_custom_fields=not self.enable_custom_fields.get(),
+                authora=self.authora.get(),
             ).build(out)
-            log_hybrid_checks(olx_path, out, logging.getLogger("ocw"))
+            log_hybrid_checks(
+                olx_path, out, logging.getLogger("ocw"), authora=self.authora.get()
+            )
             return out
         finally:
             if tmp:

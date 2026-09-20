@@ -29,10 +29,18 @@ def test_section_names_match(ws_session, restored_course):
     expected = [ch["display_name"] for ch in c.chapters]
     sections = _ws(ws_session, "core_course_get_contents", courseid=restored_course)
     chapter_sections = sorted(
-        (s for s in sections if s["section"] > 0), key=lambda s: s["section"]
+        (s for s in sections if s["section"] > 1), key=lambda s: s["section"]
     )[: len(c.chapters)]
     actual = [s["name"] for s in chapter_sections]
     assert actual == expected
+
+
+def test_authora_layout_general_empty_then_overview(ws_session, restored_course):
+    sections = _ws(ws_session, "core_course_get_contents", courseid=restored_course)
+    by_number = {s["section"]: s for s in sections}
+    assert not by_number[0]["modules"]
+    assert by_number[0]["visible"] == 0
+    assert by_number[1]["name"] == "Overview"
 
 
 def test_page_count_matches(ws_session, restored_course):
