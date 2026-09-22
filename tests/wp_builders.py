@@ -80,10 +80,15 @@ class WPFixtureSite:
         if pdf_name:
             self.pdf_files[pdf_name] = pdf_bytes
 
-    def course(self, include_license_banner: bool = False) -> WPCourse:
+    def course(
+        self, include_license_banner: bool = False, keep_all_content: bool = False
+    ) -> WPCourse:
         fetcher = _FakeFetcher(self.pdf_files) if self.pdf_files else None
         course = WPCourse(
-            self.root, fetcher=fetcher, include_license_banner=include_license_banner
+            self.root,
+            fetcher=fetcher,
+            include_license_banner=include_license_banner,
+            keep_all_content=keep_all_content,
         )
         course._fetch_page = lambda url: BeautifulSoup(self.pages[url], "lxml")
         return course
