@@ -53,6 +53,16 @@ generated reference content.
 
 ::: ocw.gui.wp.App._convert_one
 
+## WordPress zip export
+
+::: ocw.converter.zip_builder
+
+::: ocw.converter.external_report
+
+::: ocw.cli.wp_zip.main
+
+## WordPress subject parsing
+
 ### Subject parser
 
 ::: ocw.parser.wp.WPCourse._parse_subject_page

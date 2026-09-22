@@ -30,6 +30,13 @@ poetry run ocw path/to/olx_course/ -o output.mbz
 poetry run ocw-wp https://example.edu/course-home-page/ -o output.mbz
 ```
 
+## WordPress Backup to Zip
+
+```bash
+poetry run ocw-wp-zip https://example.edu/course-home-page/ -o backup.zip
+```
+
+
 ## Flags
 
 | Flag                         | Default | Description                                                           |
