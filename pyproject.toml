@@ -8,11 +8,12 @@ authors = [
 license = "GPL-3.0-or-later"
 readme = "README.md"
 requires-python = ">=3.11,<3.16"
-dependencies = ["python-dotenv>=1.0", "requests>=2.28", "beautifulsoup4>=4.12", "lxml>=5.0"]
+dependencies = ["python-dotenv>=1.0", "requests>=2.28", "beautifulsoup4>=4.12", "lxml>=5.0", "python-docx==1.2.0"]
 
 [project.scripts]
 ocw = "ocw.cli.olx:main"
 ocw-wp = "ocw.cli.wp:main"
+ocw-wp-zip = "ocw.cli.wp_zip:main"
 
 [build-system]
 requires = ["poetry-core>=2.0.0,<3.0.0"]
