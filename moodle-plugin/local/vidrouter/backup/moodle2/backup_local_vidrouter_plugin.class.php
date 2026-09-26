@@ -32,6 +32,8 @@
 
 defined('MOODLE_INTERNAL') || die();
 
+require_once($CFG->libdir . '/filterlib.php');
+
 class backup_local_vidrouter_plugin extends backup_local_plugin {
     /**
      * Define the course plugin structure
@@ -79,6 +81,7 @@ class backup_local_vidrouter_plugin extends backup_local_plugin {
         }
 
         $records = $DB->get_records_list('filter_vidrouter_map', 'vidkey', array_keys($vidkeys));
+        $overrides = \filter_vidrouter\video_renderer::overrides_for(\context_course::instance($courseid));
 
         $rows = [];
         foreach ($records as $record) {
@@ -92,7 +95,7 @@ class backup_local_vidrouter_plugin extends backup_local_plugin {
                 'srtbaseid' => $record->srtbaseid,
                 'urlname' => $record->urlname,
                 'videopagepath' => $record->videopagepath,
-                'html' => \filter_vidrouter\video_renderer::render_for_export($record),
+                'html' => \filter_vidrouter\video_renderer::render_for_export($record, $overrides),
             ];
         }
 
