@@ -28,6 +28,8 @@ namespace filter_vidrouter;
  */
 class text_filter extends \core_filters\text_filter
 {
+    private const SHORTCODE = '/\[\[vid:([A-Za-z0-9_\-]+)\]\]/';
+
     #[\Override]
     public function filter($text, array $options = [])
     {
@@ -35,27 +37,15 @@ class text_filter extends \core_filters\text_filter
             return $text;
         }
 
-        $cache = \cache::make('filter_vidrouter', 'map');
-        $videomaps = $cache->get('all_videos');
-
-        if ($videomaps === false) {
-            global $DB;
-            $videomaps = $DB->get_records('filter_vidrouter_map');
-            if ($videomaps === false) {
-                $videomaps = array();
-            }
-            $cache->set('all_videos', $videomaps);
+        if (!preg_match_all(self::SHORTCODE, $text, $found)) {
+            return $text;
         }
 
-        $keymap = array();
-        foreach ($videomaps as $record) {
-            $keymap[$record->vidkey] = $record;
-        }
-
+        $keymap = $this->lookup(array_unique($found[1]));
         $overrides = video_renderer::overrides_for($this->context);
 
         $text = preg_replace_callback(
-            '/\[\[vid:([A-Za-z0-9_\-]+)\]\]/',
+            self::SHORTCODE,
             function ($matches) use ($keymap, $overrides) {
                 $vidkey = $matches[1];
 
@@ -69,5 +59,29 @@ class text_filter extends \core_filters\text_filter
         );
 
         return $text;
+    }
+
+    /**
+     * @param string[] $keys distinct vidkeys
+     * @return \stdClass[] mapping rows keyed by vidkey, unknown keys absent
+     */
+    private function lookup(array $keys): array
+    {
+        global $DB;
+
+        $cache = \cache::make('filter_vidrouter', 'map');
+        $rows = array_filter($cache->get_many($keys));
+        $missing = array_diff($keys, array_keys($rows));
+
+        if ($missing) {
+            $fresh = [];
+            foreach ($DB->get_records_list('filter_vidrouter_map', 'vidkey', $missing) as $row) {
+                $fresh[$row->vidkey] = $row;
+            }
+            $cache->set_many($fresh);
+            $rows += $fresh;
+        }
+
+        return $rows;
     }
 }

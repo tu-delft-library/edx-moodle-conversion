@@ -172,11 +172,24 @@ final class bulk_import_test extends \advanced_testcase {
         $this->make_row(['youtubeid' => 'abc123']);
 
         $cache = \cache::make('filter_vidrouter', 'map');
-        $cache->set('all_videos', ['stale' => true]);
+        $cache->set('somekey', (object) ['stale' => true]);
 
         $plan = bulk_import::plan([['youtubeid' => 'abc123', 'edxvideoid' => 'uuid-1']], 'youtubeid');
         bulk_import::apply($plan);
 
-        $this->assertFalse($cache->get('all_videos'));
+        $this->assertFalse($cache->get('somekey'));
+    }
+
+    public function test_apply_keeps_the_render_cache_when_nothing_changed(): void {
+        $this->resetAfterTest();
+        $this->make_row(['youtubeid' => 'abc123']);
+
+        $cache = \cache::make('filter_vidrouter', 'map');
+        $cache->set('somekey', (object) ['stale' => true]);
+
+        $plan = bulk_import::plan([['youtubeid' => 'nomatch', 'edxvideoid' => 'uuid-1']], 'youtubeid');
+        bulk_import::apply($plan);
+
+        $this->assertNotFalse($cache->get('somekey'));
     }
 }

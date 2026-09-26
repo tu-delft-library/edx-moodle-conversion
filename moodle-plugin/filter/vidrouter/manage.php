@@ -50,7 +50,7 @@ if ($delete) {
         $DB->delete_records('filter_vidrouter_map', array('id' => $delete));
         // Invalidate cach
         $cache = cache::make('filter_vidrouter', 'map');
-        $cache->delete('all_videos');
+        $cache->purge();
         redirect($PAGE->url, get_string('deletemapping', 'filter_vidrouter') . ' ' . get_string('deleted', 'moodle'), notification::NOTIFY_SUCCESS);
     } else {
         echo $OUTPUT->header();
@@ -111,7 +111,7 @@ if ($action == 'edit' || $action == 'add') {
 
         // Invalidate cache, important! 
         $cache = cache::make('filter_vidrouter', 'map');
-        $cache->delete('all_videos');
+        $cache->purge();
 
         $msg = ($action == 'edit') ?
             get_string('editmapping', 'filter_vidrouter') . ' ' . get_string('updated', 'moodle') :

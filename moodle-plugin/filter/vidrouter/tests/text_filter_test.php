@@ -121,4 +121,62 @@ final class text_filter_test extends \advanced_testcase {
     public function test_unknown_key_renders_unavailable_placeholder(): void {
         $this->assertStringContainsString('filter_vidrouter_unavailable', $this->filtered('nope'));
     }
+
+    public function test_text_without_shortcode_is_untouched_and_uncached(): void {
+        $this->add_video('abc', ['youtubeid' => 'yt123']);
+        \filter_manager::reset_caches();
+
+        $out = \filter_manager::instance()->filter_text('<p>plain</p>', $this->module);
+
+        $this->assertSame('<p>plain</p>', $out);
+        $this->assertFalse(\cache::make('filter_vidrouter', 'map')->get('abc'));
+    }
+
+    public function test_only_referenced_keys_are_cached(): void {
+        $this->add_video('a', ['youtubeid' => 'ya']);
+        $this->add_video('b', ['youtubeid' => 'yb']);
+
+        $this->filtered('a');
+
+        $cache = \cache::make('filter_vidrouter', 'map');
+        $this->assertNotFalse($cache->get('a'));
+        $this->assertFalse($cache->get('b'));
+    }
+
+    public function test_warm_read_is_served_from_cache(): void {
+        global $DB;
+        $this->add_video('abc', ['youtubeid' => 'yt123']);
+        $this->filtered('abc');
+
+        $DB->delete_records('filter_vidrouter_map', ['vidkey' => 'abc']);
+
+        $this->assertStringContainsString('yt123', $this->filtered('abc'));
+    }
+
+    public function test_unknown_key_is_not_cached(): void {
+        $this->filtered('nope');
+
+        $this->assertFalse(\cache::make('filter_vidrouter', 'map')->get('nope'));
+    }
+
+    public function test_duplicate_and_mixed_keys_all_render(): void {
+        $this->add_video('a', ['youtubeid' => 'ya']);
+        \filter_manager::reset_caches();
+
+        $out = \filter_manager::instance()->filter_text('[[vid:a]] [[vid:a]] [[vid:nope]]', $this->module);
+
+        $this->assertSame(2, substr_count($out, 'youtube.com/embed/ya'));
+        $this->assertStringContainsString('filter_vidrouter_unavailable', $out);
+    }
+
+    public function test_purge_picks_up_a_changed_row(): void {
+        global $DB;
+        $this->add_video('abc', ['youtubeid' => 'old1']);
+        $this->filtered('abc');
+
+        $DB->set_field('filter_vidrouter_map', 'youtubeid', 'new2', ['vidkey' => 'abc']);
+        \cache::make('filter_vidrouter', 'map')->purge();
+
+        $this->assertStringContainsString('new2', $this->filtered('abc'));
+    }
 }

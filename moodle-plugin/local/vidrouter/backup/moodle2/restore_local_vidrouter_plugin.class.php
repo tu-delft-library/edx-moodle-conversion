@@ -112,7 +112,7 @@ class restore_local_vidrouter_plugin extends restore_local_plugin
 
         $DB->insert_record('filter_vidrouter_map', $record);
 
-        \cache::make('filter_vidrouter', 'map')->delete('all_videos');
+        \cache::make('filter_vidrouter', 'map')->purge();
     }
 
     /**
