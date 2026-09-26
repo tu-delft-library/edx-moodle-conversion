@@ -88,10 +88,18 @@ class filter_vidrouter_edit_form extends moodleform {
     }
 
     public function validation($data, $files) {
+        global $DB;
+
         $errors = parent::validation($data, $files);
 
         if (!preg_match('/^[A-Za-z0-9_\-]+$/', $data['vidkey'])) {
             $errors['vidkey'] = get_string('error_invalid_vidkey', 'filter_vidrouter');
+        } else if ($DB->record_exists_select(
+            'filter_vidrouter_map',
+            'vidkey = :vidkey AND id <> :id',
+            ['vidkey' => $data['vidkey'], 'id' => optional_param('id', 0, PARAM_INT)]
+        )) {
+            $errors['vidkey'] = get_string('error_duplicate_vidkey', 'filter_vidrouter');
         }
 
         return $errors;

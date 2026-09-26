@@ -32,6 +32,22 @@ require_once($CFG->dirroot . '/filter/vidrouter/classes/form/edit_form.php');
  */
 final class edit_form_test extends \advanced_testcase {
 
+    protected function tearDown(): void {
+        unset($_GET['id']);
+        parent::tearDown();
+    }
+
+    private function add_video(string $vidkey): int {
+        global $DB;
+        return $DB->insert_record('filter_vidrouter_map', (object) [
+            'vidkey' => $vidkey,
+            'title' => 'Video ' . $vidkey,
+            'urlname' => $vidkey,
+            'timecreated' => time(),
+            'timemodified' => time(),
+        ]);
+    }
+
     private function make_data(array $overrides = []): array {
         return array_merge([
             'vidkey' => 'vid-key_1',
@@ -73,6 +89,37 @@ final class edit_form_test extends \advanced_testcase {
         $errors = $form->validation($this->make_data(['vidkey' => 'bad@key!']), []);
 
         $this->assertArrayHasKey('vidkey', $errors);
+    }
+
+    public function test_validation_rejects_a_vidkey_used_by_another_row_on_add(): void {
+        $this->resetAfterTest();
+        $this->add_video('existing');
+
+        $form = new \filter_vidrouter_edit_form();
+        $errors = $form->validation($this->make_data(['vidkey' => 'existing']), []);
+
+        $this->assertSame(get_string('error_duplicate_vidkey', 'filter_vidrouter'), $errors['vidkey']);
+    }
+
+    public function test_validation_accepts_a_row_keeping_its_own_vidkey_on_edit(): void {
+        $this->resetAfterTest();
+        $_GET['id'] = $this->add_video('existing');
+
+        $form = new \filter_vidrouter_edit_form();
+        $errors = $form->validation($this->make_data(['vidkey' => 'existing']), []);
+
+        $this->assertArrayNotHasKey('vidkey', $errors);
+    }
+
+    public function test_validation_rejects_editing_to_a_vidkey_used_by_another_row(): void {
+        $this->resetAfterTest();
+        $_GET['id'] = $this->add_video('first');
+        $this->add_video('second');
+
+        $form = new \filter_vidrouter_edit_form();
+        $errors = $form->validation($this->make_data(['vidkey' => 'second']), []);
+
+        $this->assertSame(get_string('error_duplicate_vidkey', 'filter_vidrouter'), $errors['vidkey']);
     }
 
     public function test_validation_rejects_an_empty_vidkey(): void {
