@@ -21,9 +21,7 @@
  * matching filter_vidrouter_map row to its export-time markup via
  * filter_vidrouter\video_renderer::render_for_export() (governed by the 'embedstyle' setting,
  * independently of what's shown live on the site) and embeds that as an html child element on
- * the <video> record, alongside the raw source ids. restore_local_vidrouter_plugin::
- * after_restore_course() then freezes that html into the duplicated course's pages, in place of
- * [[vid:KEY]].
+ * the <video> record, alongside the raw source ids.
  *
  * @package    local_vidrouter
  * @copyright  2026 TU Delft
