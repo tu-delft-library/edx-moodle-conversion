@@ -9,6 +9,8 @@ on:
 jobs:
   linux-appimage:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
       - run: sudo apt-get update && sudo apt-get install -y python3-tk
@@ -34,17 +36,18 @@ jobs:
           cp packaging/ocw-gui-wp.png AppDir-wp/
           ln -s usr/bin/ocw-gui-wp AppDir-wp/AppRun
           ./appimagetool-x86_64.AppImage AppDir-wp OCW-WP-GUI-x86_64.AppImage
-      - uses: actions/upload-artifact@v4
+      - uses: softprops/action-gh-release@v2
+        if: startsWith(github.ref, 'refs/tags/')
         with:
-          name: ocw-gui-linux
-          path: OCW-GUI-x86_64.AppImage
-      - uses: actions/upload-artifact@v4
-        with:
-          name: ocw-gui-wp-linux
-          path: OCW-WP-GUI-x86_64.AppImage
+          generate_release_notes: true
+          files: |
+            OCW-GUI-x86_64.AppImage
+            OCW-WP-GUI-x86_64.AppImage
 
   windows-exe:
     runs-on: windows-latest
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
       - run: pipx install poetry
@@ -54,44 +57,25 @@ jobs:
         run: echo "__version__ = \"${GITHUB_REF_NAME}\"" > ocw/_version.py
       - run: poetry run pyinstaller --onefile --windowed --name ocw-gui ocw/gui/olx.py
       - run: poetry run pyinstaller --onefile --windowed --name ocw-gui-wp ocw/gui/wp.py
-      - uses: actions/upload-artifact@v4
+      - uses: softprops/action-gh-release@v2
+        if: startsWith(github.ref, 'refs/tags/')
         with:
-          name: ocw-gui-windows
-          path: dist/ocw-gui.exe
-      - uses: actions/upload-artifact@v4
-        with:
-          name: ocw-gui-wp-windows
-          path: dist/ocw-gui-wp.exe
+          generate_release_notes: true
+          files: |
+            dist/ocw-gui.exe
+            dist/ocw-gui-wp.exe
 
   moodle-plugins:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - run: ./export_plugins.sh
-      - uses: actions/upload-artifact@v4
-        with:
-          name: moodle-plugins
-          path: |
-            filter_vidrouter.zip
-            local_vidrouter.zip
-
-  release:
-    needs: [linux-appimage, windows-exe, moodle-plugins]
-    if: startsWith(github.ref, 'refs/tags/')
     runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
-      - uses: actions/download-artifact@v4
-        with:
-          path: dist-artifacts
+      - uses: actions/checkout@v4
+      - run: ./export_plugins.sh
       - uses: softprops/action-gh-release@v2
+        if: startsWith(github.ref, 'refs/tags/')
         with:
           generate_release_notes: true
           files: |
-            dist-artifacts/ocw-gui-linux/OCW-GUI-x86_64.AppImage
-            dist-artifacts/ocw-gui-windows/ocw-gui.exe
-            dist-artifacts/ocw-gui-wp-linux/OCW-WP-GUI-x86_64.AppImage
-            dist-artifacts/ocw-gui-wp-windows/ocw-gui-wp.exe
-            dist-artifacts/moodle-plugins/filter_vidrouter.zip
-            dist-artifacts/moodle-plugins/local_vidrouter.zip
+            filter_vidrouter.zip
+            local_vidrouter.zip
