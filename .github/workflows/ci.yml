@@ -31,13 +31,6 @@ jobs:
           poetry run pytest -v --cov=ocw --cov-report=term-missing --cov-report=xml
           --junitxml=pytest.xml | tee pytest-coverage.txt
 
-      - uses: actions/upload-artifact@v4
-        with:
-          name: python-coverage
-          path: |
-            coverage.xml
-            pytest-coverage.txt
-
       - name: Comment coverage on PR
         if: github.event_name == 'pull_request'
         uses: MishaKav/pytest-coverage-comment@main
