@@ -17,6 +17,11 @@
 
 namespace filter_vidrouter;
 
+defined('MOODLE_INTERNAL') || die();
+
+global $CFG;
+require_once($CFG->libdir . '/filterlib.php');
+
 /**
  * Resolves a filter_vidrouter_map row into video markup defined in the plugin settings.
  *
@@ -26,6 +31,48 @@ namespace filter_vidrouter;
  */
 class video_renderer
 {
+    /** Settings that a context may override; anything else stored in filter_config is ignored. */
+    public const OVERRIDABLE = ['primarysource', 'fallbacksource', 'embedstyle'];
+
+    /** @var array<int, array> resolved overrides keyed by context id, for the current request only */
+    private static array $overridecache = [];
+
+    /**
+     * Resolve per-context overrides for a context, inheriting from its parent contexts.
+     *
+     * Core does not inherit local filter config, so walk the context path from the root down and
+     * let the deepest non-empty value win.
+     *
+     * @param \context $context the context being filtered or exported
+     * @return array overridable setting name => value
+     */
+    public static function overrides_for(\context $context): array
+    {
+        if (isset(self::$overridecache[$context->id])) {
+            return self::$overridecache[$context->id];
+        }
+
+        $merged = [];
+        foreach (explode('/', trim($context->path, '/')) as $contextid) {
+            $local = filter_get_local_config('vidrouter', (int) $contextid);
+            foreach (self::OVERRIDABLE as $name) {
+                if (isset($local[$name]) && $local[$name] !== '') {
+                    $merged[$name] = $local[$name];
+                }
+            }
+        }
+
+        return self::$overridecache[$context->id] = $merged;
+    }
+
+    /**
+     * Forget resolved overrides, after a save or between tests.
+     */
+    public static function reset_caches(): void
+    {
+        self::$overridecache = [];
+    }
+
     /**
      * Render a video mapping record into its live, on-site markup.
      *
@@ -33,29 +80,22 @@ class video_renderer
      * captions). 
      *
      * @param \stdClass $record the video mapping record
+     * @param array $overrides per-context setting overrides (name => value) taking precedence over the site settings
      * @return string HTML markup
      */
-    public static function render(\stdClass $record): string
+    public static function render(\stdClass $record, array $overrides = []): string
     {
-        $primarysource = get_config('filter_vidrouter', 'primarysource');
-        $primarysource = $primarysource === false ? 'youtube' : $primarysource;
-        $fallbacksource = get_config('filter_vidrouter', 'fallbacksource');
-        $fallbacksource = $fallbacksource === false ? 'collegeramaid' : $fallbacksource;
         $label = s($record->title ?: $record->urlname);
+        $picked = self::pick_source($record, $overrides);
 
-        switch ($primarysource) {
-            case 'youtube':
-                if (!empty($record->youtubeid)) {
-                    return self::render_youtube_iframe($record->youtubeid, $label);
-                }
-                break;
+        if ($picked === null) {
+            return \html_writer::link('', $label . ' ' . get_string('videourlmissing', 'filter_vidrouter'));
         }
 
-        if ($fallbacksource === 'collegeramaid' && !empty($record->collegeramaid)) {
-            return self::render_collegerama_iframe($record->collegeramaid, $label);
-        }
-
-        return \html_writer::link('', $label . ' ' . get_string('videourlmissing', 'filter_vidrouter'));
+        [$source, $id] = $picked;
+        return $source === 'youtube'
+            ? self::render_youtube_iframe($id, $label)
+            : self::render_collegerama_iframe($id, $label);
     }
 
     /**
@@ -67,41 +107,68 @@ class video_renderer
      * to embed — matching how OLX-exported videos originally rendered, with no captions.
      *
      * @param \stdClass $record the video mapping record
+     * @param array $overrides per-context setting overrides (name => value) taking precedence over the site settings
      * @return string HTML markup
      */
-    public static function render_for_export(\stdClass $record): string
+    public static function render_for_export(\stdClass $record, array $overrides = []): string
     {
-        $embedstyle = get_config('filter_vidrouter', 'embedstyle') ?: 'iframe';
+        $embedstyle = self::setting('embedstyle', 'iframe', $overrides) ?: 'iframe';
 
         if ($embedstyle !== 'video') {
-            return self::render($record);
+            return self::render($record, $overrides);
         }
 
-        $primarysource = get_config('filter_vidrouter', 'primarysource');
-        $primarysource = $primarysource === false ? 'youtube' : $primarysource;
-        $fallbacksource = get_config('filter_vidrouter', 'fallbacksource');
-        $fallbacksource = $fallbacksource === false ? 'collegeramaid' : $fallbacksource;
         $label = s($record->title ?: $record->urlname);
+        $picked = self::pick_source($record, $overrides);
 
-        switch ($primarysource) {
-            case 'youtube':
-                if (!empty($record->youtubeid)) {
-                    return \html_writer::link(
-                        'https://www.youtube.com/watch?v=' . $record->youtubeid,
-                        $label
-                    );
-                }
-                break;
+        if ($picked === null) {
+            return \html_writer::link('', $label . ' ' . get_string('videourlmissing', 'filter_vidrouter'));
         }
 
-        if ($fallbacksource === 'collegeramaid' && !empty($record->collegeramaid)) {
-            return \html_writer::link(
-                'https://collegerama.tudelft.nl/Mediasite/Play/' . $record->collegeramaid,
-                $label
-            );
-        }
+        [$source, $id] = $picked;
+        $url = $source === 'youtube'
+            ? 'https://www.youtube.com/watch?v=' . $id
+            : 'https://collegerama.tudelft.nl/Mediasite/Play/' . $id;
+        return \html_writer::link($url, $label);
+    }
 
-        return \html_writer::link('', $label . ' ' . get_string('videourlmissing', 'filter_vidrouter'));
+    /**
+     * Pick which source to render: the primary source if the record has an id for it, otherwise
+     * the fallback source (when set and different from the primary).
+     *
+     * @param \stdClass $record the video mapping record
+     * @param array $overrides per-context setting overrides
+     * @return array|null [source, id], or null when neither source has an id
+     */
+    private static function pick_source(\stdClass $record, array $overrides): ?array
+    {
+        $fields = ['youtube' => 'youtubeid', 'collegeramaid' => 'collegeramaid'];
+        $primary = self::setting('primarysource', 'youtube', $overrides);
+        $fallback = self::setting('fallbacksource', 'collegeramaid', $overrides);
+
+        foreach ([$primary, $fallback] as $source) {
+            if (isset($fields[$source]) && !empty($record->{$fields[$source]})) {
+                return [$source, $record->{$fields[$source]}];
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Resolve a setting: a non-empty per-context override wins, then the site setting, then the default.
+     *
+     * @param string $name setting name
+     * @param string $default value used when the site setting was never saved
+     * @param array $overrides per-context overrides (name => value)
+     * @return string
+     */
+    private static function setting(string $name, string $default, array $overrides): string
+    {
+        if (isset($overrides[$name]) && $overrides[$name] !== '') {
+            return $overrides[$name];
+        }
+        $value = get_config('filter_vidrouter', $name);
+        return $value === false ? $default : $value;
     }
 
     /**

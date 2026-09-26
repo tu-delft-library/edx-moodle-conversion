@@ -20,12 +20,7 @@
  * (either an OLX import or a native Moodle course duplicate/restore), never during
  * backup creation itself.
  *
- * Handles two restore-time paths:
- * 1. Import-time: process_plugin_local_vidrouter_video() populates filter_vidrouter_map
- *    from migrated course XML.
- * 2. Native course duplicate/restore: after_restore_course() applies frozen HTML that the
- *    backup_local_vidrouter_plugin generates when backup gets started. 
- *    This is retrieved from the filter_vidrouter_map record and settings.
+ * process_plugin_local_vidrouter_video() populates filter_vidrouter_map from the course XML.
  *
  * @package    local_vidrouter
  * @copyright  2026 TU Delft
@@ -112,7 +107,7 @@ class restore_local_vidrouter_plugin extends restore_local_plugin
 
         $DB->insert_record('filter_vidrouter_map', $record);
 
-        \cache::make('filter_vidrouter', 'map')->delete('all_videos');
+        \cache::make('filter_vidrouter', 'map')->purge();
     }
 
     /**

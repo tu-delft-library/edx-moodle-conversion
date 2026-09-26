@@ -150,7 +150,7 @@ class bulk_import
 
         if ($updated > 0) {
             $cache = \cache::make('filter_vidrouter', 'map');
-            $cache->delete('all_videos');
+            $cache->purge();
         }
 
         return $updated;

@@ -27,6 +27,7 @@ require_once($CFG->libdir . '/tablelib.php');
 require_once($CFG->dirroot . '/filter/vidrouter/classes/form/edit_form.php');
 require_once($CFG->dirroot . '/filter/vidrouter/classes/form/import_form.php');
 
+use core\output\notification;
 use filter_vidrouter\bulk_import;
 
 $action = optional_param('action', '', PARAM_ALPHA);
@@ -50,7 +51,7 @@ if ($delete) {
         $DB->delete_records('filter_vidrouter_map', array('id' => $delete));
         // Invalidate cach
         $cache = cache::make('filter_vidrouter', 'map');
-        $cache->delete('all_videos');
+        $cache->purge();
         redirect($PAGE->url, get_string('deletemapping', 'filter_vidrouter') . ' ' . get_string('deleted', 'moodle'), notification::NOTIFY_SUCCESS);
     } else {
         echo $OUTPUT->header();
@@ -81,7 +82,7 @@ if ($export) {
 }
 
 if ($action == 'edit' || $action == 'add') {
-    $mform = new filter_vidrouter_edit_form();
+    $mform = new filter_vidrouter_edit_form(new moodle_url($PAGE->url, ['action' => $action, 'id' => $id]));
 
     if ($mform->is_cancelled()) {
         redirect($PAGE->url);
@@ -111,11 +112,9 @@ if ($action == 'edit' || $action == 'add') {
 
         // Invalidate cache, important! 
         $cache = cache::make('filter_vidrouter', 'map');
-        $cache->delete('all_videos');
+        $cache->purge();
 
-        $msg = ($action == 'edit') ?
-            get_string('editmapping', 'filter_vidrouter') . ' ' . get_string('updated', 'moodle') :
-            get_string('addmapping', 'filter_vidrouter') . ' ' . get_string('added', 'moodle');
+        $msg = get_string($action == 'edit' ? 'updated' : 'added', 'moodle', $record->vidkey);
         redirect($PAGE->url, $msg, notification::NOTIFY_SUCCESS);
     } else {
         if ($action == 'edit' && $id) {
@@ -153,7 +152,7 @@ if ($action == 'import') {
         redirect($PAGE->url, $summary, null, notification::NOTIFY_SUCCESS);
     }
 
-    $mform = new filter_vidrouter_import_form();
+    $mform = new filter_vidrouter_import_form(new moodle_url($PAGE->url, ['action' => 'import']));
 
     if ($mform->is_cancelled()) {
         redirect($PAGE->url);

@@ -21,9 +21,7 @@
  * matching filter_vidrouter_map row to its export-time markup via
  * filter_vidrouter\video_renderer::render_for_export() (governed by the 'embedstyle' setting,
  * independently of what's shown live on the site) and embeds that as an html child element on
- * the <video> record, alongside the raw source ids. restore_local_vidrouter_plugin::
- * after_restore_course() then freezes that html into the duplicated course's pages, in place of
- * [[vid:KEY]].
+ * the <video> record, alongside the raw source ids.
  *
  * @package    local_vidrouter
  * @copyright  2026 TU Delft
@@ -31,6 +29,8 @@
  */
 
 defined('MOODLE_INTERNAL') || die();
+
+require_once($CFG->libdir . '/filterlib.php');
 
 class backup_local_vidrouter_plugin extends backup_local_plugin {
     /**
@@ -79,6 +79,7 @@ class backup_local_vidrouter_plugin extends backup_local_plugin {
         }
 
         $records = $DB->get_records_list('filter_vidrouter_map', 'vidkey', array_keys($vidkeys));
+        $overrides = \filter_vidrouter\video_renderer::overrides_for(\context_course::instance($courseid));
 
         $rows = [];
         foreach ($records as $record) {
@@ -92,7 +93,7 @@ class backup_local_vidrouter_plugin extends backup_local_plugin {
                 'srtbaseid' => $record->srtbaseid,
                 'urlname' => $record->urlname,
                 'videopagepath' => $record->videopagepath,
-                'html' => \filter_vidrouter\video_renderer::render_for_export($record),
+                'html' => \filter_vidrouter\video_renderer::render_for_export($record, $overrides),
             ];
         }
 
