@@ -52,13 +52,15 @@ class text_filter extends \core_filters\text_filter
             $keymap[$record->vidkey] = $record;
         }
 
+        $overrides = video_renderer::overrides_for($this->context);
+
         $text = preg_replace_callback(
             '/\[\[vid:([A-Za-z0-9_\-]+)\]\]/',
-            function ($matches) use ($keymap) {
+            function ($matches) use ($keymap, $overrides) {
                 $vidkey = $matches[1];
 
                 if (isset($keymap[$vidkey])) {
-                    return video_renderer::render($keymap[$vidkey]);
+                    return video_renderer::render($keymap[$vidkey], $overrides);
                 } else {
                     return video_renderer::render_unavailable();
                 }

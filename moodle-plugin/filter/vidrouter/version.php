@@ -24,8 +24,8 @@
 
 defined('MOODLE_INTERNAL') || die();
 
-$plugin->version   = 2026090800;
+$plugin->version   = 2026092600;
 $plugin->requires  = 2022041900;
 $plugin->component = 'filter_vidrouter';
 $plugin->maturity  = MATURITY_BETA;
-$plugin->release   = '1.0.9 (Build: 2026090800)';
+$plugin->release   = '1.1.0 (Build: 2026092600)';

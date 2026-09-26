@@ -1,4 +1,5 @@
 <?php
+
 // This file is part of Moodle - http://moodle.org/
 //
 // Moodle is free software: you can redistribute it and/or modify
@@ -26,7 +27,7 @@ defined('MOODLE_INTERNAL') || die();
 
 $string['pluginname'] = 'Video Router Filter';
 $string['filtername'] = 'Video Router Filter';
-$string['privacy:metadata'] = 'The Video Router Filter plugin stores a video-key to embed-source routing table with no user identifier, so it does not store any personal data.';
+$string['privacy:metadata'] = 'The Video Router Filter plugin stores a video-key to embed-source routing table with no user identifier. It does not store any personal data.';
 
 $string['manage'] = 'Manage video mappings';
 $string['managedesc'] = 'Manage the mappings between video shortcodes and their sources (YouTube, edX, TU Delft).';
@@ -95,17 +96,17 @@ $string['video_unavailable'] = 'Video unavailable. Please contact your course te
 $string['videourlmissing'] = '(video link missing)';
 
 $string['primarysource'] = 'Primary video source';
-$string['primarysource_desc'] = 'Which source field to render a video link from if available; Collegerama is used as an automatic fallback when the primary source has no ID for a video (see "Primary source fallback" below). Only sources with real, working implementations are listed here; edX and TU Delft download IDs are intentionally excluded (see project findings).';
+$string['primarysource_desc'] = 'Which source to render a video from if the video has an ID for it. When it has no ID for this source, the fallback source below is used.';
 $string['source_youtube'] = 'YouTube';
 
 $string['fallbacksource'] = 'Primary source fallback';
-$string['fallbacksource_desc'] = 'Source used to render a video when the primary source above has no ID for it. Currently only Collegerama; surfaced here so it\'s visible what happens rather than being an invisible hardcoded behaviour.';
+$string['fallbacksource_desc'] = 'Source used to render a video when the primary source above has no ID for it.';
 $string['source_collegerama'] = 'Collegerama';
 
 $string['embedstyle'] = 'Export embed style';
 $string['embedstyle_desc'] = 'How to render videos in the HTML baked into a course backup/export (used when duplicating or restoring a course) — independent of how videos render live on the site, which always uses the native YouTube iframe for captions. "Video" outputs a plain link and lets Moodle\'s media filter embed it (matches how OLX-exported videos were originally rendered), but YouTube captions are not available in that mode. "Iframe" matches the live rendering, with working captions.';
-$string['embedstyle_video'] = 'Video (matches OLX export, no captions)';
-$string['embedstyle_iframe'] = 'Iframe (matches live rendering, with captions)';
+$string['embedstyle_video'] = 'OLX Custom Video Tag';
+$string['embedstyle_iframe'] = 'Iframe';
 
 $string['addmapping'] = 'Add mapping';
 $string['editmapping'] = 'Edit mapping';
@@ -116,3 +117,6 @@ $string['error_invalid_vidkey'] = 'Invalid video key. Must contain only alphanum
 $string['error_duplicate_vidkey'] = 'A video mapping with this key already exists.';
 
 $string['messageprovider:notifyadmin'] = 'Admin notifications';
+
+$string['usesitedefault'] = 'Inherit (parent context or site default)';
+$string['localsettings_intro'] = 'Settings chosen here override the Video Router settings for this context and everything inside it.';

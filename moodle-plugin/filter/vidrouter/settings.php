@@ -36,6 +36,7 @@ if ($ADMIN->fulltree) {
         'youtube',
         [
             'youtube' => get_string('source_youtube', 'filter_vidrouter'),
+            'collegeramaid' => get_string('source_collegerama', 'filter_vidrouter'),
         ]
     ));
 
@@ -45,6 +46,7 @@ if ($ADMIN->fulltree) {
         get_string('fallbacksource_desc', 'filter_vidrouter'),
         'collegeramaid',
         [
+            'youtube' => get_string('source_youtube', 'filter_vidrouter'),
             'collegeramaid' => get_string('source_collegerama', 'filter_vidrouter'),
         ]
     ));
