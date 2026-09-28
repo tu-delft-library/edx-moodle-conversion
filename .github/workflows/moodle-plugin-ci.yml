@@ -73,11 +73,6 @@ jobs:
           moodle-plugin-ci phpunit --fail-on-warning --coverage-text --coverage-clover
           ./plugin-filter/moodle-plugin/filter/vidrouter
 
-      - uses: actions/upload-artifact@v4
-        with:
-          name: php-coverage
-          path: coverage.xml
-
       - name: Comment coverage on PR
         if: github.event_name == 'pull_request'
         uses: slavcodev/coverage-monitor-action@v1
