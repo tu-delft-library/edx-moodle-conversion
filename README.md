@@ -239,3 +239,15 @@ poetry run mkdocs serve
 ```
 
 Re-run `./scripts/build-docs.sh` after changing PHP code or PHPDoc blocks.
+
+# 8. AI Use
+
+AI coding assistants (Claude Code) were used heavily throughout development, both for reading and writing
+code. This included investigating the XML structures of OLX and MBZ exports, and researching the Moodle and
+OpenEdx source code to determine correct behaviour. 
+
+All AI-generated code has been human reviewed, is covered by a necessary test suite, and has additionally been
+verified through human live testing. Standard coding practices (linting, code
+review, testing) remain in use throughout.
+
+Documentation was human written, with minor AI use for text formatting.
