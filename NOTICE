@@ -1,0 +1,16 @@
+OpenEdx and WordPress to Moodle Converter
+
+(c) 2026, TU Delft, made by Kyriakos Hjikakou
+
+This work is licensed under a GNU General Public License v3 licence. See LICENSE for the full text.
+
+This licence applies to this and all previously published releases of this project (v0.1.0 onward).
+
+Technische Universiteit Delft hereby disclaims all copyright interest in the program "OpenEdx and WordPress to
+Moodle Converter" (converts OpenEdX OLX course exports and WordPress course sites into Moodle MBZ backup
+archives) written by the Author(s).
+
+Irene Haslinger, TU Delft Library
+
+This project made heavy use of AI coding assistants during development. See the "AI use" section of README.md
+for details.
