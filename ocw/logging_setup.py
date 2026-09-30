@@ -17,10 +17,11 @@ class ColourFormatter(logging.Formatter):
         if record.levelno == logging.WARNING:
             record = logging.makeLogRecord(record.__dict__)
             record.levelname = f"{self._YELLOW}WARNING{self._RESET}"
-            if record.args:
-                record.args = tuple(
-                    f"{self._YELLOW}{a}{self._RESET}" for a in record.args
-                )
+            # Substitute args into the message before colouring: colouring the raw args
+            # first (as before) turns numeric args into strings, which breaks %d/%f
+            # placeholders (e.g. "%d dframe(s)") at format time.
+            record.msg = f"{self._YELLOW}{record.getMessage()}{self._RESET}"
+            record.args = None
         msg = super().format(record)
         msg = msg.replace("Parsing OLX:", f"{self._BLUE}Parsing OLX:{self._RESET}")
         msg = msg.replace("Parsing WP:", f"{self._BLUE}Parsing WP:{self._RESET}")
