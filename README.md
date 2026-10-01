@@ -122,16 +122,16 @@ poetry run pytest tests/integration/test_hybrid_checks.py \
 
 ```bash
 # all (unit + integration)
-poetry run python run_tests.py
+poetry run python scripts/run_tests.py
 
 # unit only
-poetry run python run_tests.py unit
+poetry run python scripts/run_tests.py unit
 
 # integration only
-poetry run python run_tests.py integration
+poetry run python scripts/run_tests.py integration
 
 # live moodle (requires .env + docker)
-poetry run python run_tests.py live
+poetry run python scripts/run_tests.py live
 ```
 
 ## Test files
@@ -172,11 +172,11 @@ contain `vidrouter/`, while their `version.php` files identify them as `filter_v
 Build local install archives from the repository root:
 
 ```bash
-./export_plugins.sh
+./scripts/export_plugins.sh
 ```
 
 ```bash
-./export_plugins.sh <output-directory>
+./scripts/export_plugins.sh <output-directory>
 ```
 
 ## Required Moodle configuration

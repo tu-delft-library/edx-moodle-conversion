@@ -12,7 +12,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PLUGIN_DIR="$SCRIPT_DIR/moodle-plugin"
+PLUGIN_DIR="$SCRIPT_DIR/../moodle-plugin"
 OUTDIR="${1:-$(pwd)}"
 STAGE="$(mktemp -d)"
 trap 'rm -rf "$STAGE"' EXIT

@@ -71,7 +71,7 @@ jobs:
       contents: write
     steps:
       - uses: actions/checkout@v4
-      - run: ./export_plugins.sh
+      - run: ./scripts/export_plugins.sh
       - uses: softprops/action-gh-release@v2
         if: startsWith(github.ref, 'refs/tags/')
         with:

@@ -11,9 +11,9 @@ Python tests use pytest and are split by scope.
 Run the standard suites:
 
 ```bash
-poetry run python run_tests.py
-poetry run python run_tests.py unit
-poetry run python run_tests.py integration
+poetry run python scripts/run_tests.py
+poetry run python scripts/run_tests.py unit
+poetry run python scripts/run_tests.py integration
 ```
 
 Moodle plugin PHPUnit tests live under `moodle-plugin/filter/vidrouter/tests/`. The Moodle Plugin CI workflow installs
