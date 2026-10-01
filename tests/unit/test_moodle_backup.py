@@ -305,6 +305,120 @@ def test_mediaplugin_filter_disabled(mbz):
     assert actives.get("mediaplugin") == "-1"
 
 
+# ── course thumbnail: overviewfiles + Overview section embed (authora-gated) ──
+
+def _course_image_builder(root):
+    b = OLXFixtureBuilder(root / "course")
+    b.chapters = [Chapter("ch1", "Ch 1", [Sequential("s1", "S1", [Vertical("v1", "V1", [
+        HtmlComponent("pg1", "Page 1"),
+    ])])])]
+    b.static_files = {"thumb.png": _PNG}
+    b.course_image = "/static/thumb.png"
+    return b
+
+
+def _course_image_mbz(tmp_path, **builder_kwargs) -> Path:
+    course = Course(_course_image_builder(tmp_path).build())
+    course.parse()
+    out = tmp_path / "out.mbz"
+    MBZBuilder(course, **builder_kwargs).build(out)
+    return out
+
+
+def _overview_section_id(mbz_path) -> str:
+    return next(s for s in _section_xmls(mbz_path) if s.findtext("name") == "Overview").get("id")
+
+
+def test_overviewfiles_placeholder_present_when_authora(tmp_path):
+    mbz = _course_image_mbz(tmp_path, authora=True)
+    root = _parse(mbz, "files.xml")
+    overviewfiles = [f for f in root.findall("file") if f.findtext("filearea") == "overviewfiles"]
+    assert {f.findtext("filename") for f in overviewfiles} == {"thumb.png", "."}
+    placeholder = next(f for f in overviewfiles if f.findtext("filename") == ".")
+    assert placeholder.findtext("contenthash") == "da39a3ee5e6b4b0d3255bfef95601890afd80709"
+    assert placeholder.findtext("filesize") == "0"
+
+
+def test_overviewfiles_placeholder_absent_without_authora(tmp_path):
+    mbz = _course_image_mbz(tmp_path, authora=False)
+    root = _parse(mbz, "files.xml")
+    overviewfiles = [f for f in root.findall("file") if f.findtext("filearea") == "overviewfiles"]
+    assert {f.findtext("filename") for f in overviewfiles} == {"thumb.png"}
+
+
+def test_overview_section_embeds_thumbnail_when_authora(tmp_path):
+    mbz = _course_image_mbz(tmp_path, authora=True)
+    overview_id = _overview_section_id(mbz)
+    section = _parse(mbz, f"sections/section_{overview_id}/section.xml")
+    assert "@@PLUGINFILE@@/thumb.png" in (section.findtext("summary") or "")
+
+
+def test_overview_section_unchanged_without_authora(tmp_path):
+    mbz = _course_image_mbz(tmp_path, authora=False)
+    overview_id = _overview_section_id(mbz)
+    section = _parse(mbz, f"sections/section_{overview_id}/section.xml")
+    assert "@@PLUGINFILE@@" not in (section.findtext("summary") or "")
+
+
+def test_section_filearea_entries_and_own_inforef_when_authora(tmp_path):
+    mbz = _course_image_mbz(tmp_path, authora=True)
+    overview_id = _overview_section_id(mbz)
+    files_root = _parse(mbz, "files.xml")
+    section_entries = [
+        f for f in files_root.findall("file")
+        if f.findtext("filearea") == "section" and f.findtext("itemid") == overview_id
+    ]
+    assert {f.findtext("filename") for f in section_entries} == {"thumb.png", "."}
+    placeholder = next(f for f in section_entries if f.findtext("filename") == ".")
+    assert placeholder.findtext("contenthash") == "da39a3ee5e6b4b0d3255bfef95601890afd80709"
+
+    inforef = _parse(mbz, f"sections/section_{overview_id}/inforef.xml")
+    inforef_ids = {f.findtext("id") for f in inforef.findall(".//fileref/file")}
+    assert inforef_ids == {f.get("id") for f in section_entries}
+
+
+def test_section_filearea_entries_absent_without_authora(tmp_path):
+    mbz = _course_image_mbz(tmp_path, authora=False)
+    files_root = _parse(mbz, "files.xml")
+    assert not [f for f in files_root.findall("file") if f.findtext("filearea") == "section"]
+
+
+def test_course_inforef_scoped_to_overviewfiles_not_section(tmp_path):
+    mbz = _course_image_mbz(tmp_path, authora=True)
+    files_root = _parse(mbz, "files.xml")
+    overviewfiles_ids = {
+        f.get("id") for f in files_root.findall("file") if f.findtext("filearea") == "overviewfiles"
+    }
+    course_inforef = _parse(mbz, "course/inforef.xml")
+    course_inforef_ids = {f.findtext("id") for f in course_inforef.findall(".//fileref/file")}
+    assert course_inforef_ids == overviewfiles_ids
+
+
+def test_placeholder_entries_not_copied_to_disk(tmp_path):
+    mbz = _course_image_mbz(tmp_path, authora=True)
+    with tarfile.open(mbz) as tar:
+        names = set(tar.getnames())
+    assert "files/da/da39a3ee5e6b4b0d3255bfef95601890afd80709" not in names
+
+
+def test_no_section_embed_without_course_image(tmp_path):
+    """An authora course with no course_image/banner_image (e.g. a wp course with
+    no scraped hero image) gets no section-area entries and no summary change."""
+    b = OLXFixtureBuilder(tmp_path / "course")
+    b.chapters = [Chapter("ch1", "Ch 1", [Sequential("s1", "S1", [Vertical("v1", "V1", [
+        HtmlComponent("pg1", "Page 1"),
+    ])])])]
+    course = Course(b.build())
+    course.parse()
+    out = tmp_path / "out.mbz"
+    MBZBuilder(course, authora=True).build(out)
+    files_root = _parse(out, "files.xml")
+    assert not [f for f in files_root.findall("file") if f.findtext("filearea") == "section"]
+    overview_id = _overview_section_id(out)
+    section = _parse(out, f"sections/section_{overview_id}/section.xml")
+    assert not (section.findtext("summary") or "")
+
+
 # ── E: files.xml entry completeness ──────────────────────────────────────────
 
 _FILES_REQUIRED_FIELDS = frozenset({
