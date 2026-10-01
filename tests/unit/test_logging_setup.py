@@ -62,3 +62,12 @@ def test_colour_formatter_highlights_download_label():
     )
     formatted = formatter.format(record)
     assert "\033[34mDOWNLOAD:\033[0m" in formatted
+
+
+def test_colour_formatter_handles_non_string_warning_args():
+    formatter = ColourFormatter("%(message)s")
+    record = logging.LogRecord(
+        "ocw", logging.WARNING, __file__, 1, "%s: %d dframe(s), %d video(s)", ("v", 2, 1), None
+    )
+    formatted = formatter.format(record)
+    assert formatted == "\033[33mv: 2 dframe(s), 1 video(s)\033[0m"

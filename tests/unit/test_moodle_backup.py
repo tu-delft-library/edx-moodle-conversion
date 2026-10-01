@@ -20,11 +20,11 @@ from tests.builders import (
 MINIMAL = Path(__file__).parent.parent / "fixtures" / "minimal"
 
 
-def _get_backup_xml(tmp_path) -> ET.Element:
+def _get_backup_xml(tmp_path, **builder_kwargs) -> ET.Element:
     course = Course(MINIMAL)
     course.parse()
     out = tmp_path / "course.mbz"
-    MBZBuilder(course).build(out)
+    MBZBuilder(course, **builder_kwargs).build(out)
     with tarfile.open(out) as tar:
         return ET.parse(tar.extractfile("moodle_backup.xml")).getroot()
 
@@ -49,6 +49,24 @@ def test_root_settings_present(tmp_path):
     names = {s.findtext("name") for s in _get_backup_xml(tmp_path).findall(".//settings/setting")}
     for required in ("activities", "blocks", "users", "filters"):
         assert required in names
+
+
+def test_files_setting_present_when_authora(tmp_path):
+    names = {
+        s.findtext("name")
+        for s in _get_backup_xml(tmp_path, authora=True).findall(".//settings/setting")
+        if s.findtext("level") == "root"
+    }
+    assert "files" in names
+
+
+def test_files_setting_absent_without_authora(tmp_path):
+    names = {
+        s.findtext("name")
+        for s in _get_backup_xml(tmp_path, authora=False).findall(".//settings/setting")
+        if s.findtext("level") == "root"
+    }
+    assert "files" not in names
 
 
 def test_section_settings_generated(tmp_path):
@@ -287,6 +305,120 @@ def test_mediaplugin_filter_disabled(mbz):
     assert actives.get("mediaplugin") == "-1"
 
 
+# ── course thumbnail: overviewfiles + Overview section embed (authora-gated) ──
+
+def _course_image_builder(root):
+    b = OLXFixtureBuilder(root / "course")
+    b.chapters = [Chapter("ch1", "Ch 1", [Sequential("s1", "S1", [Vertical("v1", "V1", [
+        HtmlComponent("pg1", "Page 1"),
+    ])])])]
+    b.static_files = {"thumb.png": _PNG}
+    b.course_image = "/static/thumb.png"
+    return b
+
+
+def _course_image_mbz(tmp_path, **builder_kwargs) -> Path:
+    course = Course(_course_image_builder(tmp_path).build())
+    course.parse()
+    out = tmp_path / "out.mbz"
+    MBZBuilder(course, **builder_kwargs).build(out)
+    return out
+
+
+def _overview_section_id(mbz_path) -> str:
+    return next(s for s in _section_xmls(mbz_path) if s.findtext("name") == "Overview").get("id")
+
+
+def test_overviewfiles_placeholder_present_when_authora(tmp_path):
+    mbz = _course_image_mbz(tmp_path, authora=True)
+    root = _parse(mbz, "files.xml")
+    overviewfiles = [f for f in root.findall("file") if f.findtext("filearea") == "overviewfiles"]
+    assert {f.findtext("filename") for f in overviewfiles} == {"thumb.png", "."}
+    placeholder = next(f for f in overviewfiles if f.findtext("filename") == ".")
+    assert placeholder.findtext("contenthash") == "da39a3ee5e6b4b0d3255bfef95601890afd80709"
+    assert placeholder.findtext("filesize") == "0"
+
+
+def test_overviewfiles_placeholder_absent_without_authora(tmp_path):
+    mbz = _course_image_mbz(tmp_path, authora=False)
+    root = _parse(mbz, "files.xml")
+    overviewfiles = [f for f in root.findall("file") if f.findtext("filearea") == "overviewfiles"]
+    assert {f.findtext("filename") for f in overviewfiles} == {"thumb.png"}
+
+
+def test_overview_section_embeds_thumbnail_when_authora(tmp_path):
+    mbz = _course_image_mbz(tmp_path, authora=True)
+    overview_id = _overview_section_id(mbz)
+    section = _parse(mbz, f"sections/section_{overview_id}/section.xml")
+    assert "@@PLUGINFILE@@/thumb.png" in (section.findtext("summary") or "")
+
+
+def test_overview_section_unchanged_without_authora(tmp_path):
+    mbz = _course_image_mbz(tmp_path, authora=False)
+    overview_id = _overview_section_id(mbz)
+    section = _parse(mbz, f"sections/section_{overview_id}/section.xml")
+    assert "@@PLUGINFILE@@" not in (section.findtext("summary") or "")
+
+
+def test_section_filearea_entries_and_own_inforef_when_authora(tmp_path):
+    mbz = _course_image_mbz(tmp_path, authora=True)
+    overview_id = _overview_section_id(mbz)
+    files_root = _parse(mbz, "files.xml")
+    section_entries = [
+        f for f in files_root.findall("file")
+        if f.findtext("filearea") == "section" and f.findtext("itemid") == overview_id
+    ]
+    assert {f.findtext("filename") for f in section_entries} == {"thumb.png", "."}
+    placeholder = next(f for f in section_entries if f.findtext("filename") == ".")
+    assert placeholder.findtext("contenthash") == "da39a3ee5e6b4b0d3255bfef95601890afd80709"
+
+    inforef = _parse(mbz, f"sections/section_{overview_id}/inforef.xml")
+    inforef_ids = {f.findtext("id") for f in inforef.findall(".//fileref/file")}
+    assert inforef_ids == {f.get("id") for f in section_entries}
+
+
+def test_section_filearea_entries_absent_without_authora(tmp_path):
+    mbz = _course_image_mbz(tmp_path, authora=False)
+    files_root = _parse(mbz, "files.xml")
+    assert not [f for f in files_root.findall("file") if f.findtext("filearea") == "section"]
+
+
+def test_course_inforef_scoped_to_overviewfiles_not_section(tmp_path):
+    mbz = _course_image_mbz(tmp_path, authora=True)
+    files_root = _parse(mbz, "files.xml")
+    overviewfiles_ids = {
+        f.get("id") for f in files_root.findall("file") if f.findtext("filearea") == "overviewfiles"
+    }
+    course_inforef = _parse(mbz, "course/inforef.xml")
+    course_inforef_ids = {f.findtext("id") for f in course_inforef.findall(".//fileref/file")}
+    assert course_inforef_ids == overviewfiles_ids
+
+
+def test_placeholder_entries_not_copied_to_disk(tmp_path):
+    mbz = _course_image_mbz(tmp_path, authora=True)
+    with tarfile.open(mbz) as tar:
+        names = set(tar.getnames())
+    assert "files/da/da39a3ee5e6b4b0d3255bfef95601890afd80709" not in names
+
+
+def test_no_section_embed_without_course_image(tmp_path):
+    """An authora course with no course_image/banner_image (e.g. a wp course with
+    no scraped hero image) gets no section-area entries and no summary change."""
+    b = OLXFixtureBuilder(tmp_path / "course")
+    b.chapters = [Chapter("ch1", "Ch 1", [Sequential("s1", "S1", [Vertical("v1", "V1", [
+        HtmlComponent("pg1", "Page 1"),
+    ])])])]
+    course = Course(b.build())
+    course.parse()
+    out = tmp_path / "out.mbz"
+    MBZBuilder(course, authora=True).build(out)
+    files_root = _parse(out, "files.xml")
+    assert not [f for f in files_root.findall("file") if f.findtext("filearea") == "section"]
+    overview_id = _overview_section_id(out)
+    section = _parse(out, f"sections/section_{overview_id}/section.xml")
+    assert not (section.findtext("summary") or "")
+
+
 # ── E: files.xml entry completeness ──────────────────────────────────────────
 
 _FILES_REQUIRED_FIELDS = frozenset({
@@ -408,11 +540,91 @@ def syllabus_flat_mbz(tmp_path_factory):
     return out
 
 
-def test_overview_section_present_and_numbered_zero(syllabus_nested_mbz):
-    sections = _section_xmls(syllabus_nested_mbz)
+@pytest.fixture(scope="module")
+def syllabus_nested_legacy_mbz(tmp_path_factory):
+    root = tmp_path_factory.mktemp("synlegmbz")
+    course = Course(_syllabus_builder(root).build())
+    course.parse()
+    out = root / "out.mbz"
+    MBZBuilder(course, authora=False).build(out)
+    return out
+
+
+@pytest.fixture(scope="module")
+def syllabus_flat_legacy_mbz(tmp_path_factory):
+    root = tmp_path_factory.mktemp("syflegmbz")
+    course = Course(_syllabus_builder(root).build())
+    course.parse()
+    out = root / "out.mbz"
+    MBZBuilder(course, sequential_sections=True, authora=False).build(out)
+    return out
+
+
+def _non_general_non_overview_numbers(mbz_path):
+    return [
+        int(s.findtext("number"))
+        for s in _section_xmls(mbz_path)
+        if s.findtext("name") not in ("", "Overview")
+    ]
+
+
+def test_overview_section_numbered_zero_without_authora(syllabus_nested_legacy_mbz):
+    sections = _section_xmls(syllabus_nested_legacy_mbz)
     overview = [s for s in sections if s.findtext("name") == "Overview"]
     assert len(overview) == 1
     assert overview[0].findtext("number") == "0"
+    assert not [s for s in sections if not s.findtext("name")]
+
+
+def test_authora_general_section_is_empty_section_zero(syllabus_nested_mbz):
+    sections = _section_xmls(syllabus_nested_mbz)
+    zero = [s for s in sections if s.findtext("number") == "0"]
+    assert len(zero) == 1
+    assert (zero[0].findtext("name") or "") == ""
+    assert not (zero[0].findtext("sequence") or "")
+    assert zero[0].findtext("component") == "$@NULL@$"
+
+
+def test_authora_general_section_is_hidden(syllabus_nested_mbz):
+    sections = _section_xmls(syllabus_nested_mbz)
+    zero = [s for s in sections if s.findtext("number") == "0"]
+    assert zero[0].findtext("visible") == "0"
+
+
+def test_authora_overview_is_section_one(syllabus_nested_mbz):
+    sections = _section_xmls(syllabus_nested_mbz)
+    overview = [s for s in sections if s.findtext("name") == "Overview"]
+    assert len(overview) == 1
+    assert overview[0].findtext("number") == "1"
+
+
+def test_authora_section_numbers_are_unique(syllabus_nested_mbz):
+    nums = [s.findtext("number") for s in _section_xmls(syllabus_nested_mbz)]
+    assert len(nums) == len(set(nums))
+
+
+def test_authora_overview_modules_use_section_number_one(overview_and_readings_mbz):
+    """Syllabus page and Readings subsection record Overview's number in module.xml."""
+    overview_id = next(
+        s for s in _section_xmls(overview_and_readings_mbz) if s.findtext("name") == "Overview"
+    ).get("id")
+    with tarfile.open(overview_and_readings_mbz) as tar:
+        modules = [
+            ET.parse(tar.extractfile(m)).getroot()
+            for m in tar.getmembers()
+            if re.match(r"activities/[a-z]+_\d+/module\.xml", m.name)
+        ]
+    in_overview = [m for m in modules if m.findtext("sectionid") == overview_id]
+    assert len(in_overview) == 2  # syllabus page + readings subsection module
+    assert all(m.findtext("sectionnumber") == "1" for m in in_overview)
+
+
+def test_authora_no_activity_targets_general_section(overview_and_readings_mbz):
+    general_id = next(
+        s for s in _section_xmls(overview_and_readings_mbz) if not s.findtext("name")
+    ).get("id")
+    acts = _backup_xml(overview_and_readings_mbz).findall(".//activities/activity")
+    assert all(a.findtext("sectionid") != general_id for a in acts)
 
 
 def test_overview_sequence_has_one_module(syllabus_nested_mbz):
@@ -422,25 +634,29 @@ def test_overview_sequence_has_one_module(syllabus_nested_mbz):
     assert len(sequence) == 1
 
 
-def test_chapter_numbers_shift_past_overview_nested(syllabus_nested_mbz):
-    sections = _section_xmls(syllabus_nested_mbz)
-    non_overview_nums = [int(s.findtext("number")) for s in sections if s.findtext("name") != "Overview"]
-    assert min(non_overview_nums) == 1
+def test_chapter_numbers_shift_past_overview_nested_without_authora(syllabus_nested_legacy_mbz):
+    assert min(_non_general_non_overview_numbers(syllabus_nested_legacy_mbz)) == 1
 
 
-def test_chapter_numbers_shift_past_overview_flat(syllabus_flat_mbz):
+def test_chapter_numbers_shift_past_general_and_overview_nested(syllabus_nested_mbz):
+    assert min(_non_general_non_overview_numbers(syllabus_nested_mbz)) == 2
+
+
+def test_chapter_numbers_shift_past_overview_flat_without_authora(syllabus_flat_legacy_mbz):
     """Flat sections already number 1..n with no offset (unlike Nested's
     0..n-1), so with a prepended Overview (offset=1) the first one is 2."""
-    sections = _section_xmls(syllabus_flat_mbz)
-    non_overview_nums = [int(s.findtext("number")) for s in sections if s.findtext("name") != "Overview"]
-    assert min(non_overview_nums) == 2
+    assert min(_non_general_non_overview_numbers(syllabus_flat_legacy_mbz)) == 2
+
+
+def test_chapter_numbers_shift_past_general_and_overview_flat(syllabus_flat_mbz):
+    assert min(_non_general_non_overview_numbers(syllabus_flat_mbz)) == 3
 
 
 def test_overview_section_present_but_empty_without_syllabus(multi_chapter_mbz):
     """Overview always exists, even with no syllabus content -- it's just empty."""
     sections = _section_xmls(multi_chapter_mbz)
     overview = next(s for s in sections if s.findtext("name") == "Overview")
-    assert overview.findtext("number") == "0"
+    assert overview.findtext("number") == "1"
     assert not [m for m in (overview.findtext("sequence") or "").split(",") if m]
 
 
@@ -497,7 +713,7 @@ def test_readings_nests_under_overview_without_syllabus(readings_only_mbz):
     sections = _section_xmls(readings_only_mbz)
     overview = next(s for s in sections if s.findtext("name") == "Overview")
     readings = next(s for s in sections if s.findtext("name") == "Readings")
-    assert overview.findtext("number") == "0"
+    assert overview.findtext("number") == "1"
     assert readings.findtext("component") == "mod_subsection"
     assert readings.findtext("itemid") not in (None, "", "$@NULL@$")
 
@@ -516,7 +732,7 @@ def test_readings_nested_as_subsection_under_overview(overview_and_readings_mbz)
     sections = _section_xmls(overview_and_readings_mbz)
     overview = next(s for s in sections if s.findtext("name") == "Overview")
     readings = next(s for s in sections if s.findtext("name") == "Readings")
-    assert overview.findtext("number") == "0"
+    assert overview.findtext("number") == "1"
     assert readings.findtext("component") == "mod_subsection"
     assert readings.findtext("itemid") not in (None, "", "$@NULL@$")
 
@@ -567,15 +783,15 @@ def test_overview_syllabus_page_insubsection_stays_empty(overview_and_readings_m
 
 def test_chapter_numbers_shift_past_overview_only(overview_and_readings_mbz):
     """Readings nests inside Overview rather than taking its own top-level
-    slot, so the offset is still 1 (Overview alone), same as the no-Readings
-    syllabus case — not 2."""
+    slot, so the offset is still 2 (General and Overview), same as the
+    no-Readings syllabus case — not 3."""
     sections = _section_xmls(overview_and_readings_mbz)
     chapter_nums = [
         int(s.findtext("number"))
         for s in sections
-        if s.findtext("name") not in ("Overview", "Readings") and s.findtext("component") != "mod_subsection"
+        if s.findtext("name") not in ("", "Overview", "Readings") and s.findtext("component") != "mod_subsection"
     ]
-    assert min(chapter_nums) == 1
+    assert min(chapter_nums) == 2
 
 
 def test_readings_resource_written_with_correct_modulename(readings_only_mbz):

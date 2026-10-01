@@ -38,6 +38,19 @@ load_dotenv()
 MOODLE_VERSION = os.getenv("MOODLE_VERSION", "2024042212")
 MOODLE_BACKUP_RELEASE = os.getenv("MOODLE_BACKUP_RELEASE", "5.1")
 MOODLE_RELEASE = os.getenv("MOODLE_RELEASE", "5.1 (Build: 20251208)")
+# SHA1("") -- Moodle's convention for a directory placeholder entry (filename ".").
+_EMPTY_FILE_SHA1 = "da39a3ee5e6b4b0d3255bfef95601890afd80709"
+
+
+def _inforef_xml(file_ids: list[int]) -> str:
+    """Build an `inforef.xml` document referencing `file_ids`, or an empty one if there are none."""
+    if not file_ids:
+        return '<?xml version="1.0" encoding="UTF-8"?>\n<inforef/>'
+    file_lines = "\n".join(f"    <file><id>{fid}</id></file>" for fid in file_ids)
+    return (
+        '<?xml version="1.0" encoding="UTF-8"?>\n<inforef>\n  <fileref>\n'
+        f"{file_lines}\n  </fileref>\n</inforef>"
+    )
 
 
 class MBZBuilder:
@@ -52,6 +65,8 @@ class MBZBuilder:
         sequential_sections: Create one Moodle section per source sequential instead of nested
             subsections.
         disable_custom_fields: Omit Edusources custom-field data from `course.xml`.
+        authora: Apply Authora layout changes: an empty General section 0, with Overview as
+            section 1 and every other section number shifted up by one.
     """
 
     def __init__(
@@ -60,10 +75,12 @@ class MBZBuilder:
         *,
         sequential_sections: bool = False,
         disable_custom_fields: bool = False,
+        authora: bool = True,
     ) -> None:
         self.course = course
         self.sequential_sections = sequential_sections
         self.disable_custom_fields = disable_custom_fields
+        self.authora = authora
         self.log = logging.getLogger("ocw.converter")
 
     def build(self, out: Path) -> None:
@@ -81,11 +98,15 @@ class MBZBuilder:
             shutil.rmtree(tmp, ignore_errors=True)
 
     def _populate(self, tmp: Path) -> None:
-        """Materialise the complete MBZ tree in `tmp`."""
+        """Materialise the complete MBZ tree in `tmp`.
+
+        Section numbering: an optional empty General at 0 (`authora`), then Overview at
+        `section_offset - 1`, then every source section from `section_offset`.
+        """
         ids = _Counter()
         ts = int(time.time())
         c = self.course
-        section_offset = 1
+        section_offset = 2 if self.authora else 1
         # Must be distinct from every other id allocated below, and in particular from 1 -- every
         # Moodle site's own system context is permanently id 1, and restore pre-maps backup
         # context id 1 straight to it. Reusing 1 here silently redirects course-context files
@@ -142,6 +163,7 @@ class MBZBuilder:
 
         file_entries = self._build_file_entries(c, pages + resources, ids)
         file_entries += self._build_course_image_entries(c, ids, course_ctx)
+        file_entries += self._build_overview_image_entries(c, ids, course_ctx, overview_section)
         self._write_all(
             tmp, c, all_sections, sub_mods, pages, resources, file_entries, ts, ids, course_ctx
         )
@@ -151,13 +173,22 @@ class MBZBuilder:
     ) -> tuple[dict, list[dict], dict | None, dict | None]:
         """Phase 1: allocate every section ID in the course, including Overview/Readings/Hidden
         which aren't part of `strategy`. See `_populate`'s docstring for the numbering rules."""
-        overview_section = {"id": ids.next(), "name": "Overview", "number": 0, "modules": []}
+        overview_section = {
+            "id": ids.next(),
+            "name": "Overview",
+            "number": section_offset - 1,
+            "modules": [],
+        }
         if c.overview_summary_html:
             overview_section["summary"] = strategy._process_html(
                 c.overview_summary_html, context="Overview"
             )
         all_sections = strategy.build_sections()
         all_sections.insert(0, overview_section)
+        if self.authora:
+            all_sections.insert(
+                0, {"id": ids.next(), "name": "", "number": 0, "modules": [], "visible": 0}
+            )
 
         # Hidden is a plain top-level section (no component), so it's a "regular" section whose
         # declared number Moodle actually honours -- keep it right after the strategy's regular
@@ -212,7 +243,7 @@ class MBZBuilder:
                 "internal_id": sub_int_id,
                 "name": "Readings",
                 "parent_sec_id": overview_section["id"],
-                "parent_sec_num": 0,
+                "parent_sec_num": overview_section["number"],
                 "child_sec": readings_child_sec,
             }
             overview_section["modules"].append(sub_mod_id)
@@ -246,7 +277,7 @@ class MBZBuilder:
             "id": mod_id,
             "ctx": ctx_id,
             "sec_id": overview_section["id"],
-            "sec_num": 0,
+            "sec_num": overview_section["number"],
             "name": c.syllabus_title,
             "content": content,
             "file_refs": re.findall(r'@@PLUGINFILE@@/([^"\'>\s]+)', content),
@@ -346,7 +377,72 @@ class MBZBuilder:
                     "sortorder": sortorder,
                 }
             )
+        if self.authora and entries:
+            entries.append(
+                {
+                    "id": ids.next(),
+                    "sha1": _EMPTY_FILE_SHA1,
+                    "name": ".",
+                    "size": 0,
+                    "mime": "$@NULL@$",
+                    "path": None,
+                    "ctx": course_ctx,
+                    "component": "course",
+                    "filearea": "overviewfiles",
+                    "itemid": 0,
+                    "sortorder": 0,
+                }
+            )
         return entries
+
+    def _build_overview_image_entries(
+        self, c: BaseParser, ids: _Counter, course_ctx: int, overview_section: dict
+    ) -> list[dict]:
+        """Embed the course thumbnail inline in the Overview section summary.
+
+        Matches real Authora-restored courses: the catalogue thumbnail (`overviewfiles`) is a
+        second, separate copy of the same image embedded directly in the course's own
+        front/Overview section text -- registered under `component=course, filearea=section,
+        itemid=<overview section id>` with its own `.` placeholder, referenced from that
+        section's own `inforef.xml` (not the course's).
+        """
+        path = c.course_image_path
+        if not self.authora or path is None:
+            return []
+        overview_section["summary"] = (
+            f'<p><img src="@@PLUGINFILE@@/{path.name}" alt=""></p>'
+            + overview_section.get("summary", "")
+        )
+        real_id, placeholder_id = ids.next(), ids.next()
+        overview_section["file_ids"] = [real_id, placeholder_id]
+        return [
+            {
+                "id": real_id,
+                "sha1": sha1_of(path),
+                "name": path.name,
+                "size": path.stat().st_size,
+                "mime": mimetypes.guess_type(path.name)[0] or "application/octet-stream",
+                "path": path,
+                "ctx": course_ctx,
+                "component": "course",
+                "filearea": "section",
+                "itemid": overview_section["id"],
+                "sortorder": 0,
+            },
+            {
+                "id": placeholder_id,
+                "sha1": _EMPTY_FILE_SHA1,
+                "name": ".",
+                "size": 0,
+                "mime": "$@NULL@$",
+                "path": None,
+                "ctx": course_ctx,
+                "component": "course",
+                "filearea": "section",
+                "itemid": overview_section["id"],
+                "sortorder": 0,
+            },
+        ]
 
     def _write_all(
         self,
@@ -366,7 +462,11 @@ class MBZBuilder:
             tmp, c, all_sections, sub_mods, pages, resources, ts, course_ctx
         )
         self._write_static_manifests(tmp)
-        course_file_ids = [f["id"] for f in file_entries if f["component"] == "course"]
+        course_file_ids = [
+            f["id"]
+            for f in file_entries
+            if f["component"] == "course" and f["filearea"] == "overviewfiles"
+        ]
         self._write_course_xml(tmp, c, ts, ids, course_file_ids, course_ctx)
         for idx, sec in enumerate(all_sections):
             self._write_section(tmp, sec, sec.get("number", idx + 1), ts)
@@ -467,6 +567,8 @@ class MBZBuilder:
             ("competencies", "0"),
             ("customfield", "1"),
         ]
+        if self.authora:
+            root_settings.append(("files", "1"))
         lines = [
             f"      <setting><level>root</level><name>{k}</name><value>{v}</value></setting>"
             for k, v in root_settings
@@ -637,14 +739,7 @@ class MBZBuilder:
         )
         (d / "roles.xml").write_text(templates.COURSE_ROLES_XML, encoding="utf-8")
         (d / "filters.xml").write_text(templates.COURSE_FILTERS_XML, encoding="utf-8")
-        if course_file_ids:
-            file_lines = "\n".join(
-                f"    <file><id>{fid}</id></file>" for fid in course_file_ids
-            )
-            inforef = f'<?xml version="1.0" encoding="UTF-8"?>\n<inforef>\n  <fileref>\n{file_lines}\n  </fileref>\n</inforef>'
-        else:
-            inforef = templates.COURSE_INFOREF_XML
-        (d / "inforef.xml").write_text(inforef, encoding="utf-8")
+        (d / "inforef.xml").write_text(_inforef_xml(course_file_ids), encoding="utf-8")
         (d / "completiondefaults.xml").write_text(
             templates.COURSE_COMPLETION_DEFAULTS_XML, encoding="utf-8"
         )
@@ -672,9 +767,7 @@ class MBZBuilder:
             ts=ts,
         )
         (d / "section.xml").write_text(xml, encoding="utf-8")
-        (d / "inforef.xml").write_text(
-            '<?xml version="1.0" encoding="UTF-8"?>\n<inforef/>', encoding="utf-8"
-        )
+        (d / "inforef.xml").write_text(_inforef_xml(sec.get("file_ids", [])), encoding="utf-8")
 
     def _write_page(self, tmp: Path, page: dict, ts: int) -> None:
         """Write a page activity and its required supporting manifests."""
@@ -688,14 +781,7 @@ class MBZBuilder:
             ts=ts,
         )
         (d / "page.xml").write_text(xml, encoding="utf-8")
-        if page["file_ids"]:
-            file_lines = "\n".join(
-                f"    <file><id>{fid}</id></file>" for fid in page["file_ids"]
-            )
-            inforef = f'<?xml version="1.0" encoding="UTF-8"?>\n<inforef>\n  <fileref>\n{file_lines}\n  </fileref>\n</inforef>'
-        else:
-            inforef = '<?xml version="1.0" encoding="UTF-8"?>\n<inforef/>'
-        (d / "inforef.xml").write_text(inforef, encoding="utf-8")
+        (d / "inforef.xml").write_text(_inforef_xml(page["file_ids"]), encoding="utf-8")
         (d / "grades.xml").write_text(templates.ACTIVITY_GRADES_XML, encoding="utf-8")
         (d / "grade_history.xml").write_text(
             templates.ACTIVITY_GRADE_HISTORY_XML, encoding="utf-8"
@@ -723,9 +809,7 @@ class MBZBuilder:
             ts=ts,
         )
         (d / "url.xml").write_text(xml, encoding="utf-8")
-        (d / "inforef.xml").write_text(
-            '<?xml version="1.0" encoding="UTF-8"?>\n<inforef/>', encoding="utf-8"
-        )
+        (d / "inforef.xml").write_text(_inforef_xml([]), encoding="utf-8")
         (d / "grades.xml").write_text(templates.ACTIVITY_GRADES_XML, encoding="utf-8")
         (d / "grade_history.xml").write_text(
             templates.ACTIVITY_GRADE_HISTORY_XML, encoding="utf-8"
@@ -752,14 +836,7 @@ class MBZBuilder:
             ts=ts,
         )
         (d / "resource.xml").write_text(xml, encoding="utf-8")
-        if resource["file_ids"]:
-            file_lines = "\n".join(
-                f"    <file><id>{fid}</id></file>" for fid in resource["file_ids"]
-            )
-            inforef = f'<?xml version="1.0" encoding="UTF-8"?>\n<inforef>\n  <fileref>\n{file_lines}\n  </fileref>\n</inforef>'
-        else:
-            inforef = '<?xml version="1.0" encoding="UTF-8"?>\n<inforef/>'
-        (d / "inforef.xml").write_text(inforef, encoding="utf-8")
+        (d / "inforef.xml").write_text(_inforef_xml(resource["file_ids"]), encoding="utf-8")
         (d / "grades.xml").write_text(templates.ACTIVITY_GRADES_XML, encoding="utf-8")
         (d / "grade_history.xml").write_text(
             templates.ACTIVITY_GRADE_HISTORY_XML, encoding="utf-8"
@@ -799,9 +876,7 @@ class MBZBuilder:
             ),
             encoding="utf-8",
         )
-        (d / "inforef.xml").write_text(
-            '<?xml version="1.0" encoding="UTF-8"?>\n<inforef/>', encoding="utf-8"
-        )
+        (d / "inforef.xml").write_text(_inforef_xml([]), encoding="utf-8")
         (d / "grades.xml").write_text(templates.ACTIVITY_GRADES_XML, encoding="utf-8")
         (d / "grade_history.xml").write_text(
             templates.ACTIVITY_GRADE_HISTORY_XML, encoding="utf-8"
@@ -844,9 +919,12 @@ class MBZBuilder:
         """Copy embedded file payloads into Moodle's SHA-1-addressed file store.
 
         Each payload path and SHA-1 comes from the same `file_entries` record used in `files.xml`.
+        Entries with no `path` are directory placeholders (the `.` marker) and have no payload.
         """
         files_dir = tmp / "files"
         for f in file_entries:
+            if f["path"] is None:
+                continue
             dest = files_dir / f["sha1"][:2]
             dest.mkdir(parents=True, exist_ok=True)
             shutil.copy2(f["path"], dest / f["sha1"])
