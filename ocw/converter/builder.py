@@ -484,6 +484,8 @@ class MBZBuilder:
             ("competencies", "0"),
             ("customfield", "1"),
         ]
+        if self.authora:
+            root_settings.append(("files", "1"))
         lines = [
             f"      <setting><level>root</level><name>{k}</name><value>{v}</value></setting>"
             for k, v in root_settings

@@ -20,11 +20,11 @@ from tests.builders import (
 MINIMAL = Path(__file__).parent.parent / "fixtures" / "minimal"
 
 
-def _get_backup_xml(tmp_path) -> ET.Element:
+def _get_backup_xml(tmp_path, **builder_kwargs) -> ET.Element:
     course = Course(MINIMAL)
     course.parse()
     out = tmp_path / "course.mbz"
-    MBZBuilder(course).build(out)
+    MBZBuilder(course, **builder_kwargs).build(out)
     with tarfile.open(out) as tar:
         return ET.parse(tar.extractfile("moodle_backup.xml")).getroot()
 
@@ -49,6 +49,24 @@ def test_root_settings_present(tmp_path):
     names = {s.findtext("name") for s in _get_backup_xml(tmp_path).findall(".//settings/setting")}
     for required in ("activities", "blocks", "users", "filters"):
         assert required in names
+
+
+def test_files_setting_present_when_authora(tmp_path):
+    names = {
+        s.findtext("name")
+        for s in _get_backup_xml(tmp_path, authora=True).findall(".//settings/setting")
+        if s.findtext("level") == "root"
+    }
+    assert "files" in names
+
+
+def test_files_setting_absent_without_authora(tmp_path):
+    names = {
+        s.findtext("name")
+        for s in _get_backup_xml(tmp_path, authora=False).findall(".//settings/setting")
+        if s.findtext("level") == "root"
+    }
+    assert "files" not in names
 
 
 def test_section_settings_generated(tmp_path):
