@@ -29,6 +29,7 @@ require_once($CFG->dirroot . '/filter/vidrouter/classes/form/import_form.php');
 
 use core\output\notification;
 use filter_vidrouter\bulk_import;
+use filter_vidrouter\map_record;
 
 $action = optional_param('action', '', PARAM_ALPHA);
 $id = optional_param('id', 0, PARAM_INT);
@@ -49,7 +50,6 @@ if ($delete) {
         require_sesskey();
         global $DB;
         $DB->delete_records('filter_vidrouter_map', array('id' => $delete));
-        // Invalidate cach
         $cache = cache::make('filter_vidrouter', 'map');
         $cache->purge();
         redirect($PAGE->url, get_string('deletemapping', 'filter_vidrouter') . ' ' . get_string('deleted', 'moodle'), notification::NOTIFY_SUCCESS);
@@ -89,17 +89,7 @@ if ($action == 'edit' || $action == 'add') {
     } else if ($data = $mform->get_data()) {
         global $DB;
 
-        $record = new stdClass();
-        $record->vidkey = $data->vidkey;
-        $record->youtubeid = $data->youtubeid ?? null;
-        $record->edxvideoid = $data->edxvideoid ?? null;
-        $record->tuddownloadid = $data->tuddownloadid ?? null;
-        $record->collegeramaid = $data->collegeramaid ?? null;
-        $record->srtbaseid = $data->srtbaseid ?? null;
-        $record->urlname = $data->urlname ?? null;
-        $record->courseid = $data->courseid ?? null;
-        $record->title = $data->title ?? null;
-        $record->videopagepath = $data->videopagepath ?? null;
+        $record = map_record::build($data);
         $record->timemodified = time();
 
         if ($action == 'edit' && $id) {
@@ -110,7 +100,6 @@ if ($action == 'edit' || $action == 'add') {
             $DB->insert_record('filter_vidrouter_map', $record);
         }
 
-        // Invalidate cache, important! 
         $cache = cache::make('filter_vidrouter', 'map');
         $cache->purge();
 

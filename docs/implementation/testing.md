@@ -56,7 +56,7 @@ Run parity checks for an existing source and archive:
 ```bash
 poetry run pytest tests/integration/test_hybrid_checks.py \
   --olx-path <path/to/olx> \
-  --mbz-path <path/to/output.mbz> -v
+  --mbz-path <path/to/output_v<version>.mbz> -v
 ```
 
 ## Python test coverage
@@ -85,7 +85,8 @@ skipped until `MOODLE_URL` and `MOODLE_TOKEN` are configured and the target Mood
 | --- | --- |
 | `bulk_import_test.php` | CSV parsing, matching, validation, updates, and cache invalidation. |
 | `edit_form_test.php` | Video key form validation. |
-| `video_renderer_test.php` | YouTube and Collegerama selection, fallback, missing videos, and export rendering. |
+| `video_renderer_test.php` | YouTube and Collegerama selection, fallback, missing videos, export, overrides. |
+| `text_filter_test.php` | Shortcode replacement through the filter manager, cache lookups, missing keys. |
 
 The `moodle-plugin-ci.yml` workflow installs Moodle and both plugins, then runs the filter plugin PHPUnit suite with
 warnings treated as failures. It also publishes PHP coverage.
@@ -94,7 +95,7 @@ warnings treated as failures. It also publishes PHP coverage.
 
 | Workflow | Trigger | Checks |
 | --- | --- | --- |
-| Python CI | Pull requests to `main`: manual runs. | Unit and integration tests with coverage. |
+| Python CI | PRs to `main` and manual runs. | Unit and integration tests with coverage. |
 | Plugin CI | Plugin PRs to `main`: manual runs. | Moodle install, PHPUnit, and PHP coverage. |
 | Documentation CI | Documentation and implementation changes. | PHPDoc and strict MkDocs build. |
 
