@@ -18,6 +18,8 @@ Or with a .venv active in your shell:
 python [command] [path] -o [output_path]
 ```
 
+The output filename gets a version suffix, e.g. `output.mbz` is written as `output_v0.4.1-1-gef4cdb9-dirty.mbz`.
+
 ## OLX Conversion
 
 ```bash
@@ -32,15 +34,16 @@ poetry run ocw-wp https://example.edu/course-home-page/ -o output.mbz
 
 ## Flags
 
-| Flag                         | Default | Description                                                           |
-| ---------------------------- | ------- | --------------------------------------------------------------------- |
-| `--sequential-sections`      | off     | One Moodle section per sequential, named `"Chapter - Sequential"`.    |
-| `--disable-custom-fields`    | off     | Skip populating eduSources custom fields.                             |
-| `--authora`                  | on      | Empty General section 0 and Overview in section 1 (Authora layout).   |
-| `--no-authora`               | off     | Overview stays in section 0, no empty General section.                |
-| `--fetch-external-assets`    | on      | Download externally hosted PDFs and files instead of only warning.    |
-| `--no-fetch-external-assets` | off     | Leave external assets as links and report them in the conversion log. |
-| `--debug`                    | off     | Write verbose logging to stderr and `ocw.log`.                        |
+| Flag                           | Default | Description                                                           |
+| ------------------------------ | ------- | --------------------------------------------------------------------- |
+| `--sequential-sections`        | off     | One Moodle section per sequential, named `"Chapter - Sequential"`.    |
+| `--disable-custom-fields`      | off     | Skip populating eduSources custom fields.                             |
+| `--authora`                    | on      | Empty General section 0 and Overview in section 1 (Authora layout).   |
+| `--no-authora`                 | off     | Overview stays in section 0, no empty General section.                |
+| `--fetch-external-assets`      | on      | Download externally hosted PDFs and files instead of only warning.    |
+| `--no-fetch-external-assets`   | off     | Leave external assets as links and report them in the conversion log. |
+| `--debug`                      | off     | Write verbose logging to stderr and `ocw.log`.                        |
+| `--include-license-banner`      | off     | WP only. Keep the CC license footer.                                  |
 
 Example with sequential sections:
 
@@ -115,7 +118,7 @@ The pytest command below manually checks an existing OLX export and MBZ archive.
 # post-hoc parity checks against a specific export
 poetry run pytest tests/integration/test_hybrid_checks.py \
   --olx-path <path/to/olx> \
-  --mbz-path <path/to/output.mbz> -v
+  --mbz-path <path/to/output_v<version>.mbz> -v
 ```
 
 # 5. Running Tests
@@ -157,9 +160,6 @@ poetry run python scripts/run_tests.py live
 
 - `test_restore.py`: course exists after restore, fullname/section count/names/page count/titles all match,
   multi HTML vertical aggregates into one page
-
-> **Note:** all tests run against the default mode (one section per chapter). `--sequential-sections` behaviour is
-> not covered by any tests.
 
 # 6. Moodle Video Router Plugins
 
@@ -246,7 +246,7 @@ Re-run `./scripts/build-docs.sh` after changing PHP code or PHPDoc blocks.
 
 AI coding assistants (Claude Code) were used heavily throughout development, both for reading and writing
 code. This included investigating the XML structures of OLX and MBZ exports, and researching the Moodle and
-OpenEdx source code to determine correct behaviour. 
+OpenEdx source code to determine correct behaviour.
 
 All AI-generated code has been human reviewed, is covered by a necessary test suite, and has additionally been
 verified through human live testing. Standard coding practices (linting, code
