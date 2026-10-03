@@ -18,6 +18,7 @@ only and does not use a WordPress API.
   extract YouTube or Collegerama IDs, convert expandable widgets, and download linked PDFs when possible.
 * [`MBZBuilder.build()`](../reference/python.md#ocw.converter.builder.MBZBuilder.build): uses the same Moodle archive
   builder as OLX. WordPress conversion does not run OLX parity checks because it has no equivalent source structure.
+* **[`ocw-wp-zip`](wp-zip-export.md) reuses the same parser and writes the course as an HTML zip instead of an MBZ.**
 
 ## Structure mapping
 

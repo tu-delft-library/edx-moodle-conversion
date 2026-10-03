@@ -19,6 +19,8 @@ generated reference content.
 
 ::: ocw.hybrid_checks
 
+::: ocw.zip_checks
+
 ## Video source extension points
 
 ### OLX video metadata
