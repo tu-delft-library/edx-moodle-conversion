@@ -61,8 +61,9 @@ The filter accepts only `[[vid:KEY]]`, where `KEY` matches `[A-Za-z0-9_-]+` and 
 ### Rendering
 
 `filter_vidrouter\text_filter` loads the map and replaces matching placeholders. `video_renderer` uses the configured
-primary source: currently YouTube. It uses Collegerama when the primary source has no ID and the fallback setting is
-enabled. edX and TU Delft download IDs are stored for future migration work but are not current rendering sources.
+primary source (default YouTube). Primary and fallback can be overridden per site, category, course, or module
+through the filter's local settings. It uses Collegerama when the primary source has no ID and the fallback setting
+is enabled. edX and TU Delft download IDs are stored for future migration work but are not current rendering sources.
 
 ### Extending Video Sources and Backfilling Mappings
 
@@ -101,7 +102,7 @@ Each source has a dedicated nullable ID column in `filter_vidrouter_map`, such a
    `manage.php`, and
    <a href="../api/php/classes/filter-vidrouter-bulk-import.html"><code>bulk_import::ASSIGNABLE_FIELDS</code></a>.
 8. Validate source IDs as identifiers before using them to construct an embed URL.
-9. Clear `filter_vidrouter/map` key `all_videos` after every mapping write. See
+9. Call `purge()` on the `filter_vidrouter/map` cache after every mapping write. See
    <a href="../api/php/classes/filter-vidrouter-bulk-import.html#method_apply"><code>bulk_import::apply()</code></a>,
    `manage.php`, and
    <a href="../api/php/classes/restore-local-vidrouter-plugin.html#method_process_plugin_local_vidrouter_video">
