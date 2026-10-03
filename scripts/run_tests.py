@@ -11,7 +11,7 @@ paths = {
 }
 
 if mode not in paths:
-    print("usage: run_tests.py [all|unit|integration|live]")
+    print("usage: scripts/run_tests.py [all|unit|integration|live]")
     sys.exit(1)
 
 sys.exit(subprocess.run(["pytest"] + paths[mode] + ["-v"]).returncode)
