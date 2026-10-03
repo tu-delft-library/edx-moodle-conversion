@@ -6,7 +6,7 @@
 # name — so this stages each plugin under that short name before zipping,
 # even though the repo itself keeps the full component name as the directory.
 #
-# Usage: ./export_plugins.sh [output_dir]
+# Usage: ./scripts/export_plugins.sh [output_dir]
 # Default output_dir: current working directory
 
 set -euo pipefail

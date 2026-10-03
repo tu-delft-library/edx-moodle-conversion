@@ -18,7 +18,7 @@ Or with a .venv active in your shell:
 python [command] [path] -o [output_path]
 ```
 
-The output filename gets a version suffix, e.g. `output.mbz` is written as `output_v0.4.1-1-gef4cdb9-dirty.mbz`.
+The output filename gets a version suffix from `git describe`, e.g. `output.mbz` is written as `output_<git describe>.mbz`.
 
 ## OLX Conversion
 
@@ -43,7 +43,7 @@ poetry run ocw-wp https://example.edu/course-home-page/ -o output.mbz
 | `--fetch-external-assets`      | on      | Download externally hosted PDFs and files instead of only warning.    |
 | `--no-fetch-external-assets`   | off     | Leave external assets as links and report them in the conversion log. |
 | `--debug`                      | off     | Write verbose logging to stderr and `ocw.log`.                        |
-| `--include-license-banner`      | off     | WP only. Keep the CC license footer.                                  |
+| `--include-license-banner`      | off     | WP only. Keep the CC license footer.                                 |
 
 Example with sequential sections:
 
