@@ -20,6 +20,7 @@ jobs:
         run: echo "__version__ = \"${GITHUB_REF_NAME}\"" > ocw/_version.py
       - run: poetry run pyinstaller --onefile --windowed --name ocw-gui ocw/gui/olx.py
       - run: poetry run pyinstaller --onefile --windowed --name ocw-gui-wp ocw/gui/wp.py
+      - run: poetry run pyinstaller --onefile --windowed --name ocw-gui-wp-zip ocw/gui/wp_zip.py
       - run: |
           mkdir -p AppDir/usr/bin
           cp dist/ocw-gui AppDir/usr/bin/
@@ -36,6 +37,13 @@ jobs:
           cp packaging/ocw-gui-wp.png AppDir-wp/
           ln -s usr/bin/ocw-gui-wp AppDir-wp/AppRun
           ./appimagetool-x86_64.AppImage AppDir-wp OCW-WP-GUI-x86_64.AppImage
+      - run: |
+          mkdir -p AppDir-wp-zip/usr/bin
+          cp dist/ocw-gui-wp-zip AppDir-wp-zip/usr/bin/
+          cp packaging/ocw-gui-wp-zip.desktop AppDir-wp-zip/
+          cp packaging/ocw-gui-wp-zip.png AppDir-wp-zip/
+          ln -s usr/bin/ocw-gui-wp-zip AppDir-wp-zip/AppRun
+          ./appimagetool-x86_64.AppImage AppDir-wp-zip OCW-WP-ZIP-GUI-x86_64.AppImage
       - uses: softprops/action-gh-release@v2
         if: startsWith(github.ref, 'refs/tags/')
         with:
@@ -43,6 +51,7 @@ jobs:
           files: |
             OCW-GUI-x86_64.AppImage
             OCW-WP-GUI-x86_64.AppImage
+            OCW-WP-ZIP-GUI-x86_64.AppImage
 
   windows-exe:
     runs-on: windows-latest
@@ -57,6 +66,7 @@ jobs:
         run: echo "__version__ = \"${GITHUB_REF_NAME}\"" > ocw/_version.py
       - run: poetry run pyinstaller --onefile --windowed --name ocw-gui ocw/gui/olx.py
       - run: poetry run pyinstaller --onefile --windowed --name ocw-gui-wp ocw/gui/wp.py
+      - run: poetry run pyinstaller --onefile --windowed --name ocw-gui-wp-zip ocw/gui/wp_zip.py
       - uses: softprops/action-gh-release@v2
         if: startsWith(github.ref, 'refs/tags/')
         with:
@@ -64,6 +74,7 @@ jobs:
           files: |
             dist/ocw-gui.exe
             dist/ocw-gui-wp.exe
+            dist/ocw-gui-wp-zip.exe
 
   moodle-plugins:
     runs-on: ubuntu-latest

@@ -11,6 +11,7 @@ from ocw.fetcher import AssetFetcher
 from ocw.logging_setup import setup_cli_logging
 from ocw.parser.wp import WPCourse
 from ocw.utils import versioned_output_path
+from ocw.zip_checks import log_zip_checks
 
 
 def main() -> None:
@@ -20,15 +21,19 @@ def main() -> None:
     ap.add_argument("site_url", type=str)
     ap.add_argument("--output", "-o", type=Path, default=Path("course.zip"))
     ap.add_argument("--debug", action="store_true")
+    ap.add_argument("--fetch-external-assets", action=argparse.BooleanOptionalAction, default=True)
     args = ap.parse_args()
     setup_cli_logging(args.debug, Path("ocw.log"))
     logging.getLogger("ocw").info("ocw-wp-zip %s", __version__)
 
     fetch_tmp = Path(tempfile.mkdtemp())
     try:
-        course = WPCourse(args.site_url, fetcher=AssetFetcher(fetch_tmp), keep_all_content=True)
+        fetcher = AssetFetcher(fetch_tmp) if args.fetch_external_assets else None
+        course = WPCourse(args.site_url, fetcher=fetcher, keep_all_content=True)
         course.parse()
-        ZipBuilder(course).build(versioned_output_path(args.output))
+        out = versioned_output_path(args.output)
+        ZipBuilder(course).build(out)
+        log_zip_checks(course, out, logging.getLogger("ocw.zip_checks"))
     except Exception as e:
         print(f"error: {e}", file=sys.stderr)
         sys.exit(1)

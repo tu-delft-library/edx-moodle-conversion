@@ -27,7 +27,38 @@ class _FakeBuilder:
 @pytest.fixture(autouse=True)
 def _cwd(monkeypatch, tmp_path):
     monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(wp_zip, "log_zip_checks", lambda *args: None)
     _FakeCourse.instances = []
+
+
+def test_main_skips_fetcher_with_no_fetch_external_assets(monkeypatch, tmp_path):
+    monkeypatch.setattr(wp_zip, "WPCourse", _FakeCourse)
+    monkeypatch.setattr(wp_zip, "ZipBuilder", _FakeBuilder)
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "ocw-wp-zip",
+            "https://ocw.tudelft.nl/courses/example/",
+            "-o",
+            str(tmp_path / "o.zip"),
+            "--no-fetch-external-assets",
+        ],
+    )
+    wp_zip.main()
+    assert _FakeCourse.instances[0].fetcher is None
+
+
+def test_main_runs_parity_checks_on_built_zip(monkeypatch, tmp_path):
+    calls = []
+    monkeypatch.setattr(wp_zip, "WPCourse", _FakeCourse)
+    monkeypatch.setattr(wp_zip, "ZipBuilder", _FakeBuilder)
+    monkeypatch.setattr(wp_zip, "log_zip_checks", lambda course, out, log: calls.append(out))
+    monkeypatch.setattr(
+        "sys.argv",
+        ["ocw-wp-zip", "https://ocw.tudelft.nl/courses/example/", "-o", str(tmp_path / "o.zip")],
+    )
+    wp_zip.main()
+    assert calls and calls[0].suffix == ".zip"
 
 
 def test_main_builds_zip_from_site_url(monkeypatch, tmp_path):
