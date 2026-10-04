@@ -3,7 +3,7 @@ from pathlib import PurePosixPath
 
 import pytest
 
-from ocw.converter.zip_builder import ZipBuilder, _asset_name, _key, _safe_name
+from ocw.converter.zip_builder import ZipBuilder, _asset_name, _EMPTY_BODY, _key, _safe_name
 from tests.wp_builders import WPFixtureSite
 
 LECTURE_URL = "https://ocw.tudelft.nl/course-lectures/lec1/"
@@ -12,7 +12,7 @@ READING_URL = "https://ocw.tudelft.nl/course-readings/read1/"
 SUBJECT_URL = "https://ocw.tudelft.nl/courses/example/subjects/1-intro/"
 
 
-def _site() -> WPFixtureSite:
+def _site(empty_lecture: bool = False) -> WPFixtureSite:
     site = WPFixtureSite()
     site.add_home([(SUBJECT_URL, "1. Intro")])
     site.add_subject_page(
@@ -31,15 +31,17 @@ def _site() -> WPFixtureSite:
         """,
         intro_html='<div class="vc_row"><p>Subject intro.</p></div>',
     )
-    site.add_lecture_page(
-        LECTURE_URL,
-        """
+    lecture_html = (
+        '<div class="vc_row"></div>'
+        if empty_lecture
+        else """
         <h1>Lecture 1</h1>
         <div class="vc_row"><p onclick="steal()">Text.</p><script>alert(1)</script></div>
         <div class="vc_row"><img src="https://ocw.tudelft.nl/wp-content/uploads/diagram.png"></div>
         <div class="vc_row"><iframe src="https://www.youtube.com/embed/abc123"></iframe></div>
-        """,
+        """
     )
+    site.add_lecture_page(LECTURE_URL, lecture_html)
     site.add_lecture_page(EXERCISE_URL, "<h1>Exercise 1</h1><p>Solve it.</p>")
     site.add_reading_page(
         READING_URL,
@@ -168,3 +170,13 @@ def test_safe_name_falls_back_for_empty_titles():
 def test_asset_name_and_key_helpers():
     assert _asset_name("a b/c.png") == "a_b_c.png"
     assert _key("https://x/y/#frag") == "https://x/y"
+
+
+def test_empty_vertical_writes_placeholder(tmp_path):
+    course = _site(empty_lecture=True).course(keep_all_content=True)
+    course.parse()
+    out = tmp_path / "course.zip"
+    ZipBuilder(course).build(out)
+    with zipfile.ZipFile(out) as zf:
+        pages = [zf.read(n).decode("utf-8") for n in zf.namelist() if n.endswith(".html")]
+    assert any(_EMPTY_BODY in page for page in pages)

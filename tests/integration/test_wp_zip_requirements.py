@@ -1,4 +1,7 @@
+import posixpath
 import zipfile
+
+from bs4 import BeautifulSoup
 
 from ocw.converter.zip_builder import ZipBuilder
 from tests.unit.test_zip_builder import _site
@@ -64,3 +67,23 @@ def test_keep_all_content_retains_exercise_pages(tmp_path):
 def test_zip_entries_all_under_course_folder(tmp_path):
     with _build(tmp_path) as zf:
         assert all(n.startswith("Example_Course/") for n in zf.namelist())
+
+
+# WP-ZIP7
+def test_every_local_link_resolves(tmp_path):
+    course = _site(empty_lecture=True).course(keep_all_content=True)
+    course.parse()
+    out = tmp_path / "course.zip"
+    ZipBuilder(course).build(out)
+    with zipfile.ZipFile(out) as zf:
+        names = set(zf.namelist())
+        for name in names:
+            if not name.endswith(".html"):
+                continue
+            soup = BeautifulSoup(zf.read(name).decode("utf-8"), "html.parser")
+            for tag in soup.find_all("a", href=True):
+                href = tag["href"]
+                if "://" in href or href.startswith("#"):
+                    continue
+                target = posixpath.normpath(posixpath.join(posixpath.dirname(name), href))
+                assert target in names, f"{name} links to missing {href}"
