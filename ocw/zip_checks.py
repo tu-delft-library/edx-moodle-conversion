@@ -9,14 +9,14 @@ _INDEX = "index.html"
 
 
 def _expected_pages(course: BaseParser) -> int:
-    """Count the pages `ZipBuilder` writes: any planned page with components."""
+    """Count the pages `ZipBuilder` writes: every planned vertical and linked page."""
     verticals = [
         vert
         for chapter in course.chapters
         for seq in chapter["sequentials"]
         for vert in seq["verticals"]
     ]
-    return sum(1 for page in [*verticals, *course.reading_pages, *course.dedup_pages] if page["components"])
+    return len([*verticals, *course.reading_pages, *course.dedup_pages])
 
 
 def run_zip_checks(course: BaseParser, zip_path: Path) -> list[CheckResult]:

@@ -24,6 +24,7 @@ _PAGE = """<!doctype html>
 </body>
 </html>
 """
+_EMPTY_BODY = "<p>No content was found on the source page.</p>"
 
 
 def _key(url: str) -> str:
@@ -63,10 +64,9 @@ class Plan:
     readings: list[PlannedPage] = field(default_factory=list)
     shared: list[PlannedPage] = field(default_factory=list)
 
-    def pages(self) -> list[PlannedPage]:
+    def content_pages(self) -> list[PlannedPage]:
         pages = []
         for chapter in self.chapters:
-            pages.append(chapter.index)
             for _, verticals in chapter.sequentials:
                 pages.extend(verticals)
         return pages + self.readings + self.shared
@@ -133,9 +133,8 @@ class ZipBuilder:
     def _write_pages(self, root: Path, plan: Plan) -> None:
         for chapter in plan.chapters:
             self._write_page(root, chapter.index, self._chapter_body(chapter))
-        for page in plan.pages():
-            if page.components:
-                self._write_page(root, page, self._body(page))
+        for page in plan.content_pages():
+            self._write_page(root, page, self._body(page) or _EMPTY_BODY)
 
     def _write_page(self, root: Path, page: PlannedPage, body: str) -> None:
         nav = f'<p><a href="{escape(_rel(_ROOT_INDEX, page.path))}">Back to index</a></p>\n'
