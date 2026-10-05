@@ -1,14 +1,14 @@
 # WP Zip Export
 
-**## Purpose**
+## Purpose
 
-\*\*`ocw-wp-zip` backs up a WordPress course site as a browsable HTML folder inside a zip. It is not an MBZ and nothing
+`ocw-wp-zip` backs up a WordPress course site as a browsable HTML folder inside a zip. It is not an MBZ and nothing
 restores it into Moodle.
 
-**## Data flow**
+## Data flow
 
-**`WPCourse` parses the site (same parser as `ocw-wp`), `ZipBuilder` plans and writes the pages, then
-`log_zip_checks` compares the planned page count with the zip contents.**
+`WPCourse` parses the site (same parser as `ocw-wp`), `ZipBuilder` plans and writes the pages, then
+`log_zip_checks` compares the planned page count with the zip contents.
 
 | Step   | Code                                                 | Output                                                        |
 | ------ | ---------------------------------------------------- | ------------------------------------------------------------- |
@@ -19,23 +19,22 @@ restores it into Moodle.
 | Report | `ExternalContentReport`                              | `external_content.docx`                                       |
 | Check  | `ocw/zip_checks.py` `log_zip_checks()`               | `PASS`/`FAIL` log line                                        |
 
-**## Zip layout**
+## Zip layout
 
-**Everything sits under one `<course_slug>/` folder. Chapter index pages are `index.html` in each chapter folder.
-Content pages are `<sequential>/<NN>_<title>.html`. Readings and shared lectures go in `readings/` and `shared/`.**
+Everything sits under one `<course_slug>/` folder. Chapter index pages are `index.html` in each chapter folder.
+Content pages are `<sequential>/<NN>_<title>.html`. Readings and shared lectures go in `readings/` and `shared/`.
 
-**## Page count parity**
+## Page count parity
 
-**Expected = verticals with components across all sequentials, plus reading and shared pages with components.
-Actual = `.html` files whose name is not `index.html`. Empty verticals are linked but not written, so they are not
-counted.**
+Expected is every planned vertical, reading and shared page. Actual are `.html` files whose name is not `index.html`.
+Pages with no components get a placeholder body ("No content was found on the source page.") so every link resolves.
 
-**## Flags**
+## Flags
 
-**`--fetch-external-assets` (default on) fetches PDFs still hosted on edX. `--no-fetch-external-assets` skips the
-fetch. `--sequential-sections`, `--authora`, and `--disable-custom-fields` are MBZ-only and not offered here.**
+`--fetch-external-assets` (default on) fetches PDFs still hosted on edX. `--no-fetch-external-assets` skips the
+fetch.
 
-**## GUI**
+## GUI
 
-**`ocw/gui/wp_zip.py` reuses the WordPress URL dialog. The MBZ-only checkboxes are hidden through
-`ConverterApp.MBZ_OPTIONS = False`. Packaged as `ocw-gui-wp-zip` in `.github/workflows/build-gui.yml`.**
+`ocw/gui/wp_zip.py` reuses the WordPress URL dialog. The MBZ-only checkboxes are hidden through
+`ConverterApp.MBZ_OPTIONS = False`. Packaged as `ocw-gui-wp-zip` in `.github/workflows/build-gui.yml`.
