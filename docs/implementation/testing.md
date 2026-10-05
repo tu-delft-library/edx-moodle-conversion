@@ -1,5 +1,5 @@
 # Testing
-
+ 
 Python tests use pytest and are split by scope.
 
 | Path | Purpose |
@@ -17,6 +17,7 @@ poetry run python scripts/run_tests.py integration
 ```
 
 Moodle plugin PHPUnit tests live under `moodle-plugin/filter/vidrouter/tests/`. The Moodle Plugin CI workflow installs
+
 Moodle with both plugins before running the filter plugin suite.
 
 ## Conversion warnings
@@ -74,12 +75,12 @@ poetry run pytest tests/integration/test_hybrid_checks.py \
 | `tests/integration/test_hybrid_checks.py` | The three post hoc parity counts. |
 | `tests/integration/test_real_courses.py` | Parse and build smoke tests for optional real OLX fixtures. |
 | `tests/live_moodle/test_restore.py` | Live Moodle restore with course, section, and page comparisons. |
-| **`tests/unit/test_cli_wp_zip.py`** | **Zip CLI flags, fetcher toggle, and parity check call.** |
-| **`tests/unit/test_zip_builder.py`** | **Zip plan, page rendering, asset rewriting, and index layout.** |
-| **`tests/unit/test_zip_checks.py`** | **Page count parity: matching zip passes, missing page fails and logs.** |
-| **`tests/integration/test_wp_zip_pipeline.py`** | **Every local reference resolves inside the zip.** |
-| **`tests/integration/test_wp_zip_requirements.py`** | **Zip requirement IDs `WP-ZIP1` to `WP-ZIP6`.** |
-| **`tests/integration/test_real_courses.py`** | **Zip page count parity for optional real OLX fixtures.** |
+| `tests/unit/test_cli_wp_zip.py` | Zip CLI flags, fetcher toggle, and parity check call. |
+| `tests/unit/test_zip_builder.py` | Zip plan, page rendering, asset rewriting, and index layout. |
+| `tests/unit/test_zip_checks.py` | Page count parity: matching zip passes, missing page fails and logs. |
+| `tests/integration/test_wp_zip_pipeline.py` | Every local reference resolves inside the zip. |
+| `tests/integration/test_wp_zip_requirements.py` | Zip requirement IDs `WP-ZIP1` to `WP-ZIP7`, including every local link resolving. |
+| `tests/integration/test_real_courses.py` | Zip page count parity for optional real OLX fixtures. |
 
 `test_moodle_schema.py` contains four strict expected failures for optional activity stubs: roles, filters, gradebook,
 and grade history. Optional real course fixtures are skipped when their tarballs are not present. Live Moodle tests are
