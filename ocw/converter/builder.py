@@ -38,7 +38,6 @@ load_dotenv()
 MOODLE_VERSION = os.getenv("MOODLE_VERSION", "2024042212")
 MOODLE_BACKUP_RELEASE = os.getenv("MOODLE_BACKUP_RELEASE", "5.1")
 MOODLE_RELEASE = os.getenv("MOODLE_RELEASE", "5.1 (Build: 20251208)")
-# SHA1("") -- Moodle's convention for a directory placeholder entry (filename ".").
 _EMPTY_FILE_SHA1 = "da39a3ee5e6b4b0d3255bfef95601890afd80709"
 
 
@@ -133,7 +132,9 @@ class MBZBuilder:
             resources = self._build_readings_resources(c, ids, readings_child_sec)
             readings_child_sec["modules"] = [r["id"] for r in resources]
         elif c.reading_pages:
-            readings_pages = self._build_wp_readings_pages(c, strategy, readings_child_sec)
+            readings_pages = self._build_wp_readings_pages(
+                c, strategy, readings_child_sec
+            )
             readings_child_sec["modules"] = [p["id"] for p in readings_pages]
             if not readings_pages:
                 all_sections.remove(readings_child_sec)
@@ -163,16 +164,32 @@ class MBZBuilder:
 
         file_entries = self._build_file_entries(c, pages + resources, ids)
         file_entries += self._build_course_image_entries(c, ids, course_ctx)
-        file_entries += self._build_overview_image_entries(c, ids, course_ctx, overview_section)
+        file_entries += self._build_overview_image_entries(
+            c, ids, course_ctx, overview_section
+        )
         self._write_all(
-            tmp, c, all_sections, sub_mods, pages, resources, file_entries, ts, ids, course_ctx
+            tmp,
+            c,
+            all_sections,
+            sub_mods,
+            pages,
+            resources,
+            file_entries,
+            ts,
+            ids,
+            course_ctx,
         )
 
     def _alloc_sections(
-        self, c: BaseParser, ids: _Counter, strategy: SectionStrategy, section_offset: int
+        self,
+        c: BaseParser,
+        ids: _Counter,
+        strategy: SectionStrategy,
+        section_offset: int,
     ) -> tuple[dict, list[dict], dict | None, dict | None]:
         """Phase 1: allocate every section ID in the course, including Overview/Readings/Hidden
-        which aren't part of `strategy`. See `_populate`'s docstring for the numbering rules."""
+        which aren't part of `strategy`. See `_populate`'s docstring for the numbering rules.
+        """
         overview_section = {
             "id": ids.next(),
             "name": "Overview",
@@ -187,7 +204,14 @@ class MBZBuilder:
         all_sections.insert(0, overview_section)
         if self.authora:
             all_sections.insert(
-                0, {"id": ids.next(), "name": "", "number": 0, "modules": [], "visible": 0}
+                0,
+                {
+                    "id": ids.next(),
+                    "name": "",
+                    "number": 0,
+                    "modules": [],
+                    "visible": 0,
+                },
             )
 
         # Hidden is a plain top-level section (no component), so it's a "regular" section whose
@@ -312,7 +336,9 @@ class MBZBuilder:
         return [
             page
             for vert in c.reading_pages
-            if (page := strategy._build_page(vert, child_sec["id"], child_sec["number"]))
+            if (
+                page := strategy._build_page(vert, child_sec["id"], child_sec["number"])
+            )
             is not None
         ]
 
@@ -368,7 +394,8 @@ class MBZBuilder:
                     "sha1": sha1_of(path),
                     "name": path.name,
                     "size": path.stat().st_size,
-                    "mime": mimetypes.guess_type(path.name)[0] or "application/octet-stream",
+                    "mime": mimetypes.guess_type(path.name)[0]
+                    or "application/octet-stream",
                     "path": path,
                     "ctx": course_ctx,
                     "component": "course",
@@ -421,7 +448,8 @@ class MBZBuilder:
                 "sha1": sha1_of(path),
                 "name": path.name,
                 "size": path.stat().st_size,
-                "mime": mimetypes.guess_type(path.name)[0] or "application/octet-stream",
+                "mime": mimetypes.guess_type(path.name)[0]
+                or "application/octet-stream",
                 "path": path,
                 "ctx": course_ctx,
                 "component": "course",
@@ -620,6 +648,7 @@ class MBZBuilder:
         xml = templates.MOODLE_BACKUP.format(
             course_name=esc(c.course_name),
             course_id=esc(c.course_id),
+            course_format=self._course_format(),
             moodle_version=MOODLE_VERSION,
             moodle_release=MOODLE_RELEASE,
             backup_release=MOODLE_BACKUP_RELEASE,
@@ -675,6 +704,24 @@ class MBZBuilder:
         )
         return f"  <plugin_local_vidrouter_course>\n{videos_xml}\n  </plugin_local_vidrouter_course>\n"
 
+    def _course_format(self) -> str:
+        """Pick the Moodle course format: Authora's `multitabs`, or stock `topics`."""
+        return "multitabs" if self.authora else "topics"
+
+    def _build_courseformatoptions_block(self) -> str:
+        """Build the <courseformatoptions> block for the Authora `multitabs` format."""
+        if not self.authora:
+            return ""
+        options = "".join(
+            templates.COURSEFORMATOPTION.format(name=name, value=esc(value))
+            for name, value in templates.AUTHORA_FORMAT_OPTIONS
+        )
+        return f"  <courseformatoptions>\n{options}  </courseformatoptions>\n"
+
+    def _build_format_multitabs_block(self) -> str:
+        """Build the empty <plugin_format_multitabs_course> skeleton, Authora-gated."""
+        return templates.PLUGIN_FORMAT_MULTITABS_COURSE if self.authora else ""
+
     def _build_customfields_block(self, c: BaseParser, ids: _Counter) -> str:
         """Build course custom-field XML records from source metadata."""
 
@@ -687,9 +734,11 @@ class MBZBuilder:
             ("license", c.license),
             (
                 "summary",
-                html_to_plain_text(c.overview_summary_html)
-                if c.overview_summary_html
-                else "",
+                (
+                    html_to_plain_text(c.overview_summary_html)
+                    if c.overview_summary_html
+                    else ""
+                ),
             ),
         ]
         lines = [
@@ -730,7 +779,10 @@ class MBZBuilder:
                 course_id=esc(c.course_id),
                 course_name=esc(c.course_name),
                 summary=esc(c.summary_html or ""),
+                course_format=self._course_format(),
                 customfields_block=self._build_customfields_block(c, ids),
+                courseformatoptions_block=self._build_courseformatoptions_block(),
+                plugin_format_multitabs_block=self._build_format_multitabs_block(),
                 ts=ts,
                 plugin_vidrouter_block=self._build_vidrouter_block(c),
                 course_ctx=course_ctx,
@@ -767,7 +819,9 @@ class MBZBuilder:
             ts=ts,
         )
         (d / "section.xml").write_text(xml, encoding="utf-8")
-        (d / "inforef.xml").write_text(_inforef_xml(sec.get("file_ids", [])), encoding="utf-8")
+        (d / "inforef.xml").write_text(
+            _inforef_xml(sec.get("file_ids", [])), encoding="utf-8"
+        )
 
     def _write_page(self, tmp: Path, page: dict, ts: int) -> None:
         """Write a page activity and its required supporting manifests."""
@@ -836,7 +890,9 @@ class MBZBuilder:
             ts=ts,
         )
         (d / "resource.xml").write_text(xml, encoding="utf-8")
-        (d / "inforef.xml").write_text(_inforef_xml(resource["file_ids"]), encoding="utf-8")
+        (d / "inforef.xml").write_text(
+            _inforef_xml(resource["file_ids"]), encoding="utf-8"
+        )
         (d / "grades.xml").write_text(templates.ACTIVITY_GRADES_XML, encoding="utf-8")
         (d / "grade_history.xml").write_text(
             templates.ACTIVITY_GRADE_HISTORY_XML, encoding="utf-8"
