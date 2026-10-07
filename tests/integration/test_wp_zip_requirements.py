@@ -36,7 +36,7 @@ def test_zip_has_root_index_and_chapter_index(tmp_path):
 def test_zip_contains_content_page_for_each_activity(tmp_path):
     with _build(tmp_path) as zf:
         names = _relative(zf)
-        assert any(n.startswith("01_1_Intro/") and n.endswith("Lecture_1.html") for n in names)
+        assert any(n.startswith("01_1._Intro/") and n.endswith("Lecture_1.html") for n in names)
         assert any(n.startswith("readings/") for n in names)
 
 
@@ -67,6 +67,16 @@ def test_keep_all_content_retains_exercise_pages(tmp_path):
 def test_zip_entries_all_under_course_folder(tmp_path):
     with _build(tmp_path) as zf:
         assert all(n.startswith("Example_Course/") for n in zf.namelist())
+
+
+# WP-ZIP8
+def test_blacklisted_asset_and_its_references_are_dropped(tmp_path):
+    with _build(tmp_path) as zf:
+        names = _relative(zf)
+        assert "assets/88x31.png" not in names
+        assert "88x31" not in _read(zf, "01_1._Intro/01_1.1_Basics/01_Lecture_1.html")
+        assert "assets/diagram.png" in names
+        assert "assets/fontawesome-webfont.woff2" in names
 
 
 # WP-ZIP7

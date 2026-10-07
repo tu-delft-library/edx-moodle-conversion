@@ -6,10 +6,12 @@ from ocw.converter.external_report import (
     ExternalContentReport,
     ExternalRef,
     _fallback_title,
+    _found_on,
     _is_blacklisted,
     _is_external,
     _refs_in_html,
     collect_external,
+    merge_refs,
 )
 from ocw.converter import external_report
 from ocw.converter.zip_builder import ZipBuilder
@@ -76,6 +78,25 @@ def test_report_round_trips_through_docx(tmp_path):
     ]
 
 
+def test_identical_urls_merge_into_one_entry_with_all_pages():
+    refs = [
+        ExternalRef("Cress", "http://www.cress.nl/About.aspx", "link", "Exams"),
+        ExternalRef("Cress", "http://www.cress.nl/About.aspx", "link", "Software"),
+        ExternalRef("Cress", "http://www.cress.nl/About.aspx", "link", "Software"),
+    ]
+    merged = merge_refs(refs)
+    assert len(merged) == 1
+    ref, pages = merged[0]
+    assert ref.url == "http://www.cress.nl/About.aspx"
+    assert pages == ["Exams", "Software"]
+
+
+def test_found_on_wording_by_page_count():
+    assert _found_on(["Exams"]) == "Exams"
+    assert _found_on(["Exams", "Software"]) == "found on both: Exams; Software"
+    assert _found_on(["A", "B", "C"]) == "found on 3 pages: A; B; C"
+
+
 def test_report_urls_are_clickable_hyperlinks(tmp_path):
     path = tmp_path / "report.docx"
     ExternalContentReport([ExternalRef("T", "https://example.com/a", "link", "P")]).write(path)
@@ -131,6 +152,11 @@ def test_blacklist_entries_are_configurable(monkeypatch):
     monkeypatch.setattr(external_report, "_BLACKLIST", frozenset({"example.com"}))
     assert _refs_in_html('<a href="https://sub.example.com/x">x</a>', "Page") == []
     assert len(_refs_in_html(CC_FOOTER, "Page")) == 2
+
+
+def test_amazon_links_are_not_reported():
+    html = '<a href="https://www.amazon.com/dp/123">Buy the book</a><a href="https://amazon.com/x">Again</a>'
+    assert _refs_in_html(html, "Page") == []
 
 
 def test_blacklisted_video_is_not_reported():
