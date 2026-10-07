@@ -29,6 +29,15 @@ def _get_backup_xml(tmp_path, **builder_kwargs) -> ET.Element:
         return ET.parse(tar.extractfile("moodle_backup.xml")).getroot()
 
 
+def _get_course_xml(tmp_path, **builder_kwargs) -> ET.Element:
+    course = Course(MINIMAL)
+    course.parse()
+    out = tmp_path / "course.mbz"
+    MBZBuilder(course, **builder_kwargs).build(out)
+    with tarfile.open(out) as tar:
+        return ET.parse(tar.extractfile("course/course.xml")).getroot()
+
+
 def test_details_block_present(tmp_path):
     detail = _get_backup_xml(tmp_path).find(".//details/detail")
     assert detail is not None
@@ -248,8 +257,53 @@ def test_page_displayoptions_exact_php(mbz, mbz_names):
         assert val == expected, f"{path}: {val!r}"
 
 
-def test_course_format_topics(mbz):
-    assert _parse(mbz, "course/course.xml").findtext("format") == "topics"
+def test_course_format_topics(tmp_path):
+    assert _get_course_xml(tmp_path, authora=False).findtext("format") == "topics"
+
+
+def test_format_is_multitabs_when_authora(tmp_path):
+    assert _get_course_xml(tmp_path, authora=True).findtext("format") == "multitabs"
+
+
+def test_original_course_format_matches_authora_flag(tmp_path):
+    assert _get_backup_xml(tmp_path, authora=True).findtext(".//original_course_format") == "multitabs"
+    assert _get_backup_xml(tmp_path, authora=False).findtext(".//original_course_format") == "topics"
+
+
+def test_courseformatoptions_present_when_authora(tmp_path):
+    root = _get_course_xml(tmp_path, authora=True)
+    options = {
+        o.findtext("name"): o.findtext("value")
+        for o in root.findall(".//courseformatoptions/courseformatoption")
+    }
+    assert options["sectionname_as_header"] == "1"
+    assert options["modview"] == "list"
+    assert options["tilesperrow"] == "3"
+    assert len(options) == 21
+    assert "laststructurechange" not in options and "visibleold" not in options
+    assert all(o.findtext("format") == "multitabs" for o in root.findall(".//courseformatoption"))
+
+
+def test_courseformatoptions_absent_without_authora(tmp_path):
+    assert _get_course_xml(tmp_path, authora=False).find("courseformatoptions") is None
+
+
+def test_idnumber_format_option_is_empty_string(tmp_path):
+    root = _get_course_xml(tmp_path, authora=True)
+    option = next(
+        o for o in root.findall(".//courseformatoption") if o.findtext("name") == "idnumber"
+    )
+    assert option.findtext("value") == ""
+
+
+def test_plugin_format_multitabs_present_when_authora(tmp_path):
+    root = _get_course_xml(tmp_path, authora=True)
+    assert root.find("plugin_format_multitabs_course") is not None
+    assert root.find("plugin_format_multitabs_course/multitabs/taggroups") is not None
+
+
+def test_plugin_format_multitabs_absent_without_authora(tmp_path):
+    assert _get_course_xml(tmp_path, authora=False).find("plugin_format_multitabs_course") is None
 
 
 def test_course_idnumber_matches_shortname(mbz):
