@@ -79,7 +79,7 @@ poetry run pytest tests/integration/test_hybrid_checks.py \
 | `tests/unit/test_zip_builder.py` | Zip plan, page rendering, asset rewriting, and index layout. |
 | `tests/unit/test_zip_checks.py` | Page count parity: matching zip passes, missing page fails and logs. |
 | `tests/integration/test_wp_zip_pipeline.py` | Every local reference resolves inside the zip. |
-| `tests/integration/test_wp_zip_requirements.py` | Zip requirement IDs `WP-ZIP1` to `WP-ZIP7`, including every local link resolving. |
+| `tests/integration/test_wp_zip_requirements.py` | Zip requirement IDs `WP-ZIP1` to `WP-ZIP8`, including every local link resolving and the asset blacklist. |
 | `tests/integration/test_real_courses.py` | Zip page count parity for optional real OLX fixtures. |
 
 `test_moodle_schema.py` contains four strict expected failures for optional activity stubs: roles, filters, gradebook,
