@@ -35,6 +35,17 @@ def test_matching_zip_passes(built):
     assert all(r.passed for r in results)
 
 
+def test_placeholder_pages_count_toward_parity(built, tmp_path):
+    course, _ = built
+    empty = _site(empty_lecture=True).course(keep_all_content=True)
+    empty.parse()
+    out = tmp_path / "empty.zip"
+    ZipBuilder(empty).build(out)
+    result = run_zip_checks(empty, out)[0]
+    assert result.passed
+    assert result.expected == run_zip_checks(course, built[1])[0].expected
+
+
 def test_missing_page_fails(built, tmp_path):
     course, out = built
     broken = tmp_path / "broken.zip"

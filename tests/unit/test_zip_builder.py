@@ -1,9 +1,17 @@
+import logging
 import zipfile
 from pathlib import PurePosixPath
 
 import pytest
 
-from ocw.converter.zip_builder import ZipBuilder, _asset_name, _EMPTY_BODY, _key, _safe_name
+from ocw.converter.zip_builder import (
+    ZipBuilder,
+    _asset_name,
+    _EMPTY_BODY,
+    _is_blacklisted_asset,
+    _key,
+    _safe_name,
+)
 from tests.wp_builders import WPFixtureSite
 
 LECTURE_URL = "https://ocw.tudelft.nl/course-lectures/lec1/"
@@ -38,6 +46,7 @@ def _site(empty_lecture: bool = False) -> WPFixtureSite:
         <h1>Lecture 1</h1>
         <div class="vc_row"><p onclick="steal()">Text.</p><script>alert(1)</script></div>
         <div class="vc_row"><img src="https://ocw.tudelft.nl/wp-content/uploads/diagram.png"></div>
+        <div class="vc_row"><img src="https://ocw.tudelft.nl/wp-content/uploads/88x31.png"></div>
         <div class="vc_row"><iframe src="https://www.youtube.com/embed/abc123"></iframe></div>
         """
     )
@@ -51,6 +60,7 @@ def _site(empty_lecture: bool = False) -> WPFixtureSite:
         pdf_name="Chapter.pdf",
     )
     site.add_static_file("diagram.png", b"png-bytes")
+    site.add_static_file("88x31.png", b"badge")
     site.add_static_file("fontawesome-webfont.woff2", b"font")
     site.add_static_file("fontawesome-webfont.woff", b"font")
     return site
@@ -172,6 +182,23 @@ def test_asset_name_and_key_helpers():
     assert _key("https://x/y/#frag") == "https://x/y"
 
 
+def test_blacklist_matches_badge_featured_image_and_zip_only():
+    assert _is_blacklisted_asset("88x31.png")
+    assert _is_blacklisted_asset("featured-Image.jpg")
+    assert _is_blacklisted_asset("Course_bundle.zip")
+    assert not _is_blacklisted_asset("ct530801.pdf")
+    assert not _is_blacklisted_asset("fontawesome-webfont.woff2")
+    assert not _is_blacklisted_asset("diagram.png")
+
+
+def test_skipped_asset_is_logged_at_info(tmp_path, caplog):
+    course = _site().course(keep_all_content=True)
+    course.parse()
+    with caplog.at_level(logging.INFO, logger="ocw.zip_builder"):
+        ZipBuilder(course).build(tmp_path / "course.zip")
+    assert "Skipping blacklisted asset '88x31.png'" in caplog.text
+
+
 def test_empty_vertical_writes_placeholder(tmp_path):
     course = _site(empty_lecture=True).course(keep_all_content=True)
     course.parse()
@@ -180,3 +207,17 @@ def test_empty_vertical_writes_placeholder(tmp_path):
     with zipfile.ZipFile(out) as zf:
         pages = [zf.read(n).decode("utf-8") for n in zf.namelist() if n.endswith(".html")]
     assert any(_EMPTY_BODY in page for page in pages)
+
+
+def test_empty_vertical_keeps_chapter_index_intact(tmp_path):
+    course = _site(empty_lecture=True).course(keep_all_content=True)
+    course.parse()
+    out = tmp_path / "course.zip"
+    ZipBuilder(course).build(out)
+    with zipfile.ZipFile(out) as zf:
+        index = _read(zf, "Example_Course/01_1._Intro/index.html")
+        lecture = _read(zf, "Example_Course/01_1._Intro/01_1.1_Basics/01_Lecture_1.html")
+    assert "Subject intro." in index
+    assert 'href="01_1.1_Basics/01_Lecture_1.html"' in index
+    assert _EMPTY_BODY in lecture
+    assert _EMPTY_BODY not in index
