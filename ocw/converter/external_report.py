@@ -13,7 +13,7 @@ from ocw.utils import _XML_ILLEGAL_CHARS_RE
 
 _OCW_HOST = "ocw.tudelft.nl"
 # Domains never reported (each entry also covers its subdomains). Add boilerplate hosts here.
-_BLACKLIST = frozenset({"creativecommons.org"})
+_BLACKLIST = frozenset({"creativecommons.org", "amazon.com"})
 _HYPERLINK_REL = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/hyperlink"
 _HTML_REFS = (("a", "href", "link"), ("iframe", "src", "embed"), ("img", "src", "image"))
 
@@ -92,6 +92,25 @@ def _clean(text: str) -> str:
     return _XML_ILLEGAL_CHARS_RE.sub("", text)
 
 
+def merge_refs(refs: list[ExternalRef]) -> list[tuple[ExternalRef, list[str]]]:
+    """Collapse refs with an identical URL into one entry, keeping every page they were found on."""
+    merged: dict[str, tuple[ExternalRef, list[str]]] = {}
+    for ref in refs:
+        _, pages = merged.setdefault(ref.url, (ref, []))
+        if ref.page not in pages:
+            pages.append(ref.page)
+    return list(merged.values())
+
+
+def _found_on(pages: list[str]) -> str:
+    if len(pages) == 1:
+        return pages[0]
+    if len(pages) == 2:
+        return f"found on both: {pages[0]}; {pages[1]}"
+    joined = "; ".join(pages)
+    return f"found on {len(pages)} pages: {joined}"
+
+
 class ExternalContentReport:
     """Write external references as a Docx table with clickable URLs."""
 
@@ -104,9 +123,9 @@ class ExternalContentReport:
         table = doc.add_table(rows=1, cols=4)
         for cell, label in zip(table.rows[0].cells, ("Title", "Type", "URL", "Found on")):
             cell.text = label
-        for ref in self.refs:
+        for ref, pages in merge_refs(self.refs):
             row = table.add_row().cells
-            row[0].text, row[1].text, row[3].text = _clean(ref.title), ref.kind, _clean(ref.page)
+            row[0].text, row[1].text, row[3].text = _clean(ref.title), ref.kind, _clean(_found_on(pages))
             self._add_hyperlink(row[2].paragraphs[0], ref.url)
         doc.save(path)
 
