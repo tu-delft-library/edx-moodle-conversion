@@ -1,3 +1,4 @@
+import logging
 import posixpath
 import re
 import shutil
@@ -13,6 +14,7 @@ from ocw.converter.external_report import ExternalContentReport, collect_externa
 from ocw.parser.base import BaseParser
 from ocw.utils import _UNSAFE_FILENAME_RE
 
+log = logging.getLogger("ocw.zip_builder")
 _ASSET_REF_RE = re.compile(r"(?:/static/|@@PLUGINFILE@@/)([^\"'>\s)]+)")
 _ROOT_INDEX = PurePosixPath("index.html")
 _EXTERNAL_DOCX = "external_content.docx"
@@ -25,6 +27,15 @@ _PAGE = """<!doctype html>
 </html>
 """
 _EMPTY_BODY = "<p>No content was found on the source page.</p>"
+_ASSET_BLACKLIST = (
+    re.compile(r"^88x31\.png$"),
+    re.compile(r"^featured-Image\.[a-z]+$"),
+    re.compile(r"\.zip$"),
+)
+
+
+def _is_blacklisted_asset(name: str) -> bool:
+    return any(pattern.search(name) for pattern in _ASSET_BLACKLIST)
 
 
 def _key(url: str) -> str:
@@ -78,6 +89,7 @@ class ZipBuilder:
     def __init__(self, course: BaseParser) -> None:
         self.course = course
         self._by_url: dict[str, PlannedPage] = {}
+        self._skipped_assets: set[str] = set()
 
     def build(self, out: Path) -> None:
         tmp = Path(tempfile.mkdtemp())
@@ -85,8 +97,8 @@ class ZipBuilder:
             slug = _safe_name(self.course.course_name, 0)[3:]
             root = tmp / slug
             plan = self._plan()
-            self._write_pages(root, plan)
             self._copy_assets(root)
+            self._write_pages(root, plan)
             self._write_index(root, plan)
             ExternalContentReport(collect_external(self.course)).write(
                 root / _EXTERNAL_DOCX
@@ -192,11 +204,14 @@ class ZipBuilder:
             f'<iframe src="{src}" title="{label}"></iframe>'
         )
 
-    @staticmethod
-    def _strip_scripts(html: str) -> str:
+    def _strip_scripts(self, html: str) -> str:
         soup = BeautifulSoup(html, "html.parser")
         for tag in soup.find_all("script"):
             tag.decompose()
+        for tag in soup.find_all(["img", "a"]):
+            ref = tag.get("src") or tag.get("href")
+            if isinstance(ref, str) and posixpath.basename(ref) in self._skipped_assets:
+                tag.decompose()
         for tag in soup.find_all(True):
             for attr in [a for a in tag.attrs if a.lower().startswith("on")]:
                 del tag[attr]
@@ -241,6 +256,10 @@ class ZipBuilder:
         assets = root / "assets"
         assets.mkdir(parents=True, exist_ok=True)
         for name, source in self.course.static_files.items():
+            if _is_blacklisted_asset(name):
+                self._skipped_assets.add(_asset_name(name))
+                log.info("Skipping blacklisted asset '%s'", name)
+                continue
             shutil.copyfile(source, assets / _asset_name(name))
 
     @staticmethod
