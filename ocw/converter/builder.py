@@ -163,6 +163,9 @@ class MBZBuilder:
             pages.insert(0, syllabus_page)
 
         file_entries = self._build_file_entries(c, pages + resources, ids)
+        file_entries += self._build_section_summary_file_entries(
+            c, ids, course_ctx, all_sections
+        )
         file_entries += self._build_course_image_entries(c, ids, course_ctx)
         file_entries += self._build_overview_image_entries(
             c, ids, course_ctx, overview_section
@@ -373,6 +376,55 @@ class MBZBuilder:
                 page["file_ids"].append(fid)
         return file_entries
 
+    def _build_section_summary_file_entries(
+        self, c: BaseParser, ids: _Counter, course_ctx: int, all_sections: list[dict]
+    ) -> list[dict]:
+        """Register `@@PLUGINFILE@@` refs left dangling in a section's own `summary` field.
+        """
+        entries: list[dict] = []
+        for sec in all_sections:
+            summary = sec.get("summary")
+            if not summary:
+                continue
+            for name in re.findall(r'@@PLUGINFILE@@/([^"\'>\s]+)', summary):
+                path = c.static_files.get(name)
+                if path is None:
+                    continue
+                real_id, placeholder_id = ids.next(), ids.next()
+                entries.append(
+                    {
+                        "id": real_id,
+                        "sha1": sha1_of(path),
+                        "name": name,
+                        "size": path.stat().st_size,
+                        "mime": mimetypes.guess_type(name)[0]
+                        or "application/octet-stream",
+                        "path": path,
+                        "ctx": course_ctx,
+                        "component": "course",
+                        "filearea": "section",
+                        "itemid": sec["id"],
+                        "sortorder": 0,
+                    }
+                )
+                entries.append(
+                    {
+                        "id": placeholder_id,
+                        "sha1": _EMPTY_FILE_SHA1,
+                        "name": ".",
+                        "size": 0,
+                        "mime": "$@NULL@$",
+                        "path": None,
+                        "ctx": course_ctx,
+                        "component": "course",
+                        "filearea": "section",
+                        "itemid": sec["id"],
+                        "sortorder": 0,
+                    }
+                )
+                sec.setdefault("file_ids", []).extend([real_id, placeholder_id])
+        return entries
+
     def _build_course_image_entries(
         self, c: BaseParser, ids: _Counter, course_ctx: int
     ) -> list[dict]:
@@ -436,12 +488,16 @@ class MBZBuilder:
         path = c.course_image_path
         if not self.authora or path is None:
             return []
+        existing_summary = overview_section.get("summary", "")
+        if f"@@PLUGINFILE@@/{path.name}" in existing_summary:
+            # Already registered by `_build_section_summary_file_entries()` -- the scraped WP
+            # description reused the same image inline, so don't double-embed or double-register.
+            return []
         overview_section["summary"] = (
-            f'<p><img src="@@PLUGINFILE@@/{path.name}" alt=""></p>'
-            + overview_section.get("summary", "")
+            f'<p><img src="@@PLUGINFILE@@/{path.name}" alt=""></p>' + existing_summary
         )
         real_id, placeholder_id = ids.next(), ids.next()
-        overview_section["file_ids"] = [real_id, placeholder_id]
+        overview_section.setdefault("file_ids", []).extend([real_id, placeholder_id])
         return [
             {
                 "id": real_id,
