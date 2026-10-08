@@ -48,14 +48,22 @@ def test_details_block_present(tmp_path):
 def test_required_metadata_fields(tmp_path):
     info = _get_backup_xml(tmp_path).find("information")
     for field in (
-        "moodle_version", "backup_version", "backup_release", "backup_date",
-        "original_course_format", "original_course_contextid", "original_system_contextid",
+        "moodle_version",
+        "backup_version",
+        "backup_release",
+        "backup_date",
+        "original_course_format",
+        "original_course_contextid",
+        "original_system_contextid",
     ):
         assert info.findtext(field) is not None, f"missing {field}"
 
 
 def test_root_settings_present(tmp_path):
-    names = {s.findtext("name") for s in _get_backup_xml(tmp_path).findall(".//settings/setting")}
+    names = {
+        s.findtext("name")
+        for s in _get_backup_xml(tmp_path).findall(".//settings/setting")
+    }
     for required in ("activities", "blocks", "users", "filters"):
         assert required in names
 
@@ -80,7 +88,8 @@ def test_files_setting_absent_without_authora(tmp_path):
 
 def test_section_settings_generated(tmp_path):
     section_settings = [
-        s for s in _get_backup_xml(tmp_path).findall(".//settings/setting")
+        s
+        for s in _get_backup_xml(tmp_path).findall(".//settings/setting")
         if s.findtext("level") == "section"
     ]
     assert len(section_settings) > 0
@@ -91,7 +100,8 @@ def test_section_settings_generated(tmp_path):
 
 def test_activity_settings_generated(tmp_path):
     activity_settings = [
-        s for s in _get_backup_xml(tmp_path).findall(".//settings/setting")
+        s
+        for s in _get_backup_xml(tmp_path).findall(".//settings/setting")
         if s.findtext("level") == "activity"
     ]
     assert len(activity_settings) > 0
@@ -108,15 +118,19 @@ def test_empty_course_still_valid(tmp_path):
     with tarfile.open(out) as tar:
         xml = ET.parse(tar.extractfile("moodle_backup.xml")).getroot()
     assert xml.find(".//details/detail") is not None
-    assert [s for s in xml.findall(".//settings/setting") if s.findtext("level") == "activity"] == []
+    assert [
+        s
+        for s in xml.findall(".//settings/setting")
+        if s.findtext("level") == "activity"
+    ] == []
 
 
 # ── module-scoped fixtures ────────────────────────────────────────────────────
 
 _PNG = (
-    b'\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01'
-    b'\x08\x02\x00\x00\x00\x90wS\xde\x00\x00\x00\x0cIDATx\x9cc\xf8\x0f\x00'
-    b'\x00\x01\x01\x00\x05\x18\xd8N\x00\x00\x00\x00IEND\xaeB`\x82'
+    b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01"
+    b"\x08\x02\x00\x00\x00\x90wS\xde\x00\x00\x00\x0cIDATx\x9cc\xf8\x0f\x00"
+    b"\x00\x01\x01\x00\x05\x18\xd8N\x00\x00\x00\x00IEND\xaeB`\x82"
 )
 
 
@@ -139,9 +153,31 @@ def mbz_names(mbz):
 def file_mbz(tmp_path_factory):
     root = tmp_path_factory.mktemp("fmbz")
     b = OLXFixtureBuilder(root / "course")
-    b.chapters = [Chapter("ch1", "Ch 1", [Sequential("s1", "S1", [Vertical("v1", "V1", [
-        HtmlComponent("pg1", "Page 1", content='<img src="/static/test.png"/>'),
-    ])])])]
+    b.chapters = [
+        Chapter(
+            "ch1",
+            "Ch 1",
+            [
+                Sequential(
+                    "s1",
+                    "S1",
+                    [
+                        Vertical(
+                            "v1",
+                            "V1",
+                            [
+                                HtmlComponent(
+                                    "pg1",
+                                    "Page 1",
+                                    content='<img src="/static/test.png"/>',
+                                ),
+                            ],
+                        )
+                    ],
+                )
+            ],
+        )
+    ]
     b.static_files = {"test.png": _PNG}
     course = Course(b.build())
     course.parse()
@@ -157,24 +193,45 @@ def _parse(mbz_path, entry):
 
 # ── A: required file existence ────────────────────────────────────────────────
 
-@pytest.mark.parametrize("path", [
-    "moodle_backup.xml",
-    "course/course.xml",
-    "course/inforef.xml",
-    "roles.xml", "gradebook.xml", "grade_history.xml",
-    "groups.xml", "outcomes.xml", "questions.xml", "scales.xml",
-    "files.xml",
-])
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        "moodle_backup.xml",
+        "course/course.xml",
+        "course/inforef.xml",
+        "roles.xml",
+        "gradebook.xml",
+        "grade_history.xml",
+        "groups.xml",
+        "outcomes.xml",
+        "questions.xml",
+        "scales.xml",
+        "files.xml",
+    ],
+)
 def test_required_root_file_exists(mbz_names, path):
     assert path in mbz_names
 
 
-@pytest.mark.parametrize("filename", [
-    "page.xml", "module.xml", "inforef.xml",
-    "grades.xml", "grade_history.xml", "roles.xml", "filters.xml",
-])
+@pytest.mark.parametrize(
+    "filename",
+    [
+        "page.xml",
+        "module.xml",
+        "inforef.xml",
+        "grades.xml",
+        "grade_history.xml",
+        "roles.xml",
+        "filters.xml",
+    ],
+)
 def test_activity_dir_has_file(mbz_names, filename):
-    act_dirs = {n.rsplit("/", 1)[0] for n in mbz_names if re.match(r"activities/page_\d+/.+\.xml", n)}
+    act_dirs = {
+        n.rsplit("/", 1)[0]
+        for n in mbz_names
+        if re.match(r"activities/page_\d+/.+\.xml", n)
+    }
     assert act_dirs, "no activity dirs found"
     for d in act_dirs:
         assert f"{d}/{filename}" in mbz_names
@@ -182,7 +239,11 @@ def test_activity_dir_has_file(mbz_names, filename):
 
 @pytest.mark.parametrize("filename", ["section.xml", "inforef.xml"])
 def test_section_dir_has_file(mbz_names, filename):
-    sec_dirs = {n.rsplit("/", 1)[0] for n in mbz_names if re.match(r"sections/section_\d+/.+\.xml", n)}
+    sec_dirs = {
+        n.rsplit("/", 1)[0]
+        for n in mbz_names
+        if re.match(r"sections/section_\d+/.+\.xml", n)
+    }
     assert sec_dirs, "no section dirs found"
     for d in sec_dirs:
         assert f"{d}/{filename}" in mbz_names
@@ -190,38 +251,101 @@ def test_section_dir_has_file(mbz_names, filename):
 
 # ── B: XML field presence ─────────────────────────────────────────────────────
 
-_SECTION_FIELDS = frozenset({
-    "number", "name", "summary", "summaryformat",
-    "sequence", "visible", "availabilityjson", "timemodified",
-})
-_MODULE_FIELDS = frozenset({
-    "modulename", "sectionid", "sectionnumber", "idnumber", "added",
-    "score", "indent", "visible", "visibleoncoursepage", "visibleold",
-    "groupmode", "groupingid", "completion", "completiongradeitemnumber",
-    "completionpassgrade", "completionview", "completionexpected",
-    "availability", "showdescription", "tags",
-})
-_PAGE_FIELDS = frozenset({
-    "name", "intro", "introformat", "content", "contentformat",
-    "legacyfiles", "legacyfileslast", "display", "displayoptions",
-    "revision", "timemodified",
-})
-_COURSE_FIELDS = frozenset({
-    "shortname", "fullname", "idnumber", "summary", "summaryformat",
-    "format", "showgrades", "newsitems", "startdate", "enddate",
-    "marker", "maxbytes", "legacyfiles", "showreports", "visible",
-    "groupmode", "groupmodeforce", "defaultgroupingid", "lang", "theme",
-    "timecreated", "timemodified", "requested", "enablecompletion",
-    "completionnotify", "hiddensections", "coursedisplay",
-    "category", "tags", "customfields",
-})
+_SECTION_FIELDS = frozenset(
+    {
+        "number",
+        "name",
+        "summary",
+        "summaryformat",
+        "sequence",
+        "visible",
+        "availabilityjson",
+        "timemodified",
+    }
+)
+_MODULE_FIELDS = frozenset(
+    {
+        "modulename",
+        "sectionid",
+        "sectionnumber",
+        "idnumber",
+        "added",
+        "score",
+        "indent",
+        "visible",
+        "visibleoncoursepage",
+        "visibleold",
+        "groupmode",
+        "groupingid",
+        "completion",
+        "completiongradeitemnumber",
+        "completionpassgrade",
+        "completionview",
+        "completionexpected",
+        "availability",
+        "showdescription",
+        "tags",
+    }
+)
+_PAGE_FIELDS = frozenset(
+    {
+        "name",
+        "intro",
+        "introformat",
+        "content",
+        "contentformat",
+        "legacyfiles",
+        "legacyfileslast",
+        "display",
+        "displayoptions",
+        "revision",
+        "timemodified",
+    }
+)
+_COURSE_FIELDS = frozenset(
+    {
+        "shortname",
+        "fullname",
+        "idnumber",
+        "summary",
+        "summaryformat",
+        "format",
+        "showgrades",
+        "newsitems",
+        "startdate",
+        "enddate",
+        "marker",
+        "maxbytes",
+        "legacyfiles",
+        "showreports",
+        "visible",
+        "groupmode",
+        "groupmodeforce",
+        "defaultgroupingid",
+        "lang",
+        "theme",
+        "timecreated",
+        "timemodified",
+        "requested",
+        "enablecompletion",
+        "completionnotify",
+        "hiddensections",
+        "coursedisplay",
+        "category",
+        "tags",
+        "customfields",
+    }
+)
 
 
-@pytest.mark.parametrize("pattern,fields,nested_under", [
-    (r"sections/section_\d+/section\.xml", _SECTION_FIELDS, None),
-    (r"activities/page_\d+/module\.xml",   _MODULE_FIELDS,  None),
-    (r"activities/page_\d+/page\.xml",     _PAGE_FIELDS,    "page"),
-])
+@pytest.mark.parametrize(
+    "pattern,fields,nested_under",
+    [
+        (r"sections/section_\d+/section\.xml", _SECTION_FIELDS, None),
+        (r"activities/page_\d+/module\.xml", _MODULE_FIELDS, None),
+        (r"activities/page_\d+/page\.xml", _PAGE_FIELDS, "page"),
+    ],
+)
 def test_xml_required_fields_present(mbz, mbz_names, pattern, fields, nested_under):
     paths = [n for n in mbz_names if re.match(pattern, n)]
     assert paths
@@ -240,8 +364,11 @@ def test_course_xml_required_fields(mbz):
 
 # ── C: semantic values ────────────────────────────────────────────────────────
 
+
 def test_section_availabilityjson_null_sentinel(mbz, mbz_names):
-    for path in [n for n in mbz_names if re.match(r"sections/section_\d+/section\.xml", n)]:
+    for path in [
+        n for n in mbz_names if re.match(r"sections/section_\d+/section\.xml", n)
+    ]:
         assert _parse(mbz, path).findtext("availabilityjson") == "$@NULL@$"
 
 
@@ -266,8 +393,14 @@ def test_format_is_multitabs_when_authora(tmp_path):
 
 
 def test_original_course_format_matches_authora_flag(tmp_path):
-    assert _get_backup_xml(tmp_path, authora=True).findtext(".//original_course_format") == "multitabs"
-    assert _get_backup_xml(tmp_path, authora=False).findtext(".//original_course_format") == "topics"
+    assert (
+        _get_backup_xml(tmp_path, authora=True).findtext(".//original_course_format")
+        == "multitabs"
+    )
+    assert (
+        _get_backup_xml(tmp_path, authora=False).findtext(".//original_course_format")
+        == "topics"
+    )
 
 
 def test_courseformatoptions_present_when_authora(tmp_path):
@@ -281,7 +414,10 @@ def test_courseformatoptions_present_when_authora(tmp_path):
     assert options["tilesperrow"] == "3"
     assert len(options) == 21
     assert "laststructurechange" not in options and "visibleold" not in options
-    assert all(o.findtext("format") == "multitabs" for o in root.findall(".//courseformatoption"))
+    assert all(
+        o.findtext("format") == "multitabs"
+        for o in root.findall(".//courseformatoption")
+    )
 
 
 def test_courseformatoptions_absent_without_authora(tmp_path):
@@ -291,7 +427,9 @@ def test_courseformatoptions_absent_without_authora(tmp_path):
 def test_idnumber_format_option_is_empty_string(tmp_path):
     root = _get_course_xml(tmp_path, authora=True)
     option = next(
-        o for o in root.findall(".//courseformatoption") if o.findtext("name") == "idnumber"
+        o
+        for o in root.findall(".//courseformatoption")
+        if o.findtext("name") == "idnumber"
     )
     assert option.findtext("value") == ""
 
@@ -303,7 +441,10 @@ def test_plugin_format_multitabs_present_when_authora(tmp_path):
 
 
 def test_plugin_format_multitabs_absent_without_authora(tmp_path):
-    assert _get_course_xml(tmp_path, authora=False).find("plugin_format_multitabs_course") is None
+    assert (
+        _get_course_xml(tmp_path, authora=False).find("plugin_format_multitabs_course")
+        is None
+    )
 
 
 def test_course_idnumber_matches_shortname(mbz):
@@ -315,9 +456,31 @@ def test_course_idnumber_matches_shortname(mbz):
 def spaced_mbz(tmp_path_factory):
     root = tmp_path_factory.mktemp("smbz")
     b = OLXFixtureBuilder(root / "course")
-    b.chapters = [Chapter("ch1", "Ch 1", [Sequential("s1", "S1", [Vertical("v1", "V1", [
-        HtmlComponent("pg1", "Page 1", content='<img src="/static/my_image.png"/>'),
-    ])])])]
+    b.chapters = [
+        Chapter(
+            "ch1",
+            "Ch 1",
+            [
+                Sequential(
+                    "s1",
+                    "S1",
+                    [
+                        Vertical(
+                            "v1",
+                            "V1",
+                            [
+                                HtmlComponent(
+                                    "pg1",
+                                    "Page 1",
+                                    content='<img src="/static/my_image.png"/>',
+                                ),
+                            ],
+                        )
+                    ],
+                )
+            ],
+        )
+    ]
     b.static_files = {"my image.png": _PNG}
     course = Course(b.build())
     course.parse()
@@ -336,9 +499,31 @@ def test_space_filename_image_included(spaced_mbz):
 def punctuation_mbz(tmp_path_factory):
     root = tmp_path_factory.mktemp("pmbz")
     b = OLXFixtureBuilder(root / "course")
-    b.chapters = [Chapter("ch1", "Ch 1", [Sequential("s1", "S1", [Vertical("v1", "V1", [
-        HtmlComponent("pg1", "Page 1", content='<img src="/static/become_a_contributor_.png"/>'),
-    ])])])]
+    b.chapters = [
+        Chapter(
+            "ch1",
+            "Ch 1",
+            [
+                Sequential(
+                    "s1",
+                    "S1",
+                    [
+                        Vertical(
+                            "v1",
+                            "V1",
+                            [
+                                HtmlComponent(
+                                    "pg1",
+                                    "Page 1",
+                                    content='<img src="/static/become_a_contributor_.png"/>',
+                                ),
+                            ],
+                        )
+                    ],
+                )
+            ],
+        )
+    ]
     b.static_files = {"become a contributor!.png": _PNG}
     course = Course(b.build())
     course.parse()
@@ -355,17 +540,39 @@ def test_punctuation_filename_image_included(punctuation_mbz):
 
 def test_mediaplugin_filter_disabled(mbz):
     root = _parse(mbz, "course/filters.xml")
-    actives = {fa.findtext("filter"): fa.findtext("active") for fa in root.findall(".//filter_active")}
+    actives = {
+        fa.findtext("filter"): fa.findtext("active")
+        for fa in root.findall(".//filter_active")
+    }
     assert actives.get("mediaplugin") == "-1"
 
 
 # ── course thumbnail: overviewfiles + Overview section embed (authora-gated) ──
 
+
 def _course_image_builder(root):
     b = OLXFixtureBuilder(root / "course")
-    b.chapters = [Chapter("ch1", "Ch 1", [Sequential("s1", "S1", [Vertical("v1", "V1", [
-        HtmlComponent("pg1", "Page 1"),
-    ])])])]
+    b.chapters = [
+        Chapter(
+            "ch1",
+            "Ch 1",
+            [
+                Sequential(
+                    "s1",
+                    "S1",
+                    [
+                        Vertical(
+                            "v1",
+                            "V1",
+                            [
+                                HtmlComponent("pg1", "Page 1"),
+                            ],
+                        )
+                    ],
+                )
+            ],
+        )
+    ]
     b.static_files = {"thumb.png": _PNG}
     b.course_image = "/static/thumb.png"
     return b
@@ -380,23 +587,32 @@ def _course_image_mbz(tmp_path, **builder_kwargs) -> Path:
 
 
 def _overview_section_id(mbz_path) -> str:
-    return next(s for s in _section_xmls(mbz_path) if s.findtext("name") == "Overview").get("id")
+    return next(
+        s for s in _section_xmls(mbz_path) if s.findtext("name") == "Overview"
+    ).get("id")
 
 
 def test_overviewfiles_placeholder_present_when_authora(tmp_path):
     mbz = _course_image_mbz(tmp_path, authora=True)
     root = _parse(mbz, "files.xml")
-    overviewfiles = [f for f in root.findall("file") if f.findtext("filearea") == "overviewfiles"]
+    overviewfiles = [
+        f for f in root.findall("file") if f.findtext("filearea") == "overviewfiles"
+    ]
     assert {f.findtext("filename") for f in overviewfiles} == {"thumb.png", "."}
     placeholder = next(f for f in overviewfiles if f.findtext("filename") == ".")
-    assert placeholder.findtext("contenthash") == "da39a3ee5e6b4b0d3255bfef95601890afd80709"
+    assert (
+        placeholder.findtext("contenthash")
+        == "da39a3ee5e6b4b0d3255bfef95601890afd80709"
+    )
     assert placeholder.findtext("filesize") == "0"
 
 
 def test_overviewfiles_placeholder_absent_without_authora(tmp_path):
     mbz = _course_image_mbz(tmp_path, authora=False)
     root = _parse(mbz, "files.xml")
-    overviewfiles = [f for f in root.findall("file") if f.findtext("filearea") == "overviewfiles"]
+    overviewfiles = [
+        f for f in root.findall("file") if f.findtext("filearea") == "overviewfiles"
+    ]
     assert {f.findtext("filename") for f in overviewfiles} == {"thumb.png"}
 
 
@@ -419,12 +635,16 @@ def test_section_filearea_entries_and_own_inforef_when_authora(tmp_path):
     overview_id = _overview_section_id(mbz)
     files_root = _parse(mbz, "files.xml")
     section_entries = [
-        f for f in files_root.findall("file")
+        f
+        for f in files_root.findall("file")
         if f.findtext("filearea") == "section" and f.findtext("itemid") == overview_id
     ]
     assert {f.findtext("filename") for f in section_entries} == {"thumb.png", "."}
     placeholder = next(f for f in section_entries if f.findtext("filename") == ".")
-    assert placeholder.findtext("contenthash") == "da39a3ee5e6b4b0d3255bfef95601890afd80709"
+    assert (
+        placeholder.findtext("contenthash")
+        == "da39a3ee5e6b4b0d3255bfef95601890afd80709"
+    )
 
     inforef = _parse(mbz, f"sections/section_{overview_id}/inforef.xml")
     inforef_ids = {f.findtext("id") for f in inforef.findall(".//fileref/file")}
@@ -434,17 +654,23 @@ def test_section_filearea_entries_and_own_inforef_when_authora(tmp_path):
 def test_section_filearea_entries_absent_without_authora(tmp_path):
     mbz = _course_image_mbz(tmp_path, authora=False)
     files_root = _parse(mbz, "files.xml")
-    assert not [f for f in files_root.findall("file") if f.findtext("filearea") == "section"]
+    assert not [
+        f for f in files_root.findall("file") if f.findtext("filearea") == "section"
+    ]
 
 
 def test_course_inforef_scoped_to_overviewfiles_not_section(tmp_path):
     mbz = _course_image_mbz(tmp_path, authora=True)
     files_root = _parse(mbz, "files.xml")
     overviewfiles_ids = {
-        f.get("id") for f in files_root.findall("file") if f.findtext("filearea") == "overviewfiles"
+        f.get("id")
+        for f in files_root.findall("file")
+        if f.findtext("filearea") == "overviewfiles"
     }
     course_inforef = _parse(mbz, "course/inforef.xml")
-    course_inforef_ids = {f.findtext("id") for f in course_inforef.findall(".//fileref/file")}
+    course_inforef_ids = {
+        f.findtext("id") for f in course_inforef.findall(".//fileref/file")
+    }
     assert course_inforef_ids == overviewfiles_ids
 
 
@@ -455,19 +681,82 @@ def test_placeholder_entries_not_copied_to_disk(tmp_path):
     assert "files/da/da39a3ee5e6b4b0d3255bfef95601890afd80709" not in names
 
 
-def test_no_section_embed_without_course_image(tmp_path):
-    """An authora course with no course_image/banner_image (e.g. a wp course with
-    no scraped hero image) gets no section-area entries and no summary change."""
+def test_distinct_banner_image_not_written_to_overviewfiles(tmp_path):
+    """A separate banner_image must never land in overviewfiles alongside course_image:
+
+    Moodle's get_course_overviewfiles() sorts that area by filename and keeps only
+    courseoverviewfileslimit files."""
     b = OLXFixtureBuilder(tmp_path / "course")
-    b.chapters = [Chapter("ch1", "Ch 1", [Sequential("s1", "S1", [Vertical("v1", "V1", [
-        HtmlComponent("pg1", "Page 1"),
-    ])])])]
+    b.chapters = [
+        Chapter(
+            "ch1",
+            "Ch 1",
+            [
+                Sequential(
+                    "s1",
+                    "S1",
+                    [
+                        Vertical(
+                            "v1",
+                            "V1",
+                            [
+                                HtmlComponent("pg1", "Page 1"),
+                            ],
+                        )
+                    ],
+                )
+            ],
+        )
+    ]
+    b.static_files = {"thumb.png": _PNG, "banner.png": _PNG}
+    b.course_image = "/static/thumb.png"
+    b.banner_image = "/static/banner.png"
     course = Course(b.build())
     course.parse()
     out = tmp_path / "out.mbz"
     MBZBuilder(course, authora=True).build(out)
     files_root = _parse(out, "files.xml")
-    assert not [f for f in files_root.findall("file") if f.findtext("filearea") == "section"]
+    overviewfiles = [
+        f
+        for f in files_root.findall("file")
+        if f.findtext("filearea") == "overviewfiles"
+    ]
+    assert {f.findtext("filename") for f in overviewfiles} == {"thumb.png", "."}
+
+
+def test_no_section_embed_without_course_image(tmp_path):
+    """An authora course with no course_image/banner_image (e.g. a wp course with
+    no scraped hero image) gets no section-area entries and no summary change."""
+    b = OLXFixtureBuilder(tmp_path / "course")
+    b.chapters = [
+        Chapter(
+            "ch1",
+            "Ch 1",
+            [
+                Sequential(
+                    "s1",
+                    "S1",
+                    [
+                        Vertical(
+                            "v1",
+                            "V1",
+                            [
+                                HtmlComponent("pg1", "Page 1"),
+                            ],
+                        )
+                    ],
+                )
+            ],
+        )
+    ]
+    course = Course(b.build())
+    course.parse()
+    out = tmp_path / "out.mbz"
+    MBZBuilder(course, authora=True).build(out)
+    files_root = _parse(out, "files.xml")
+    assert not [
+        f for f in files_root.findall("file") if f.findtext("filearea") == "section"
+    ]
     overview_id = _overview_section_id(out)
     section = _parse(out, f"sections/section_{overview_id}/section.xml")
     assert not (section.findtext("summary") or "")
@@ -475,13 +764,30 @@ def test_no_section_embed_without_course_image(tmp_path):
 
 # ── E: files.xml entry completeness ──────────────────────────────────────────
 
-_FILES_REQUIRED_FIELDS = frozenset({
-    "contenthash", "contextid", "component", "filearea", "itemid",
-    "filepath", "filename", "userid", "filesize", "mimetype",
-    "status", "timecreated", "timemodified", "sortorder",
-    "repositorytype", "repositoryid", "reference",
-    "source", "author", "license",
-})
+_FILES_REQUIRED_FIELDS = frozenset(
+    {
+        "contenthash",
+        "contextid",
+        "component",
+        "filearea",
+        "itemid",
+        "filepath",
+        "filename",
+        "userid",
+        "filesize",
+        "mimetype",
+        "status",
+        "timecreated",
+        "timemodified",
+        "sortorder",
+        "repositorytype",
+        "repositoryid",
+        "reference",
+        "source",
+        "author",
+        "license",
+    }
+)
 
 
 def test_files_xml_entry_has_required_fields(file_mbz):
@@ -495,6 +801,7 @@ def test_files_xml_entry_has_required_fields(file_mbz):
 
 # ── F: parent/child section numbering (orphan "New section" regression) ──────
 
+
 @pytest.fixture(scope="module")
 def multi_chapter_mbz(tmp_path_factory):
     """2 chapters x 2 sequentials each — enough sections that interleaved
@@ -502,14 +809,26 @@ def multi_chapter_mbz(tmp_path_factory):
     root = tmp_path_factory.mktemp("mcmbz")
     b = OLXFixtureBuilder(root / "course")
     b.chapters = [
-        Chapter(f"ch{i}", f"Chapter {i}", [
-            Sequential(f"ch{i}_s{j}", f"Ch{i} Seq{j}", [
-                Vertical(f"ch{i}_s{j}_v1", "V1", [
-                    HtmlComponent(f"ch{i}_s{j}_pg1", "Page 1"),
-                ])
-            ])
-            for j in range(2)
-        ])
+        Chapter(
+            f"ch{i}",
+            f"Chapter {i}",
+            [
+                Sequential(
+                    f"ch{i}_s{j}",
+                    f"Ch{i} Seq{j}",
+                    [
+                        Vertical(
+                            f"ch{i}_s{j}_v1",
+                            "V1",
+                            [
+                                HtmlComponent(f"ch{i}_s{j}_pg1", "Page 1"),
+                            ],
+                        )
+                    ],
+                )
+                for j in range(2)
+            ],
+        )
         for i in range(2)
     ]
     course = Course(b.build())
@@ -530,8 +849,16 @@ def _section_xmls(mbz_path):
 
 def test_parent_sections_numbered_before_children(multi_chapter_mbz):
     sections = _section_xmls(multi_chapter_mbz)
-    parent_nums = [int(s.findtext("number")) for s in sections if s.findtext("component") != "mod_subsection"]
-    child_nums = [int(s.findtext("number")) for s in sections if s.findtext("component") == "mod_subsection"]
+    parent_nums = [
+        int(s.findtext("number"))
+        for s in sections
+        if s.findtext("component") != "mod_subsection"
+    ]
+    child_nums = [
+        int(s.findtext("number"))
+        for s in sections
+        if s.findtext("component") == "mod_subsection"
+    ]
     assert parent_nums and child_nums
     assert max(parent_nums) < min(child_nums), (
         f"parent numbers {sorted(parent_nums)} must all come before "
@@ -547,7 +874,9 @@ def test_subsection_module_sectionnumber_matches_parent(multi_chapter_mbz):
             if re.match(r"sections/section_\d+/section\.xml", n):
                 root = ET.parse(tar.extractfile(n)).getroot()
                 section_number_by_id[int(root.get("id"))] = int(root.findtext("number"))
-        subsection_modules = [n for n in names if re.match(r"activities/subsection_\d+/module\.xml", n)]
+        subsection_modules = [
+            n for n in names if re.match(r"activities/subsection_\d+/module\.xml", n)
+        ]
         assert subsection_modules
         for n in subsection_modules:
             root = ET.parse(tar.extractfile(n)).getroot()
@@ -558,15 +887,26 @@ def test_subsection_module_sectionnumber_matches_parent(multi_chapter_mbz):
             )
 
 
-
 def _syllabus_builder(root):
     b = OLXFixtureBuilder(root / "course")
     b.chapters = [
-        Chapter(f"ch{i}", f"Chapter {i}", [
-            Sequential(f"ch{i}_s1", f"Ch{i} Seq1", [
-                Vertical(f"ch{i}_s1_v1", "V1", [HtmlComponent(f"ch{i}_s1_pg1", "Page 1")])
-            ])
-        ])
+        Chapter(
+            f"ch{i}",
+            f"Chapter {i}",
+            [
+                Sequential(
+                    f"ch{i}_s1",
+                    f"Ch{i} Seq1",
+                    [
+                        Vertical(
+                            f"ch{i}_s1_v1",
+                            "V1",
+                            [HtmlComponent(f"ch{i}_s1_pg1", "Page 1")],
+                        )
+                    ],
+                )
+            ],
+        )
         for i in range(2)
     ]
     b.static_tabs = [StaticTab("Syllabus", "syllabus-slug")]
@@ -660,7 +1000,9 @@ def test_authora_section_numbers_are_unique(syllabus_nested_mbz):
 def test_authora_overview_modules_use_section_number_one(overview_and_readings_mbz):
     """Syllabus page and Readings subsection record Overview's number in module.xml."""
     overview_id = next(
-        s for s in _section_xmls(overview_and_readings_mbz) if s.findtext("name") == "Overview"
+        s
+        for s in _section_xmls(overview_and_readings_mbz)
+        if s.findtext("name") == "Overview"
     ).get("id")
     with tarfile.open(overview_and_readings_mbz) as tar:
         modules = [
@@ -688,7 +1030,9 @@ def test_overview_sequence_has_one_module(syllabus_nested_mbz):
     assert len(sequence) == 1
 
 
-def test_chapter_numbers_shift_past_overview_nested_without_authora(syllabus_nested_legacy_mbz):
+def test_chapter_numbers_shift_past_overview_nested_without_authora(
+    syllabus_nested_legacy_mbz,
+):
     assert min(_non_general_non_overview_numbers(syllabus_nested_legacy_mbz)) == 1
 
 
@@ -696,7 +1040,9 @@ def test_chapter_numbers_shift_past_general_and_overview_nested(syllabus_nested_
     assert min(_non_general_non_overview_numbers(syllabus_nested_mbz)) == 2
 
 
-def test_chapter_numbers_shift_past_overview_flat_without_authora(syllabus_flat_legacy_mbz):
+def test_chapter_numbers_shift_past_overview_flat_without_authora(
+    syllabus_flat_legacy_mbz,
+):
     """Flat sections already number 1..n with no offset (unlike Nested's
     0..n-1), so with a prepended Overview (offset=1) the first one is 2."""
     assert min(_non_general_non_overview_numbers(syllabus_flat_legacy_mbz)) == 2
@@ -716,19 +1062,34 @@ def test_overview_section_present_but_empty_without_syllabus(multi_chapter_mbz):
 
 # ── G: Readings section (pdf_textbooks -> mod_resource) ──────────────────────
 
+
 def _readings_builder(root):
     b = OLXFixtureBuilder(root / "course")
     b.chapters = [
-        Chapter(f"ch{i}", f"Chapter {i}", [
-            Sequential(f"ch{i}_s1", f"Ch{i} Seq1", [
-                Vertical(f"ch{i}_s1_v1", "V1", [HtmlComponent(f"ch{i}_s1_pg1", "Page 1")])
-            ])
-        ])
+        Chapter(
+            f"ch{i}",
+            f"Chapter {i}",
+            [
+                Sequential(
+                    f"ch{i}_s1",
+                    f"Ch{i} Seq1",
+                    [
+                        Vertical(
+                            f"ch{i}_s1_v1",
+                            "V1",
+                            [HtmlComponent(f"ch{i}_s1_pg1", "Page 1")],
+                        )
+                    ],
+                )
+            ],
+        )
         for i in range(2)
     ]
     b.static_files = {"reading1.pdf": b"fake-pdf-bytes"}
     b.pdf_textbooks = [
-        PdfTextbook("Readings", [{"title": "Reading One", "url": "/static/reading1.pdf"}])
+        PdfTextbook(
+            "Readings", [{"title": "Reading One", "url": "/static/reading1.pdf"}]
+        )
     ]
     return b
 
@@ -791,29 +1152,44 @@ def test_readings_nested_as_subsection_under_overview(overview_and_readings_mbz)
     assert readings.findtext("itemid") not in (None, "", "$@NULL@$")
 
 
-def test_readings_subsection_numbered_after_all_other_sections(overview_and_readings_mbz):
+def test_readings_subsection_numbered_after_all_other_sections(
+    overview_and_readings_mbz,
+):
     """Moodle requires every parent section number to sort below every child
     section number, course-wide (test_parent_sections_numbered_before_children)
     — the nested Readings child section must therefore be numbered after
     every chapter *and* every sequential-derived child section."""
     sections = _section_xmls(overview_and_readings_mbz)
     readings = next(s for s in sections if s.findtext("name") == "Readings")
-    other_nums = [int(s.findtext("number")) for s in sections if s.findtext("name") != "Readings"]
+    other_nums = [
+        int(s.findtext("number")) for s in sections if s.findtext("name") != "Readings"
+    ]
     assert int(readings.findtext("number")) > max(other_nums)
 
 
-def test_overview_sequence_includes_readings_subsection_module(overview_and_readings_mbz):
+def test_overview_sequence_includes_readings_subsection_module(
+    overview_and_readings_mbz,
+):
     sections = _section_xmls(overview_and_readings_mbz)
     overview = next(s for s in sections if s.findtext("name") == "Overview")
     sequence = [m for m in (overview.findtext("sequence") or "").split(",") if m]
     assert len(sequence) == 2  # syllabus page + readings subsection module
 
 
-def test_readings_subsection_activity_points_at_overview_section(overview_and_readings_mbz):
+def test_readings_subsection_activity_points_at_overview_section(
+    overview_and_readings_mbz,
+):
     sections = _section_xmls(overview_and_readings_mbz)
-    overview_id = next(s for s in sections if s.findtext("name") == "Overview").get("id")
+    overview_id = next(s for s in sections if s.findtext("name") == "Overview").get(
+        "id"
+    )
     acts = _backup_xml(overview_and_readings_mbz).findall(".//activities/activity")
-    subsection_acts = [a for a in acts if a.findtext("title") == "Readings" and a.findtext("modulename") == "subsection"]
+    subsection_acts = [
+        a
+        for a in acts
+        if a.findtext("title") == "Readings"
+        and a.findtext("modulename") == "subsection"
+    ]
     assert len(subsection_acts) == 1
     assert subsection_acts[0].findtext("sectionid") == overview_id
 
@@ -843,7 +1219,8 @@ def test_chapter_numbers_shift_past_overview_only(overview_and_readings_mbz):
     chapter_nums = [
         int(s.findtext("number"))
         for s in sections
-        if s.findtext("name") not in ("", "Overview", "Readings") and s.findtext("component") != "mod_subsection"
+        if s.findtext("name") not in ("", "Overview", "Readings")
+        and s.findtext("component") != "mod_subsection"
     ]
     assert min(chapter_nums) == 2
 
@@ -851,7 +1228,9 @@ def test_chapter_numbers_shift_past_overview_only(overview_and_readings_mbz):
 def test_readings_resource_written_with_correct_modulename(readings_only_mbz):
     with tarfile.open(readings_only_mbz) as tar:
         names = tar.getnames()
-        resource_modules = [n for n in names if re.match(r"activities/resource_\d+/module\.xml", n)]
+        resource_modules = [
+            n for n in names if re.match(r"activities/resource_\d+/module\.xml", n)
+        ]
         assert len(resource_modules) == 1
         root = ET.parse(tar.extractfile(resource_modules[0])).getroot()
         assert root.findtext("modulename") == "resource"
@@ -863,7 +1242,9 @@ def test_readings_file_registered_under_mod_resource_component(readings_only_mbz
     mod_page in files.xml."""
     with tarfile.open(readings_only_mbz) as tar:
         files_xml = ET.parse(tar.extractfile("files.xml")).getroot()
-    entry = next(f for f in files_xml.findall("file") if f.findtext("filename") == "reading1.pdf")
+    entry = next(
+        f for f in files_xml.findall("file") if f.findtext("filename") == "reading1.pdf"
+    )
     assert entry.findtext("component") == "mod_resource"
 
 
@@ -871,7 +1252,9 @@ def test_readings_file_bytes_copied(readings_only_mbz):
     with tarfile.open(readings_only_mbz) as tar:
         names = set(tar.getnames())
         files_xml = ET.parse(tar.extractfile("files.xml")).getroot()
-    entry = next(f for f in files_xml.findall("file") if f.findtext("filename") == "reading1.pdf")
+    entry = next(
+        f for f in files_xml.findall("file") if f.findtext("filename") == "reading1.pdf"
+    )
     sha1 = entry.findtext("contenthash")
     assert f"files/{sha1[:2]}/{sha1}" in names
 
@@ -906,7 +1289,17 @@ def test_readings_resource_without_resolvable_file_writes_empty_inforef(tmp_path
 
 def _metadata_builder(root) -> OLXFixtureBuilder:
     b = OLXFixtureBuilder(root / "course")
-    b.chapters = [Chapter("ch1", "Ch 1", [Sequential("s1", "S1", [Vertical("v1", "V1", [HtmlComponent("pg1", "Page 1")])])])]
+    b.chapters = [
+        Chapter(
+            "ch1",
+            "Ch 1",
+            [
+                Sequential(
+                    "s1", "S1", [Vertical("v1", "V1", [HtmlComponent("pg1", "Page 1")])]
+                )
+            ],
+        )
+    ]
     b.org = "TUDelftX"
     b.language = "en"
     b.license = "creative-commons: ver=4.0 BY NC SA"
@@ -944,8 +1337,6 @@ def test_course_xml_customfields_empty_when_disabled(tmp_path):
     with tarfile.open(out) as tar:
         xml = ET.parse(tar.extractfile("course/course.xml")).getroot()
     assert xml.find("customfields").findall("customfield") == []
-
-
 
 
 def test_warn_external_edx_urls_fires_for_page_with_edx_link(tmp_path, caplog):
@@ -997,7 +1388,19 @@ def test_warn_external_edx_urls_silent_for_page_with_local_link(tmp_path, caplog
                 Sequential(
                     "s1",
                     "S1",
-                    [Vertical("v1", "V1", [HtmlComponent("pg1", "Page 1", content='<img src="/static/x.png"/>')])],
+                    [
+                        Vertical(
+                            "v1",
+                            "V1",
+                            [
+                                HtmlComponent(
+                                    "pg1",
+                                    "Page 1",
+                                    content='<img src="/static/x.png"/>',
+                                )
+                            ],
+                        )
+                    ],
                 )
             ],
         )
@@ -1015,7 +1418,17 @@ def test_warn_external_edx_urls_fires_for_syllabus_with_edx_link(tmp_path, caplo
     (builder.py's _build_overview_section) from page components — needs its
     own coverage, not just the page-level one above."""
     b = OLXFixtureBuilder(tmp_path / "course")
-    b.chapters = [Chapter("ch1", "Ch 1", [Sequential("s1", "S1", [Vertical("v1", "V1", [HtmlComponent("pg1", "Page 1")])])])]
+    b.chapters = [
+        Chapter(
+            "ch1",
+            "Ch 1",
+            [
+                Sequential(
+                    "s1", "S1", [Vertical("v1", "V1", [HtmlComponent("pg1", "Page 1")])]
+                )
+            ],
+        )
+    ]
     b.static_tabs = [StaticTab("Syllabus", "syllabus-slug")]
     b.tabs_files = {
         "syllabus-slug": '<a href="https://learning.edx.org/course/x">still on edx</a>'
