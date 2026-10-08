@@ -724,6 +724,96 @@ def test_distinct_banner_image_not_written_to_overviewfiles(tmp_path):
     assert {f.findtext("filename") for f in overviewfiles} == {"thumb.png", "."}
 
 
+def _section_file_entries(files_root):
+    return [
+        f
+        for f in files_root.findall("file")
+        if f.findtext("component") == "course" and f.findtext("filearea") == "section"
+    ]
+
+
+def test_dangling_section_summary_image_gets_registered(tmp_path):
+    """Any @@PLUGINFILE@@ reference inside a section's own summary must get a matching
+    files.xml entry and a reference in that section's own inforef.xml."""
+    b = OLXFixtureBuilder(tmp_path / "course")
+    b.chapters = [
+        Chapter(
+            "ch1",
+            "Ch 1",
+            [Sequential("s1", "S1", [Vertical("v1", "V1", [HtmlComponent("pg1", "Page 1")])])],
+        )
+    ]
+    b.static_files = {"dangling.png": _PNG}
+    course = Course(b.build())
+    course.parse()
+    course.overview_summary_html = '<p>desc</p><img src="/static/dangling.png">'
+    out = tmp_path / "out.mbz"
+    MBZBuilder(course, authora=True).build(out)
+
+    files_root = _parse(out, "files.xml")
+    section_files = _section_file_entries(files_root)
+    dangling = [f for f in section_files if f.findtext("filename") == "dangling.png"]
+    assert len(dangling) == 1
+
+    itemid = dangling[0].findtext("itemid")
+    inforef = _parse(out, f"sections/section_{itemid}/inforef.xml")
+    registered_ids = {f.findtext("id") for f in inforef.findall(".//file")}
+    assert dangling[0].get("id") in registered_ids
+
+
+def test_overview_summary_reusing_course_image_is_not_double_registered(tmp_path):
+    """The same filename referenced both by a section summary and by the course image must
+    produce exactly one file record for that (component, filearea, itemid, filename)."""
+    b = OLXFixtureBuilder(tmp_path / "course")
+    b.chapters = [
+        Chapter(
+            "ch1",
+            "Ch 1",
+            [Sequential("s1", "S1", [Vertical("v1", "V1", [HtmlComponent("pg1", "Page 1")])])],
+        )
+    ]
+    b.static_files = {"thumb.png": _PNG}
+    b.course_image = "/static/thumb.png"
+    course = Course(b.build())
+    course.parse()
+    course.overview_summary_html = '<p>desc</p><img src="/static/thumb.png">'
+    out = tmp_path / "out.mbz"
+    MBZBuilder(course, authora=True).build(out)
+
+    files_root = _parse(out, "files.xml")
+    section_files = _section_file_entries(files_root)
+    thumbs = [f for f in section_files if f.findtext("filename") == "thumb.png"]
+    assert len(thumbs) == 1
+
+
+def test_chapter_summary_dangling_image_gets_registered(tmp_path):
+    """The same summary-reference registration applies to every section, not just Overview."""
+    b = OLXFixtureBuilder(tmp_path / "course")
+    b.chapters = [
+        Chapter(
+            "ch1",
+            "Ch 1",
+            [Sequential("s1", "S1", [Vertical("v1", "V1", [HtmlComponent("pg1", "Page 1")])])],
+        )
+    ]
+    b.static_files = {"dangling.png": _PNG}
+    course = Course(b.build())
+    course.parse()
+    course.chapters[0]["summary_html"] = '<img src="/static/dangling.png">'
+    out = tmp_path / "out.mbz"
+    MBZBuilder(course, authora=True).build(out)
+
+    files_root = _parse(out, "files.xml")
+    section_files = _section_file_entries(files_root)
+    dangling = [f for f in section_files if f.findtext("filename") == "dangling.png"]
+    assert len(dangling) == 1
+
+    itemid = dangling[0].findtext("itemid")
+    inforef = _parse(out, f"sections/section_{itemid}/inforef.xml")
+    registered_ids = {f.findtext("id") for f in inforef.findall(".//file")}
+    assert dangling[0].get("id") in registered_ids
+
+
 def test_no_section_embed_without_course_image(tmp_path):
     """An authora course with no course_image/banner_image (e.g. a wp course with
     no scraped hero image) gets no section-area entries and no summary change."""
