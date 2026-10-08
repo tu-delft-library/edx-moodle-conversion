@@ -376,18 +376,18 @@ class MBZBuilder:
     def _build_course_image_entries(
         self, c: BaseParser, ids: _Counter, course_ctx: int
     ) -> list[dict]:
-        """Build course-context `overviewfiles` file records for the course image and banner.
+        """Build the course-context `overviewfiles` file record for the catalogue thumbnail.
 
-        Thumbnail first (sortorder 0) so it's the one Moodle picks for the catalogue tile; the
-        banner rides along at sortorder 1, embedded but not wired to any rendering path yet.
-        Deduplicated by path -- WP has only one image and registers it as both, and two entries
-        for the same file would collide on Moodle's per-area filename uniqueness.
+        Only `course_image_path` goes here -- Moodle's `get_course_overviewfiles()` sorts this
+        area by filename (not by any sortorder we write) and keeps only the first
+        `courseoverviewfileslimit` files, so a second real file (`banner_image_path`) can win the
+        catalogue tile over the intended course image depending on filename. `banner_image_path`
+        has no confirmed Authora storage target yet (see Moodle_thumbnail_and_banner_docs.md),
+        so it isn't written anywhere here rather than risk clobbering the thumbnail.
         """
         entries: list[dict] = []
-        paths = dict.fromkeys(
-            p for p in (c.course_image_path, c.banner_image_path) if p is not None
-        )
-        for sortorder, path in enumerate(paths):
+        path = c.course_image_path
+        if path is not None:
             entries.append(
                 {
                     "id": ids.next(),
@@ -401,7 +401,7 @@ class MBZBuilder:
                     "component": "course",
                     "filearea": "overviewfiles",
                     "itemid": 0,
-                    "sortorder": sortorder,
+                    "sortorder": 0,
                 }
             )
         if self.authora and entries:
