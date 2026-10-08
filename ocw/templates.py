@@ -21,7 +21,7 @@ MOODLE_BACKUP = """\
     <original_wwwroot>http://localhost</original_wwwroot>
     <original_site_identifier_hash>0</original_site_identifier_hash>
     <original_course_id>1</original_course_id>
-    <original_course_format>topics</original_course_format>
+    <original_course_format>{course_format}</original_course_format>
     <original_course_fullname>{course_name}</original_course_fullname>
     <original_course_shortname>{course_id}</original_course_shortname>
     <original_course_startdate>{ts}</original_course_startdate>
@@ -114,7 +114,7 @@ COURSE_XML = """\
   <idnumber>{course_id}</idnumber>
   <summary>{summary}</summary>
   <summaryformat>1</summaryformat>
-  <format>topics</format>
+  <format>{course_format}</format>
   <showgrades>1</showgrades>
   <!-- NOTE: use 1 if you want the Announcements tab to appear -->
   <newsitems>0</newsitems>
@@ -137,14 +137,70 @@ COURSE_XML = """\
   <completionnotify>0</completionnotify>
   <hiddensections>1</hiddensections>
   <coursedisplay>0</coursedisplay>
-  <category id="1">
+{plugin_format_multitabs_block}  <category id="1">
     <name>Miscellaneous</name>
     <description></description>
   </category>
   <tags/>
   <customfields>
 {customfields_block}  </customfields>
-{plugin_vidrouter_block}</course>"""
+{courseformatoptions_block}{plugin_vidrouter_block}</course>"""
+
+PLUGIN_FORMAT_MULTITABS_COURSE = """\
+  <plugin_format_multitabs_course>
+    <multitabs>
+      <taggroups>
+      </taggroups>
+      <moduletags>
+      </moduletags>
+      <modulesettings>
+      </modulesettings>
+      <usersettings>
+      </usersettings>
+      <filtersettings>
+      </filtersettings>
+    </multitabs>
+    <courseindexes>
+    </courseindexes>
+  </plugin_format_multitabs_course>
+"""
+
+# (name, value) rows written as <courseformatoptions> for the Authora `multitabs` format when
+# `--authora` is set. Values copied verbatim from an Authora-restored reference export
+# (see authora_diffs.md). `laststructurechange` and `visibleold` are left out: they're
+# Moodle-maintained state, not author preferences.
+AUTHORA_FORMAT_OPTIONS = (
+    ("sectionname_as_header", "1"),
+    ("library", "0"),
+    ("recyclebin", "default"),
+    ("open_multiple_sections", "1"),
+    ("show_courseindex_icons", "1"),
+    ("topsections_as_weeks", "0"),
+    ("modview", "list"),
+    ("tilesperrow", "3"),
+    ("show_courseindex_lines", "0"),
+    ("progress_header_variant", "0"),
+    ("summary_as_card", "0"),
+    ("mod_display_buttons", "0"),
+    ("show_modules", "1"),
+    ("enable_bannerslice", "1"),
+    ("bannerslice", "0"),
+    ("bannerslice_aspectratio", "aspectratio-16-3"),
+    ("course_hide_coursecategory", "show"),
+    ("course_hide_blockcourseoverview", "show"),
+    ("course_hide_homeavailablecourses", "show"),
+    ("sectionsingleview", "0"),
+    ("idnumber", ""),
+)
+
+COURSEFORMATOPTION = """\
+    <courseformatoption>
+      <format>multitabs</format>
+      <sectionid>0</sectionid>
+      <name>{name}</name>
+      <value>{value}</value>
+    </courseformatoption>
+"""
 
 SECTION_XML = """\
 <?xml version="1.0" encoding="UTF-8"?>
