@@ -1,6 +1,7 @@
 import zipfile
 
 from docx import Document
+from openpyxl import load_workbook
 
 from ocw.converter.external_report import (
     ExternalContentReport,
@@ -9,8 +10,8 @@ from ocw.converter.external_report import (
     _found_on,
     _is_blacklisted,
     _is_external,
+    _local_kind,
     _refs_in_html,
-    collect_external,
     merge_refs,
 )
 from ocw.converter import external_report
@@ -54,13 +55,14 @@ def test_refs_in_html_prefers_title_then_alt_then_text_then_fallback():
     ]
 
 
-def test_collect_external_lists_videos_and_links_from_all_pages():
+def test_external_refs_lists_videos_and_links_from_all_pages():
     course = _site().course(keep_all_content=True)
     course.parse()
-    refs = collect_external(course)
+    builder = ZipBuilder(course)
+    refs = builder._external_refs(builder._plan())
     videos = [r for r in refs if r.kind == "video"]
     assert [(v.title, v.url, v.page) for v in videos] == [
-        ("Lecture 1", "https://www.youtube.com/embed/abc123", "Lecture 1")
+        ("Lecture 1", "https://www.youtube.com/embed/abc123", "01_1._Intro/01_1.1_Basics/")
     ]
 
 
@@ -72,9 +74,9 @@ def test_report_round_trips_through_docx(tmp_path):
     path = tmp_path / "report.docx"
     ExternalContentReport(refs).write(path)
     assert _rows(path) == [
-        ["Title", "Type", "URL", "Found on"],
-        ["Intro video", "video", "https://youtu.be/x", "Lecture 1"],
-        ["Paper", "link", "https://example.com/p.pdf", "Reading 1"],
+        ["Title", "Type", "URL", "Found on", "Status", "Saved to"],
+        ["Intro video", "video", "https://youtu.be/x", "Lecture 1", "left alone", ""],
+        ["Paper", "link", "https://example.com/p.pdf", "Reading 1", "left alone", ""],
     ]
 
 
@@ -91,10 +93,10 @@ def test_identical_urls_merge_into_one_entry_with_all_pages():
     assert pages == ["Exams", "Software"]
 
 
-def test_found_on_wording_by_page_count():
-    assert _found_on(["Exams"]) == "Exams"
-    assert _found_on(["Exams", "Software"]) == "found on both: Exams; Software"
-    assert _found_on(["A", "B", "C"]) == "found on 3 pages: A; B; C"
+def test_found_on_shows_count_and_first_entry():
+    assert _found_on(["docs/"]) == "docs/"
+    assert _found_on(["docs/", "lecture/"]) == "2 locations (docs/)"
+    assert _found_on(["a/", "b/", "c/"]) == "3 locations (a/)"
 
 
 def test_report_urls_are_clickable_hyperlinks(tmp_path):
@@ -129,6 +131,60 @@ def test_zip_contains_docx_at_root_and_index_links_it(tmp_path):
     assert "https://www.youtube.com/embed/abc123" in urls
 
 
+def test_zip_contains_xlsx_at_root_and_index_links_it(tmp_path):
+    course = _site().course(keep_all_content=True)
+    course.parse()
+    out = tmp_path / "course.zip"
+    ZipBuilder(course).build(out)
+    with zipfile.ZipFile(out) as zf:
+        assert "Example_Course/external_content.xlsx" in zf.namelist()
+        assert 'href="external_content.xlsx"' in zf.read("Example_Course/index.html").decode()
+        zf.extract("Example_Course/external_content.xlsx", tmp_path)
+    wb = load_workbook(tmp_path / "Example_Course/external_content.xlsx")
+    ws = wb.active
+    header = [c.value for c in ws[1]]
+    assert header == ["File / link title", "Type", "URL", "Status", "Saved to", "Found at path"]
+    titles = [ws.cell(row=r, column=1).value for r in range(2, ws.max_row + 1)]
+    assert "diagram.png" in titles
+
+
+def test_xlsx_has_one_row_per_occurrence_not_merged(tmp_path):
+    refs = [
+        ExternalRef("Paper", "https://example.com/p.pdf", "link", "Reading 1/"),
+        ExternalRef("Paper", "https://example.com/p.pdf", "link", "Reading 2/"),
+    ]
+    report = ExternalContentReport(refs)
+    path = tmp_path / "report.xlsx"
+    report.write_xlsx(path)
+    wb = load_workbook(path)
+    ws = wb.active
+    assert ws.max_row == 3
+
+
+def test_xlsx_shows_dash_for_blank_saved_to(tmp_path):
+    refs = [ExternalRef("Paper", "https://example.com/p.pdf", "link", "Reading 1/")]
+    report = ExternalContentReport(refs)
+    path = tmp_path / "report.xlsx"
+    report.write_xlsx(path)
+    wb = load_workbook(path)
+    ws = wb.active
+    assert ws.cell(row=2, column=5).value == "-"
+
+
+def test_xlsx_sorts_rows_with_a_saved_to_location_first(tmp_path):
+    refs = [
+        ExternalRef("Paper", "https://example.com/p.pdf", "link", "Reading 1/"),
+        ExternalRef("diagram.png", "https://e.com/diagram.png", "image", "Lecture 1/", "copied", "assets/diagram.png"),
+    ]
+    report = ExternalContentReport(refs)
+    path = tmp_path / "report.xlsx"
+    report.write_xlsx(path)
+    wb = load_workbook(path)
+    ws = wb.active
+    assert ws.cell(row=2, column=1).value == "diagram.png"
+    assert ws.cell(row=2, column=5).value == "assets/diagram.png"
+
+
 CC_FOOTER = (
     '<section class="license"><a href="http://creativecommons.org/licenses/by-nc-sa/4.0/" rel="license">'
     '<img alt="Creative Commons License" src="https://i.creativecommons.org/l/by-nc-sa/4.0/88x31.png"></a>'
@@ -152,6 +208,55 @@ def test_blacklist_entries_are_configurable(monkeypatch):
     monkeypatch.setattr(external_report, "_BLACKLIST", frozenset({"example.com"}))
     assert _refs_in_html('<a href="https://sub.example.com/x">x</a>', "Page") == []
     assert len(_refs_in_html(CC_FOOTER, "Page")) == 2
+
+
+def test_overview_page_refs_are_labeled_not_blank():
+    class _Course:
+        overview_summary_html = '<a href="https://example.com/x">Link</a>'
+        chapters: list = []
+        reading_pages: list = []
+        dedup_pages: list = []
+
+    builder = ZipBuilder(_Course())
+    refs = builder._external_refs(builder._plan())
+    assert [r.page for r in refs] == ["course overview"]
+
+
+def test_identical_titles_in_different_folders_are_not_collapsed():
+    class _Course:
+        overview_summary_html = None
+        chapters = [
+            {
+                "display_name": f"Ch{i}",
+                "sequentials": [
+                    {
+                        "display_name": "S",
+                        "verticals": [
+                            {
+                                "display_name": "Exams",
+                                "components": [
+                                    {
+                                        "type": "html",
+                                        "content": '<a href="https://example.com/exams">Exams</a>',
+                                    }
+                                ],
+                            }
+                        ],
+                    }
+                ],
+            }
+            for i in range(2)
+        ]
+        reading_pages: list = []
+        dedup_pages: list = []
+
+    builder = ZipBuilder(_Course())
+    refs = builder._external_refs(builder._plan())
+    merged = merge_refs(refs)
+    assert len(merged) == 1
+    _, folders = merged[0]
+    assert len(folders) == 2
+    assert folders[0] != folders[1]
 
 
 def test_amazon_links_are_not_reported():
@@ -184,4 +289,40 @@ def test_blacklisted_video_is_not_reported():
         reading_pages: list = []
         dedup_pages: list = []
 
-    assert [r.title for r in collect_external(_Course())] == ["B"]
+    builder = ZipBuilder(_Course())
+    assert [r.title for r in builder._external_refs(builder._plan())] == ["B"]
+
+
+def test_local_kind_by_suffix():
+    assert _local_kind("ct530801.pdf") == "pdf"
+    assert _local_kind("88x31.png") == "image"
+    assert _local_kind("fontawesome-webfont.woff2") == "font"
+    assert _local_kind("notes.txt") == "file"
+
+
+def test_link_rows_have_blank_location():
+    assert ExternalRef("T", "https://e.com", "link", "P").location == ""
+
+
+def test_docx_has_saved_to_column(tmp_path):
+    refs = [ExternalRef("diagram.png", "https://e.com/diagram.png", "image", "Lecture 1", "copied", "assets/diagram.png")]
+    path = tmp_path / "report.docx"
+    ExternalContentReport(refs).write(path)
+    rows = _rows(path)
+    assert rows[0] == ["Title", "Type", "URL", "Found on", "Status", "Saved to"]
+    assert rows[1] == ["diagram.png", "image", "https://e.com/diagram.png", "Lecture 1", "copied", "assets/diagram.png"]
+
+
+def test_rows_with_a_saved_to_location_are_sorted_first(tmp_path):
+    refs = [
+        ExternalRef("Paper", "https://example.com/p.pdf", "link", "Reading 1"),
+        ExternalRef("diagram.png", "https://e.com/diagram.png", "image", "Lecture 1", "copied", "assets/diagram.png"),
+        ExternalRef("Intro video", "https://youtu.be/x", "video", "Lecture 1"),
+        ExternalRef("88x31.png", "https://e.com/88x31.png", "image", "Lecture 1", "left alone", ""),
+    ]
+    path = tmp_path / "report.docx"
+    ExternalContentReport(refs).write(path)
+    rows = _rows(path)
+    assert rows[1][0] == "diagram.png"
+    assert rows[1][5] == "assets/diagram.png"
+    assert [r[0] for r in rows[2:]] == ["Paper", "Intro video", "88x31.png"]

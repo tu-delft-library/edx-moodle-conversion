@@ -182,10 +182,10 @@ def test_asset_name_and_key_helpers():
     assert _key("https://x/y/#frag") == "https://x/y"
 
 
-def test_blacklist_matches_badge_featured_image_and_zip_only():
+def test_blacklist_matches_badge_and_featured_image_only():
     assert _is_blacklisted_asset("88x31.png")
     assert _is_blacklisted_asset("featured-Image.jpg")
-    assert _is_blacklisted_asset("Course_bundle.zip")
+    assert not _is_blacklisted_asset("Course_bundle.zip")
     assert not _is_blacklisted_asset("ct530801.pdf")
     assert not _is_blacklisted_asset("fontawesome-webfont.woff2")
     assert not _is_blacklisted_asset("diagram.png")
@@ -207,6 +207,56 @@ def test_empty_vertical_writes_placeholder(tmp_path):
     with zipfile.ZipFile(out) as zf:
         pages = [zf.read(n).decode("utf-8") for n in zf.namelist() if n.endswith(".html")]
     assert any(_EMPTY_BODY in page for page in pages)
+
+
+def test_usage_recorded_per_page(tmp_path):
+    course = _site().course(keep_all_content=True)
+    course.parse()
+    builder = ZipBuilder(course)
+    builder.build(tmp_path / "course.zip")
+    assert builder._usage["diagram.png"] == ["01_1._Intro/01_1.1_Basics/"]
+
+
+def test_local_refs_location_set_for_copied_file(tmp_path):
+    course = _site().course(keep_all_content=True)
+    course.parse()
+    builder = ZipBuilder(course)
+    builder.build(tmp_path / "course.zip")
+    ref = next(r for r in builder._local_refs() if r.title == "diagram.png")
+    assert ref.location == "assets/diagram.png"
+    assert ref.status == "copied"
+
+
+def test_local_refs_location_blank_for_skipped_file(tmp_path):
+    course = _site().course(keep_all_content=True)
+    course.parse()
+    builder = ZipBuilder(course)
+    builder.build(tmp_path / "course.zip")
+    ref = next(r for r in builder._local_refs() if r.title == "88x31.png")
+    assert ref.location == ""
+    assert ref.status == "left alone"
+
+
+def test_local_refs_labels_assets_not_used_in_any_page_body(tmp_path):
+    banner_url = "https://ocw.tudelft.nl/wp-content/uploads/banner.jpg"
+    site = _site()
+    site.add_home([(SUBJECT_URL, "1. Intro")], banner_url=banner_url)
+    site.add_static_file("banner.jpg", b"banner-bytes")
+    course = site.course(keep_all_content=True)
+    course.parse()
+    builder = ZipBuilder(course)
+    builder.build(tmp_path / "course.zip")
+    ref = next(r for r in builder._local_refs() if r.title == "banner.jpg")
+    assert ref.page == "not referenced on any page"
+
+
+def test_local_refs_drops_font_rows(tmp_path):
+    course = _site().course(keep_all_content=True)
+    course.parse()
+    builder = ZipBuilder(course)
+    builder.build(tmp_path / "course.zip")
+    assert not any(r.kind == "font" for r in builder._local_refs())
+    assert not any("fontawesome" in r.title for r in builder._local_refs())
 
 
 def test_empty_vertical_keeps_chapter_index_intact(tmp_path):
