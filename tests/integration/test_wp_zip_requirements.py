@@ -2,6 +2,7 @@ import posixpath
 import zipfile
 
 from bs4 import BeautifulSoup
+from docx import Document
 
 from ocw.converter.zip_builder import ZipBuilder
 from tests.unit.test_zip_builder import _site
@@ -77,6 +78,18 @@ def test_blacklisted_asset_and_its_references_are_dropped(tmp_path):
         assert "88x31" not in _read(zf, "01_1._Intro/01_1.1_Basics/01_Lecture_1.html")
         assert "assets/diagram.png" in names
         assert "assets/fontawesome-webfont.woff2" in names
+
+
+# WP-ZIP9
+def test_docx_in_zip_has_row_for_copied_local_file(tmp_path):
+    with _build(tmp_path) as zf:
+        docx_name = next(n for n in zf.namelist() if n.endswith("external_content.docx"))
+        docx_bytes = zf.read(docx_name)
+    docx_path = tmp_path / "external_content.docx"
+    docx_path.write_bytes(docx_bytes)
+    table = Document(docx_path).tables[0]
+    rows = [[c.text for c in row.cells] for row in table.rows]
+    assert any(row[0] == "diagram.png" and row[4] == "copied" for row in rows[1:])
 
 
 # WP-ZIP7
