@@ -854,6 +854,7 @@ class WPCourse(BaseParser):
         if fetched is None:
             return None
         self.static_files[fetched.name] = fetched
+        self.static_sources[fetched.name] = asset_url
         return fetched.name
 
     def _find_download_link(self, node) -> list[dict]:
