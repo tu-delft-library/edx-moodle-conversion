@@ -10,7 +10,13 @@ from pathlib import Path, PurePosixPath
 
 from bs4 import BeautifulSoup
 
-from ocw.converter.external_report import ExternalContentReport, collect_external
+from ocw.converter.external_report import (
+    ExternalContentReport,
+    ExternalRef,
+    _is_blacklisted,
+    _local_kind,
+    _refs_in_html,
+)
 from ocw.parser.base import BaseParser
 from ocw.utils import _UNSAFE_FILENAME_RE
 
@@ -18,6 +24,7 @@ log = logging.getLogger("ocw.zip_builder")
 _ASSET_REF_RE = re.compile(r"(?:/static/|@@PLUGINFILE@@/)([^\"'>\s)]+)")
 _ROOT_INDEX = PurePosixPath("index.html")
 _EXTERNAL_DOCX = "external_content.docx"
+_EXTERNAL_XLSX = "external_content.xlsx"
 _PAGE = """<!doctype html>
 <html lang="en">
 <head><meta charset="utf-8"><title>{title}</title></head>
@@ -27,10 +34,11 @@ _PAGE = """<!doctype html>
 </html>
 """
 _EMPTY_BODY = "<p>No content was found on the source page.</p>"
+_COURSE_OVERVIEW = "course overview"
+_NOT_REFERENCED = "not referenced on any page"
 _ASSET_BLACKLIST = (
     re.compile(r"^88x31\.png$"),
     re.compile(r"^featured-Image\.[a-z]+$"),
-    re.compile(r"\.zip$"),
 )
 
 
@@ -53,6 +61,10 @@ def _asset_name(name: str) -> str:
 
 def _rel(target: PurePosixPath, page: PurePosixPath) -> str:
     return posixpath.relpath(target.as_posix(), start=page.parent.as_posix())
+
+
+def _folder(page: PurePosixPath) -> str:
+    return f"{page.parent.as_posix()}/"
 
 
 @dataclass
@@ -90,6 +102,7 @@ class ZipBuilder:
         self.course = course
         self._by_url: dict[str, PlannedPage] = {}
         self._skipped_assets: set[str] = set()
+        self._usage: dict[str, list[str]] = {}
 
     def build(self, out: Path) -> None:
         tmp = Path(tempfile.mkdtemp())
@@ -100,9 +113,9 @@ class ZipBuilder:
             self._copy_assets(root)
             self._write_pages(root, plan)
             self._write_index(root, plan)
-            ExternalContentReport(collect_external(self.course)).write(
-                root / _EXTERNAL_DOCX
-            )
+            report = ExternalContentReport(self._external_refs(plan) + self._local_refs())
+            report.write(root / _EXTERNAL_DOCX)
+            report.write_xlsx(root / _EXTERNAL_XLSX)
             self._zip(tmp, out)
         finally:
             shutil.rmtree(tmp, ignore_errors=True)
@@ -132,6 +145,28 @@ class ZipBuilder:
         self._plan_linked(plan.readings, self.course.reading_pages, "readings", "reading_url")
         self._plan_linked(plan.shared, self.course.dedup_pages, "shared", "dedup_url")
         return plan
+
+    def _external_refs(self, plan: Plan) -> list[ExternalRef]:
+        refs: list[ExternalRef] = []
+
+        def _add(folder: str, components: list[dict]) -> None:
+            for comp in components:
+                if comp["type"] == "video" and not _is_blacklisted(comp["src"]):
+                    refs.append(ExternalRef(comp["display_name"], comp["src"], "video", folder))
+                elif comp["type"] == "html":
+                    refs.extend(_refs_in_html(comp["content"], folder))
+
+        if self.course.overview_summary_html:
+            _add(_COURSE_OVERVIEW, [{"type": "html", "content": self.course.overview_summary_html}])
+        for chapter in plan.chapters:
+            if chapter.index.summary_html:
+                _add(_folder(chapter.index.path), [{"type": "html", "content": chapter.index.summary_html}])
+            for _, verticals in chapter.sequentials:
+                for vertical in verticals:
+                    _add(_folder(vertical.path), vertical.components)
+        for page in plan.readings + plan.shared:
+            _add(_folder(page.path), page.components)
+        return refs
 
     def _plan_linked(
         self, target: list[PlannedPage], pages: list[dict], folder: str, url_key: str
@@ -188,9 +223,16 @@ class ZipBuilder:
     def _localise(self, html: str, page: PurePosixPath) -> str:
         prefix = _rel(PurePosixPath("assets"), page)
         html = _ASSET_REF_RE.sub(
-            lambda m: f"{prefix}/{_asset_name(m.group(1))}", html
+            lambda m: self._use(m.group(1), page, prefix), html
         )
         return self._strip_scripts(html)
+
+    def _use(self, name: str, page: PurePosixPath, prefix: str) -> str:
+        folder = _COURSE_OVERVIEW if page == _ROOT_INDEX else _folder(page)
+        folders = self._usage.setdefault(_asset_name(name), [])
+        if folder not in folders:
+            folders.append(folder)
+        return f"{prefix}/{_asset_name(name)}"
 
     def _page_link(self, url: str, page: PurePosixPath) -> str:
         target = self._by_url[_key(url)]
@@ -239,6 +281,7 @@ class ZipBuilder:
                 parts.append(f"<h2>{heading}</h2>")
                 parts.append(self._link_list(pages, _ROOT_INDEX))
         parts.append(f'<p><a href="{_EXTERNAL_DOCX}">External content overview (Docx)</a></p>')
+        parts.append(f'<p><a href="{_EXTERNAL_XLSX}">External content, one row per occurrence (Excel)</a></p>')
         self._write_html(root / _ROOT_INDEX, self.course.course_name, "\n".join(parts))
 
     def _chapter_entry(self, chapter: PlannedChapter) -> str:
@@ -261,6 +304,23 @@ class ZipBuilder:
                 log.info("Skipping blacklisted asset '%s'", name)
                 continue
             shutil.copyfile(source, assets / _asset_name(name))
+
+    def _local_refs(self) -> list[ExternalRef]:
+        refs = []
+        for name in self.course.static_files:
+            kind = _local_kind(name)
+            if kind == "font":
+                continue
+            url = self.course.static_sources.get(name)
+            if url is None:
+                log.warning("No source url recorded for static file '%s', skipping its report row", name)
+                continue
+            skipped = _is_blacklisted_asset(name)
+            status = "left alone" if skipped else "copied"
+            location = "" if skipped else f"assets/{_asset_name(name)}"
+            for folder in self._usage.get(_asset_name(name), [_NOT_REFERENCED]):
+                refs.append(ExternalRef(name, url, kind, folder, status, location))
+        return refs
 
     @staticmethod
     def _zip(tmp: Path, out: Path) -> None:
