@@ -30,6 +30,7 @@ ruff = "^0.14.0"
 
 [tool.pytest.ini_options]
 testpaths = ["tests/unit", "tests/integration"]
+markers = ["real_courses: converts real courses over the network (opt-in via --real-courses, slow)"]
 
 [tool.ruff.lint]
 select = ["F", "C901"]

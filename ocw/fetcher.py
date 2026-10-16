@@ -53,20 +53,25 @@ class AssetFetcher:
         self._text_cache: dict[str, str | None] = {}
         self._last_request_at: dict[str, float] = {}
 
-    def fetch(self, url: str) -> Path | None:
+    def fetch(self, url: str, name: str | None = None) -> Path | None:
         """Fetch `url` once and return its local path, or `None` when it is unsupported or unavailable.
 
-        Failed results are cached too, so repeated references do not repeat network requests.
+        `name` saves the file under that name and takes its expected type from it, for URLs
+        without a file extension. Failed results are cached too, so repeated references do not
+        repeat network requests.
         """
         if url not in self._cache:
-            self._cache[url] = self._fetch_uncached(url)
+            self._cache[url] = self._fetch_uncached(url, name or _safe_filename(url))
         return self._cache[url]
 
-    def _fetch_uncached(self, url: str) -> Path | None:
+    def _fetch_uncached(self, url: str, name: str) -> Path | None:
         """Download one uncached supported asset and validate its response type."""
-        ext = Path(urlparse(url).path).suffix.lower()
+        ext = Path(name).suffix.lower()
         if ext not in FETCHABLE_EXTENSIONS:
             return None
+        path = self.dest_dir / name
+        if path.exists():
+            return path
 
         self._throttle(urlparse(url).netloc)
         try:
@@ -87,10 +92,8 @@ class AssetFetcher:
             )
             return None
 
-        name = _safe_filename(url)
-        path = self.dest_dir / name
         path.write_bytes(resp.content)
-        log.info("DOWNLOAD: Fetched external asset '%s' -> %s", url, name)
+        log.info("DOWNLOAD: Fetched external asset '%s' -> %s", url, path.name)
         return path
 
     def fetch_text(self, url: str) -> str | None:

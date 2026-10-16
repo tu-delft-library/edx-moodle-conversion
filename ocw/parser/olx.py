@@ -24,6 +24,11 @@ log = logging.getLogger("ocw.parser")
 # _WHITELISTED_TAGS = frozenset({"html", "video"})
 
 # Component tags deliberately dropped because the converter has no Moodle equivalent.
+# delftxtools' Discussion and Collaboration Guidelines, an extensionless PDF linked by `#page=`.
+_DACG_URL = "https://delftxtools.tudelft.nl/DaCG"
+_DACG_NAME = "DaCG.pdf"
+_DACG_RE = re.compile(r"https?://delftxtools\.tudelft\.nl/DaCG(?=[#\"'\s]|$)")
+
 _BLACKLISTED_TAGS = frozenset(
     {
         "problem",
@@ -149,7 +154,7 @@ class Course(BaseParser):
         tab_path = self.root / "tabs" / f"{url_slug}.html"
         if not tab_path.exists():
             return
-        self.syllabus_html = tab_path.read_text(encoding="utf-8")
+        self.syllabus_html = self._bundle_dacg(tab_path.read_text(encoding="utf-8"))
         self.syllabus_title = tab.get("name") or "Syllabus"
 
     def _parse_readings(self, course: ET.Element) -> None:
@@ -284,6 +289,17 @@ class Course(BaseParser):
                 script.decompose()
             comp["content"] = str(soup)
 
+    def _bundle_dacg(self, html: str) -> str:
+        """Point DaCG links at a bundled copy, keeping any `#page=` fragment. Left untouched
+        when it can't be fetched."""
+        if self.fetcher is None or not _DACG_RE.search(html):
+            return html
+        fetched = self.fetcher.fetch(_DACG_URL, name=_DACG_NAME)
+        if fetched is None:
+            return html
+        self.static_files[_DACG_NAME] = fetched
+        return _DACG_RE.sub(f"/static/{_DACG_NAME}", html)
+
     def _fetch_static(self, url: str) -> str | None:
         """Bundle `url` as a static file and return its name, or `None` when unavailable."""
         name = resolve_asset_name(url)
@@ -371,7 +387,9 @@ class Course(BaseParser):
         el = ET.parse(path).getroot()
         filename = el.get("filename", url_name)
         html_path = root / "html" / f"{filename}.html"
-        content = html_path.read_text(encoding="utf-8") if html_path.exists() else ""
+        content = self._bundle_dacg(
+            html_path.read_text(encoding="utf-8") if html_path.exists() else ""
+        )
 
         for match in _ABSOLUTE_ASSET_RE.finditer(content):
             absolute_url, name = match.group(0), match.group(1)

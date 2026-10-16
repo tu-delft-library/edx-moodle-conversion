@@ -18,6 +18,7 @@ from ocw.converter.html import (
     strip_blacklisted_classes,
     strip_templated_iframes,
     style_figcaption,
+    unlink_edx_hrefs,
 )
 from ocw.converter.strategies import (
     FlatSectionStrategy,
@@ -284,17 +285,14 @@ class MBZBuilder:
         if c.syllabus_html is None:
             return None
 
-        warn_external_edx_urls(
-            c.syllabus_html, context="Syllabus", static_files=c.static_files
+        content = unlink_edx_hrefs(
+            rewrite_static_urls(c.syllabus_html, c.static_files), "Syllabus"
         )
+        warn_external_edx_urls(content, context="Syllabus", static_files=c.static_files)
         content = style_figcaption(
             constrain_table_size(
                 constrain_img_size(
-                    strip_templated_iframes(
-                        strip_blacklisted_classes(
-                            rewrite_static_urls(c.syllabus_html, c.static_files)
-                        )
-                    )
+                    strip_templated_iframes(strip_blacklisted_classes(content))
                 )
             )
         )
@@ -307,7 +305,7 @@ class MBZBuilder:
             "sec_num": overview_section["number"],
             "name": c.syllabus_title,
             "content": content,
-            "file_refs": re.findall(r'@@PLUGINFILE@@/([^"\'>\s]+)', content),
+            "file_refs": re.findall(r'@@PLUGINFILE@@/([^"\'>\s#?]+)', content),
             "file_ids": [],
         }
 
@@ -386,7 +384,7 @@ class MBZBuilder:
             summary = sec.get("summary")
             if not summary:
                 continue
-            for name in re.findall(r'@@PLUGINFILE@@/([^"\'>\s]+)', summary):
+            for name in re.findall(r'@@PLUGINFILE@@/([^"\'>\s#?]+)', summary):
                 path = c.static_files.get(name)
                 if path is None:
                     continue

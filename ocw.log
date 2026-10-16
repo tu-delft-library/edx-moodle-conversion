@@ -1,8 +1,23 @@
-15:05:26 [INFO] ocw-wp v0.2.0-11-g49907d8-dirty
-15:05:28 [INFO] DOWNLOAD: Fetched external asset 'https://ocw.tudelft.nl/wp-content/uploads/PGeo_L1_Petroleum_Geology_-_Lecture_1_08.pdf' -> PGeo_L1_Petroleum_Geology_-_Lecture_1_08.pdf
-15:05:31 [INFO] DOWNLOAD: Fetched external asset 'https://ocw.tudelft.nl/wp-content/uploads/PGeo_L2_Petroleum_Geology_-_Lecture_2_08.pdf' -> PGeo_L2_Petroleum_Geology_-_Lecture_2_08.pdf
-15:05:33 [INFO] DOWNLOAD: Fetched external asset 'https://ocw.tudelft.nl/wp-content/uploads/PGeo_L3_Petroleum_Geology_-_Lecture_3_08.pdf' -> PGeo_L3_Petroleum_Geology_-_Lecture_3_08.pdf
-15:05:36 [INFO] DOWNLOAD: Fetched external asset 'https://ocw.tudelft.nl/wp-content/uploads/PGeo_L4_Petroleum_Geology_-_Lecture_4_08.pdf' -> PGeo_L4_Petroleum_Geology_-_Lecture_4_08.pdf
-15:05:40 [INFO] DOWNLOAD: Fetched external asset 'https://ocw.tudelft.nl/wp-content/uploads/PGeo_L5_Petroleum_Geology_-_Lecture_5_08.pdf' -> PGeo_L5_Petroleum_Geology_-_Lecture_5_08.pdf
-15:05:44 [INFO] DOWNLOAD: Fetched external asset 'https://ocw.tudelft.nl/wp-content/uploads/PGeo_L6_Petroleum_Geology_-_Lecture_6_08.pdf' -> PGeo_L6_Petroleum_Geology_-_Lecture_6_08.pdf
-15:05:47 [INFO] DOWNLOAD: Fetched external asset 'https://ocw.tudelft.nl/wp-content/uploads/PGeo_L7_Petroleum_Geology_-_Lecture_7_08.pdf' -> PGeo_L7_Petroleum_Geology_-_Lecture_7_08.pdf
+16:46:59 [INFO] ocw v0.4.3-3-g3ede692-dirty
+16:47:00 [INFO] DOWNLOAD: Fetched external asset 'https://delftxdownloads.tudelft.nl/_tools/dl/img/icon_video_blanc_36.png' -> icon_video_blanc_36.png
+16:47:01 [INFO] DOWNLOAD: Fetched external asset 'https://delftxdownloads.tudelft.nl/_tools/dl/img/icon_subtitles_blanc_36.png' -> icon_subtitles_blanc_36.png
+16:47:02 [INFO] DOWNLOAD: Fetched external asset 'https://delftxdownloads.tudelft.nl/AIfE4x_Data_creation_and_collection/Module_1/AIfE4x_2022_Module_1_1_1_Crowdsourcing_for_high_quality_data_collection-slides.pdf' -> AIfE4x_2022_Module_1_1_1_Crowdsourcing_for_high_quality_data_collection-slides.pdf
+16:47:04 [INFO] DOWNLOAD: Fetched external asset 'https://delftxdownloads.tudelft.nl/AIfE4x_Data_creation_and_collection/Module_1/AIfE4x_2022_Module_1_1_2_The_ImageNet_Story-slides.pdf' -> AIfE4x_2022_Module_1_1_2_The_ImageNet_Story-slides.pdf
+16:47:06 [INFO] DOWNLOAD: Fetched external asset 'https://delftxdownloads.tudelft.nl/AIfE4x_Data_creation_and_collection/Module_1/AIfE4x_2022_Module_1_2_1_Quality_in_Crowdsourcing-slides.pdf' -> AIfE4x_2022_Module_1_2_1_Quality_in_Crowdsourcing-slides.pdf
+16:47:08 [INFO] DOWNLOAD: Fetched external asset 'https://delftxdownloads.tudelft.nl/AIfE4x_Data_creation_and_collection/Module_1/AIfE4x_2022_Module_1_2_2_Quality_control_mechanisms-slides.pdf' -> AIfE4x_2022_Module_1_2_2_Quality_control_mechanisms-slides.pdf
+16:47:10 [INFO] DOWNLOAD: Fetched external asset 'https://delftxdownloads.tudelft.nl/AIfE4x_Data_creation_and_collection/Module_1/AIfE4x_2022_Module_1_3_1_Factors_Affecting_the_quality_in_crowdsourcing-slides.pdf' -> AIfE4x_2022_Module_1_3_1_Factors_Affecting_the_quality_in_crowdsourcing-slides.pdf
+16:47:12 [INFO] DOWNLOAD: Fetched external asset 'https://delftxdownloads.tudelft.nl/AIfE4x_Data_creation_and_collection/Module_2/AIfE4x_2022_Module_2_1_1_Data_Creation_and_Model_Evaluation_in_Artificial_Intelligence-slides.pdf' -> AIfE4x_2022_Module_2_1_1_Data_Creation_and_Model_Evaluation_in_Artificial_Intelligence-slides.pdf
+16:47:14 [INFO] DOWNLOAD: Fetched external asset 'https://delftxdownloads.tudelft.nl/AIfE4x_Data_creation_and_collection/Module_2/AIfE4x_2022_Module_2_1_2_Human_input_an_essential_building_block_for_AI-slides.pdf' -> AIfE4x_2022_Module_2_1_2_Human_input_an_essential_building_block_for_AI-slides.pdf
+16:47:16 [INFO] DOWNLOAD: Fetched external asset 'https://delftxdownloads.tudelft.nl/AIfE4x_Data_creation_and_collection/Module_2/AIfE4x_2022_Module_2_2_1_Reducing_Worker_Effort_Active_Learning_1-slides.pdf' -> AIfE4x_2022_Module_2_2_1_Reducing_Worker_Effort_Active_Learning_1-slides.pdf
+16:47:19 [INFO] DOWNLOAD: Fetched external asset 'https://delftxdownloads.tudelft.nl/AIfE4x_Data_creation_and_collection/Module_2/AIfE4x_2022_Module_2_2_1_Reducing_Worker_Effort_Active_Learning_2-slides.pdf' -> AIfE4x_2022_Module_2_2_1_Reducing_Worker_Effort_Active_Learning_2-slides.pdf
+16:47:20 [INFO] DOWNLOAD: Fetched external asset 'https://delftxdownloads.tudelft.nl/AIfE4x_Data_creation_and_collection/Module_2/AIfE4x_2022_Module_2_3_1_Interpreting_and_Evaluating_ML_models_1-slides.pdf' -> AIfE4x_2022_Module_2_3_1_Interpreting_and_Evaluating_ML_models_1-slides.pdf
+16:47:23 [INFO] DOWNLOAD: Fetched external asset 'https://delftxdownloads.tudelft.nl/AIfE4x_Data_creation_and_collection/Module_2/AIfE4x_2022_Module_2_3_1_Interpreting_and_Evaluating_ML_models_2-slides.pdf' -> AIfE4x_2022_Module_2_3_1_Interpreting_and_Evaluating_ML_models_2-slides.pdf
+16:47:25 [INFO] DOWNLOAD: Fetched external asset 'https://delftxdownloads.tudelft.nl/AIfE4x_Data_creation_and_collection/Module_2/AIfE4x_2022_Module_2_3_2_Debugging_ML_Models_and_Pipelines-slides.pdf' -> AIfE4x_2022_Module_2_3_2_Debugging_ML_Models_and_Pipelines-slides.pdf
+16:47:25 [INFO] Unlinked edX link on page 'Syllabus': https://support.edx.org/hc/en-us/sections/115004147627-Financial-Assistance
+16:47:25 [INFO] Unlinked edX link on page 'Welcome to Data Creation and Collection for Artificial Intelligence': https://www.edx.org/course/demox-edx-demox-1
+16:47:25 [INFO] Unlinked edX link on page 'Audit vs. Verified Learners': https://support.edx.org/hc/en-us/sections/115004147627-Financial-Assistance
+16:47:25 [INFO] Unlinked edX link on page 'Honour Pledge': https://www.edx.org/edx-terms-service
+16:47:25 [INFO] Unlinked edX link on page 'New to edX?': https://www.edx.org/course/demox-edx-demox-1
+16:47:26 [INFO] PASS: chapter/section count parity (expected 15, got 15)
+16:47:26 [INFO] PASS: sequential/subsection count parity (expected 38, got 38)
+16:47:26 [INFO] PASS: page count parity (expected 55, got 55)

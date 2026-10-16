@@ -5,9 +5,12 @@ elements and add minimal inline styling where OLX or Word-authored HTML would ot
 poorly in Moodle's content area.
 """
 
+import logging
 import re
 
-CLASS_BLACKLIST: list[str] = []  
+log = logging.getLogger("ocw.converter")
+
+CLASS_BLACKLIST: list[str] = []
 TUD_DOWNLOAD_BOX_CLASS = "tud-button"
 
 
@@ -58,6 +61,29 @@ def constrain_table_size(html: str) -> str:
         return tag.replace("<table ", '<table style="max-width:100%" ', 1)
 
     return re.sub(r"<table\b[^>]*>", _inject, html)
+
+
+_EDX_LINK_RE = re.compile(
+    r"<a\b[^>]*?\bhref=([\"'])(?:https?:)?//(?:[\w-]+\.)*"
+    r"(?:edx\.org|edx-video\.net|edx-cdn\.org|edxapp\.org)(?:[/:?#][^\"']*)?\1[^>]*>(.*?)</a>",
+    re.DOTALL | re.IGNORECASE,
+)
+
+
+def unlink_edx_hrefs(html: str, context: str = "") -> str:
+    """Replace links into the edX platform with their display text.
+
+    Run after `rewrite_static_urls`, so edX asset links that were bundled are already local.
+    """
+    def _unlink(m: re.Match) -> str:
+        log.info(
+            "Unlinked edX link%s: %s",
+            f" on page '{context}'" if context else "",
+            re.search(r"href=[\"']([^\"']*)", m.group(0)).group(1),
+        )
+        return m.group(2)
+
+    return _EDX_LINK_RE.sub(_unlink, html)
 
 
 def mark_hyperlinks_nomediaplugin(html: str) -> str:
