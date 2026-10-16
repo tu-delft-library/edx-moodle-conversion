@@ -9,6 +9,9 @@ MINIMAL_FIXTURE = Path(__file__).parent / "fixtures" / "minimal"
 def pytest_addoption(parser):
     parser.addoption("--olx-path", default=None, help="OLX directory for hybrid checks")
     parser.addoption("--mbz-path", default=None, help="MBZ file for hybrid checks")
+    parser.addoption(
+        "--real-courses", action="store_true", help="convert and URL-audit real courses"
+    )
 
 
 @pytest.fixture(scope="module")

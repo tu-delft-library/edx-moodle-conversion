@@ -58,6 +58,30 @@ def test_fetch_result_is_cached_and_not_refetched(tmp_path):
     assert session.calls == ["https://x/notes.pdf"]
 
 
+def test_existing_file_in_dest_dir_is_reused_without_request(tmp_path):
+    (tmp_path / "notes.pdf").write_bytes(b"%PDF-old")
+    session = _FakeSession(response=_FakeResponse())
+    fetcher = _fetcher(tmp_path, session)
+    path = fetcher.fetch("https://x/notes.pdf")
+    assert path == tmp_path / "notes.pdf"
+    assert path.read_bytes() == b"%PDF-old"
+    assert session.calls == []
+
+
+def test_name_saves_extensionless_url_and_sets_expected_type(tmp_path):
+    session = _FakeSession(response=_FakeResponse(content=b"%PDF-guide"))
+    fetcher = _fetcher(tmp_path, session)
+    path = fetcher.fetch("https://x/DaCG", name="DaCG.pdf")
+    assert path == tmp_path / "DaCG.pdf"
+    assert path.read_bytes() == b"%PDF-guide"
+
+
+def test_name_type_mismatch_returns_none(tmp_path):
+    session = _FakeSession(response=_FakeResponse(content_type="text/html"))
+    fetcher = _fetcher(tmp_path, session)
+    assert fetcher.fetch("https://x/DaCG", name="DaCG.pdf") is None
+
+
 def test_request_exception_returns_none_and_is_cached(tmp_path, caplog):
     session = _FakeSession(exc=requests.ConnectionError("down"))
     fetcher = _fetcher(tmp_path, session)

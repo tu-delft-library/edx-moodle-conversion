@@ -702,3 +702,75 @@ def test_html_component_warns_when_absolute_edx_asset_unfetchable(tmp_path, capl
         course.parse()
     assert "diagram.png" not in course.static_files
     assert "Missing image 'diagram.png'" in caplog.text
+
+
+class _DaCGFetcher:
+    def __init__(self, available: bool = True):
+        self._available = available
+        self.calls: list[tuple[str, str | None]] = []
+
+    def fetch(self, url: str, name: str | None = None) -> Path | None:
+        self.calls.append((url, name))
+        return Path(f"/tmp/dest/{name}") if self._available else None
+
+
+def _dacg_course(tmp_path, fetcher) -> Course:
+    b = _minimal_builder(tmp_path)
+    b.chapters = [
+        Chapter(
+            "ch1",
+            "Ch 1",
+            [
+                Sequential(
+                    "s1",
+                    "S1",
+                    [
+                        Vertical(
+                            "v1",
+                            "V1",
+                            [
+                                HtmlComponent(
+                                    "pg1",
+                                    "Page 1",
+                                    content='<a href="https://delftxtools.tudelft.nl/DaCG#page=2">'
+                                    "Forum Guidelines</a>",
+                                )
+                            ],
+                        )
+                    ],
+                )
+            ],
+        )
+    ]
+    b.static_tabs = [StaticTab("Syllabus", "syllabus-slug")]
+    b.tabs_files = {
+        "syllabus-slug": '<a href="https://delftxtools.tudelft.nl/DaCG" target=_new>Guidelines</a>'
+        '<a href="https://delftxtools.tudelft.nl/map">map</a>'
+    }
+    course = Course(b.build(), fetcher=fetcher)
+    course.parse()
+    return course
+
+
+def test_dacg_bundled_once_and_links_keep_page_fragment(tmp_path):
+    fetcher = _DaCGFetcher()
+    course = _dacg_course(tmp_path, fetcher)
+
+    assert _html_contents(course) == '<a href="/static/DaCG.pdf#page=2">Forum Guidelines</a>'
+    assert '<a href="/static/DaCG.pdf" target=_new>Guidelines</a>' in course.syllabus_html
+    assert 'href="https://delftxtools.tudelft.nl/map"' in course.syllabus_html
+    assert course.static_files["DaCG.pdf"] == Path("/tmp/dest/DaCG.pdf")
+    assert set(fetcher.calls) == {("https://delftxtools.tudelft.nl/DaCG", "DaCG.pdf")}
+
+
+def test_dacg_links_untouched_when_unavailable(tmp_path):
+    course = _dacg_course(tmp_path, _DaCGFetcher(available=False))
+
+    assert "https://delftxtools.tudelft.nl/DaCG#page=2" in _html_contents(course)
+    assert "DaCG.pdf" not in course.static_files
+
+
+def test_dacg_links_untouched_without_fetcher(tmp_path):
+    course = _dacg_course(tmp_path, None)
+
+    assert "https://delftxtools.tudelft.nl/DaCG#page=2" in _html_contents(course)
