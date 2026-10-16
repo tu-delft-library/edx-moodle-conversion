@@ -5,6 +5,7 @@ import itertools
 import logging
 import re
 from collections import Counter
+from urllib.parse import quote
 
 import requests
 from bs4 import BeautifulSoup
@@ -236,16 +237,42 @@ class WPCourse(BaseParser):
         return ", ".join(candidates)
 
     _TUD_HOST_CHECK = 'TUD_location.indexOf("ocw.tudelft.nl")!=-1'
-    _TUD_HOST_CHECK_FORCED = "true"
+
+    _DELFTX_IFRAME_SRC = (
+        "https://delftxdownloads.tudelft.nl/_tools/dl/TUD_download_tool.php"
+        "?src=ocw&path={download_id}&lang=en&ft={filetype}&ccSA=y&ccNC=y"
+    )
 
     def _fix_download_tool_widgets(self, article) -> None:
-        """Patch WordPress's `#download_tool` widget to work when served from Moodle."""
-        for widget in article.select("#download_tool"):
-            for script in widget.select("script"):
-                if script.string and self._TUD_HOST_CHECK in script.string:
-                    script.string = script.string.replace(
-                        self._TUD_HOST_CHECK, self._TUD_HOST_CHECK_FORCED
-                    )
+        """Replace WordPress's DelftxDownloads widget with a direct iframe embed.
+
+        The widget normally runs client-side via a chain of three CDN scripts
+        (TUD_download_tool.js -> builder.js -> resizer.js). resizer.js detects Moodle's own
+        global RequireJS and hands off to it, which throws "Mismatched anonymous define()
+        module" and aborts before the widget finishes building. builder.js's own logic is
+        deterministic (reads data-* attrs off the DOM, sets an iframe src), so we replicate it
+        here at parse time instead of depending on the CDN script chain at all. This also makes
+        the bootstrap <script> (matched by the host-check signature) dead weight, so it's dropped.
+        """
+        for box in article.select(".TUD_box_download"):
+            download_id = box.get("data-downloadid", "")
+            filetype = (box.get("data-videotype") or ".mp4").lstrip(".")
+            iframe = article.new_tag(
+                "iframe",
+                src=self._DELFTX_IFRAME_SRC.format(
+                    download_id=quote(download_id, safe="/"), filetype=filetype
+                ),
+                height="180",
+                scrolling="yes",
+                frameborder="0",
+                style="width:100%; margin:0;",
+            )
+            box.clear()
+            box.append(iframe)
+
+        for script in article.select("script"):
+            if script.string and self._TUD_HOST_CHECK in script.string:
+                script.decompose()
 
     def _excluded_imgs(self, article) -> set[str]:
         """Return image srcs the parser intentionally drops, for the content-loss audit to skip."""

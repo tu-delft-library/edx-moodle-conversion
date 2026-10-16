@@ -2,6 +2,8 @@ import logging
 import tarfile
 from xml.etree import ElementTree as ET
 
+import pytest
+
 from ocw.converter import MBZBuilder
 from ocw.utils import esc
 from tests.wp_builders import WPFixtureSite
@@ -205,9 +207,9 @@ def test_wp_cc6_vc_single_image_wrapper_alignment_survives_into_mbz(tmp_path):
 _TUD_HOST_CHECK = 'TUD_location.indexOf("ocw.tudelft.nl")!=-1'
 
 _DOWNLOAD_TOOL_HTML = (
-    '<div id="download_tool"><div class="wpb_wrapper">'
-    '<div class="TUD_box_download" data-DownloadID="Course/Week_1/Course_lec" '
-    'data-YoutubeID="abc123" data-VideoType=".mp4">'
+    '<div class="wpb_raw_code wpb_content_element wpb_raw_html"><div class="wpb_wrapper">'
+    '<div class="TUD_box_download" data-downloadid="Course/Week_1/Course_lec" '
+    'data-videotype=".mp4" data-youtubeid="abc123">'
     '<div class="tud-button tud-float video-download">'
     '<img class="tud-float tud_video_img" src="/static/icon_grey1_video_blanc_36.png"/>'
     '<ul class="TUD"><li class="TUD TUD_High_Video"><a href="#" target="_blank">High</a></li></ul>'
@@ -222,10 +224,20 @@ _DOWNLOAD_TOOL_HTML = (
 
 
 # WP-CC7
-def test_wp_cc7_download_tool_widget_host_check_forced_rest_untouched(tmp_path):
-    """The `#download_tool` widget's own bootstrap script only takes its self-contained branch
-    (loads jQuery itself, then the real `TUD_download_tool.js`) when `location.href` contains
-    "ocw.tudelft.nl"."""
+@pytest.mark.parametrize(
+    "wrap",
+    [
+        pytest.param(lambda html: html, id="bare_markup"),
+        pytest.param(lambda html: f'<div id="download_tool">{html}</div>', id="id_wrapped"),
+    ],
+)
+def test_wp_cc7_download_tool_widget_replaced_with_direct_iframe(tmp_path, wrap):
+    """The DelftxDownloads widget is replaced with a direct iframe embed, built at parse time
+    from the `.TUD_box_download` div's data-* attrs, instead of depending on the CDN script
+    chain (TUD_download_tool.js -> builder.js -> resizer.js) client-side: resizer.js detects
+    Moodle's own global RequireJS and hands off to it, which throws and aborts the widget before
+    it finishes building. Matched by class so it's patched whether or not WP wraps the widget in
+    an `id="download_tool"` container; real OCW pages don't, some third-party markup might."""
     site = WPFixtureSite()
     site.add_home([(SUBJECT_URL, "1. Intro")])
     site.add_subject_page(
@@ -234,7 +246,7 @@ def test_wp_cc7_download_tool_widget_host_check_forced_rest_untouched(tmp_path):
             f'<li><a class="icon icon--lecture" href="{LECTURE_URL}">Lecture 1</a></li>'
         ),
     )
-    site.add_lecture_page(LECTURE_URL, f"<p>content</p>{_DOWNLOAD_TOOL_HTML}")
+    site.add_lecture_page(LECTURE_URL, f"<p>content</p>{wrap(_DOWNLOAD_TOOL_HTML)}")
     course = site.course()
     course.parse()
     out = tmp_path / "course.mbz"
@@ -247,16 +259,52 @@ def test_wp_cc7_download_tool_widget_host_check_forced_rest_untouched(tmp_path):
             if m.name.endswith("page.xml")
         )
     assert esc(_TUD_HOST_CHECK) not in page_xml
-    assert "if(true){" in page_xml
-    assert "TUD_box_download" in page_xml
-    assert "TUD_High_Video" in page_xml
-    assert "icon_grey1_video_blanc_36.png" in page_xml
+    assert "TUD_download_tool.js" not in page_xml
+    assert "resizer.js" not in page_xml
+    assert "TUD_box_download" not in page_xml
+    assert "<iframe" in page_xml or esc("<iframe") in page_xml
     assert (
-        "https://delftxdownloads.tudelft.nl/download-tool/OCW/TUD_download_tool.js"
+        esc(
+            esc(
+                "https://delftxdownloads.tudelft.nl/_tools/dl/TUD_download_tool.php"
+                "?src=ocw&path=Course/Week_1/Course_lec&lang=en&ft=mp4&ccSA=y&ccNC=y"
+            )
+        )
         in page_xml
     )
-    assert "@@PLUGINFILE@@/TUD_download_tool.js" in page_xml
-    assert esc('data-downloadid="Course/Week_1/Course_lec"') in page_xml
+    assert esc(esc("calc(100%")) not in page_xml
+    assert esc(esc("margin: 0 -12px")) not in page_xml
+    assert esc(esc("width:100%; margin:0;")) in page_xml
+
+
+def test_wp_cc7_download_tool_widget_defaults_filetype_when_missing(tmp_path):
+    """builder.js defaults a missing/empty filetype to "mp4"; the parse-time replacement does too."""
+    html = (
+        '<div class="TUD_box_download" data-downloadid="Course/Week_1/Course_lec">'
+        '<ul class="TUD"><li class="TUD TUD_High_Video"><a href="#">High</a></li></ul>'
+        "</div>"
+    )
+    site = WPFixtureSite()
+    site.add_home([(SUBJECT_URL, "1. Intro")])
+    site.add_subject_page(
+        SUBJECT_URL,
+        _activities_html(
+            f'<li><a class="icon icon--lecture" href="{LECTURE_URL}">Lecture 1</a></li>'
+        ),
+    )
+    site.add_lecture_page(LECTURE_URL, f"<p>content</p>{html}")
+    course = site.course()
+    course.parse()
+    out = tmp_path / "course.mbz"
+    MBZBuilder(course).build(out)
+
+    with tarfile.open(out) as tar:
+        page_xml = next(
+            tar.extractfile(m).read().decode()
+            for m in tar.getmembers()
+            if m.name.endswith("page.xml")
+        )
+    assert esc("ft=mp4") in page_xml
 
 
 # WP-CC7 (negative case)
