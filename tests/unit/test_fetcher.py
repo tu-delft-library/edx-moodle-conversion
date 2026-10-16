@@ -6,6 +6,7 @@ from ocw.fetcher import AssetFetcher
 class _FakeResponse:
     def __init__(self, content=b"%PDF-1.4", content_type="application/pdf", status_ok=True):
         self.content = content
+        self.text = content.decode()
         self.headers = {"content-type": content_type}
         self._status_ok = status_ok
 
@@ -83,3 +84,21 @@ def test_http_error_status_returns_none(tmp_path, caplog):
     with caplog.at_level("WARNING"):
         result = fetcher.fetch("https://x/notes.pdf")
     assert result is None
+
+
+def test_fetch_text_returns_page_text_and_caches(tmp_path):
+    session = _FakeSession(response=_FakeResponse(content=b"<div>tool</div>", content_type="text/html"))
+    fetcher = _fetcher(tmp_path, session)
+    assert fetcher.fetch_text("https://x/tool.php?path=a") == "<div>tool</div>"
+    fetcher.fetch_text("https://x/tool.php?path=a")
+    assert session.calls == ["https://x/tool.php?path=a"]
+
+
+def test_fetch_text_failure_returns_none_and_is_cached(tmp_path, caplog):
+    session = _FakeSession(exc=requests.ConnectionError("down"))
+    fetcher = _fetcher(tmp_path, session)
+    with caplog.at_level("WARNING"):
+        assert fetcher.fetch_text("https://x/tool.php") is None
+    fetcher.fetch_text("https://x/tool.php")
+    assert "Failed to fetch page" in caplog.text
+    assert session.calls == ["https://x/tool.php"]

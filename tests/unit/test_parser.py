@@ -1,4 +1,5 @@
 from pathlib import Path
+from urllib.parse import parse_qs, urlparse
 from xml.etree import ElementTree as ET
 
 import pytest
@@ -13,6 +14,7 @@ from tests.builders import (
     VideoComponent,
 )
 from ocw.parser.olx import Course
+from tests.download_tool_pages import tool_page_html
 
 
 def _minimal_builder(tmp_path) -> OLXFixtureBuilder:
@@ -392,6 +394,129 @@ def test_attach_video_download_ids_ambiguous_multiple_dframes(tmp_path, caplog):
         course.parse()
     assert course.videos[0]["tuddownloadid"] is None
     assert "Ambiguous" in caplog.text
+
+
+class _ToolFetcher:
+    """Serves a fake tool page per download id, and a local path for every asset."""
+
+    def __init__(self, slides: bool = True):
+        self._slides = slides
+        self.text_calls: list[str] = []
+
+    def fetch_text(self, url: str) -> str | None:
+        self.text_calls.append(url)
+        download_id = parse_qs(urlparse(url).query)["path"][0]
+        return tool_page_html(download_id, slides=self._slides)
+
+    def fetch(self, url: str) -> Path | None:
+        return Path(f"/tmp/dest/{url.rsplit('/', 1)[-1]}")
+
+
+def _dframe_course(tmp_path, content: str, videos: list[VideoComponent], fetcher) -> Course:
+    b = _minimal_builder(tmp_path)
+    b.chapters = [
+        Chapter(
+            "ch1",
+            "Ch 1",
+            [
+                Sequential(
+                    "s1",
+                    "S1",
+                    [Vertical("v1", "V1", [HtmlComponent("pg1", "Page 1", content=content), *videos])],
+                )
+            ],
+        )
+    ]
+    course = Course(b.build(), fetcher=fetcher)
+    course.parse()
+    return course
+
+
+def _html_contents(course: Course) -> str:
+    vertical = course.chapters[0]["sequentials"][0]["verticals"][0]
+    return "".join(c["content"] for c in vertical["components"] if c["type"] == "html")
+
+
+_DFRAME = (
+    '<iframe class="dframe"\n  data-downloadid="NGI101x-3.1"\n  data-youtubeid="abc">\n</iframe>'
+    '<script src="https://delftxdownloads.tudelft.nl/_tools/dl/js/builder.js"></script>'
+)
+
+
+def test_inline_download_tool_replaces_dframe_with_widget(tmp_path):
+    """The dframe and its builder.js loader become the inlined tool page widget, with the
+    "Other" tab's slides bundled locally and Video/Subtitles left on delftxdownloads."""
+    fetcher = _ToolFetcher()
+    course = _dframe_course(tmp_path, _DFRAME, [VideoComponent("vid1", "Video 1")], fetcher)
+    html = _html_contents(course)
+
+    assert "dframe" not in html
+    assert "builder.js" not in html
+    assert '<details class="tud-button tud-float other-download"' in html
+    assert 'href="/static/NGI101x-3.1-slides.pdf"' in html
+    assert 'href="https://delftxdownloads.tudelft.nl/NGI101x-3.1-video.mp4"' in html
+    assert 'src="/static/icon_video_blanc_36.png"' in html
+    assert course.static_files["NGI101x-3.1-slides.pdf"] == Path("/tmp/dest/NGI101x-3.1-slides.pdf")
+    assert "src=edx&path=NGI101x-3.1&lang=en&ft=mp4&ccSA=y&ccNC=y" in fetcher.text_calls[0]
+    assert course.videos[0]["tuddownloadid"] == "NGI101x-3.1"
+
+
+def test_inline_download_tool_honours_dframe_data_attrs(tmp_path):
+    fetcher = _ToolFetcher()
+    content = (
+        '<iframe class="dframe" data-downloadid="NGI101x-3.1" data-lang="nl" '
+        'data-filetype="webm" data-ccSA="n" data-ccNC="n"></iframe>'
+    )
+    _dframe_course(tmp_path, content, [], fetcher)
+
+    assert "lang=nl&ft=webm&ccSA=n&ccNC=n" in fetcher.text_calls[0]
+
+
+def test_inline_download_tool_no_slide_deck(tmp_path):
+    """Lectures without a deck get no Other tab from the tool page, so none is rendered."""
+    course = _dframe_course(tmp_path, _DFRAME, [], _ToolFetcher(slides=False))
+    html = _html_contents(course)
+
+    assert "video-download" in html
+    assert "other-download" not in html
+    assert "Slides" not in html
+
+
+def test_inline_download_tool_independent_of_ambiguous_video_pairing(tmp_path):
+    """Two dframes and two videos is ambiguous for `tuddownloadid`, but both widgets are
+    still inlined."""
+    content = (
+        '<iframe class="dframe" data-downloadid="a"></iframe>'
+        '<iframe class="dframe" data-downloadid="b"></iframe>'
+    )
+    course = _dframe_course(
+        tmp_path,
+        content,
+        [VideoComponent("vid1", "Video 1"), VideoComponent("vid2", "Video 2", youtube_id="other")],
+        _ToolFetcher(),
+    )
+    html = _html_contents(course)
+
+    assert 'href="/static/a-slides.pdf"' in html
+    assert 'href="/static/b-slides.pdf"' in html
+    assert course.videos[0]["tuddownloadid"] is None
+    assert course.videos[1]["tuddownloadid"] is None
+
+
+def test_inline_download_tool_skipped_without_fetcher(tmp_path):
+    course = _dframe_course(tmp_path, _DFRAME, [], None)
+
+    assert 'class="dframe"' in _html_contents(course)
+
+
+def test_inline_download_tool_keeps_dframe_when_tool_page_unavailable(tmp_path):
+    class _NoPages(_ToolFetcher):
+        def fetch_text(self, url: str) -> str | None:
+            return None
+
+    course = _dframe_course(tmp_path, _DFRAME, [], _NoPages())
+
+    assert 'class="dframe"' in _html_contents(course)
 
 
 def test_course_videos_flat_list_matches_video_components(tmp_path):

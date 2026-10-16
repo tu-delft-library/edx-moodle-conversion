@@ -10,8 +10,10 @@ from pathlib import Path
 
 from bs4 import BeautifulSoup
 
+from ocw.parser import download_tool
 from ocw.parser.wp import WPCourse
 from ocw.utils import resolve_asset_name
+from tests.download_tool_pages import tool_page_html
 
 ROOT = "https://ocw.tudelft.nl/courses/example/"
 
@@ -68,6 +70,13 @@ class WPFixtureSite:
         """Register a file so the fake fetcher can resolve any URL whose basename matches
         `name` (lecture-page `vc_download` links, bundled webfonts, etc.)."""
         self.pdf_files[name] = content
+
+    def add_download_tool_page(
+        self, download_id: str, slides: bool = True, filetype: str = "mp4"
+    ) -> None:
+        """Serve a fake `TUD_download_tool.php` page for `download_id`."""
+        url = download_tool.tool_url(download_id, "ocw", filetype=filetype)
+        self.pages[url] = tool_page_html(download_id, slides=slides)
 
     def add_reading_page(
         self,

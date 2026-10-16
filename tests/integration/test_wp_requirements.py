@@ -223,6 +223,38 @@ _DOWNLOAD_TOOL_HTML = (
 )
 
 
+_WIDGET_ID = "Course/Week_1/Course_lec"
+_WIDGET_BASE = f"https://delftxdownloads.tudelft.nl/{_WIDGET_ID}"
+
+
+def _widget_site(body_html: str, *tool_ids: str, slides: bool = True) -> WPFixtureSite:
+    site = WPFixtureSite()
+    site.add_home([(SUBJECT_URL, "1. Intro")])
+    site.add_subject_page(
+        SUBJECT_URL,
+        _activities_html(
+            f'<li><a class="icon icon--lecture" href="{LECTURE_URL}">Lecture 1</a></li>'
+        ),
+    )
+    site.add_lecture_page(LECTURE_URL, body_html)
+    for tool_id in tool_ids or (_WIDGET_ID,):
+        site.add_download_tool_page(tool_id, slides=slides)
+    return site
+
+
+def _built_page_xml(site: WPFixtureSite, tmp_path) -> str:
+    course = site.course()
+    course.parse()
+    out = tmp_path / "course.mbz"
+    MBZBuilder(course).build(out)
+    with tarfile.open(out) as tar:
+        return next(
+            tar.extractfile(m).read().decode()
+            for m in tar.getmembers()
+            if m.name.endswith("page.xml")
+        )
+
+
 # WP-CC7
 @pytest.mark.parametrize(
     "wrap",
@@ -231,94 +263,85 @@ _DOWNLOAD_TOOL_HTML = (
         pytest.param(lambda html: f'<div id="download_tool">{html}</div>', id="id_wrapped"),
     ],
 )
-def test_wp_cc7_download_tool_widget_replaced_with_direct_iframe(tmp_path, wrap):
-    """The DelftxDownloads widget is replaced with a direct iframe embed, built at parse time
-    from the `.TUD_box_download` div's data-* attrs, instead of depending on the CDN script
-    chain (TUD_download_tool.js -> builder.js -> resizer.js) client-side: resizer.js detects
-    Moodle's own global RequireJS and hands off to it, which throws and aborts the widget before
-    it finishes building. Matched by class so it's patched whether or not WP wraps the widget in
-    an `id="download_tool"` container; real OCW pages don't, some third-party markup might."""
-    site = WPFixtureSite()
-    site.add_home([(SUBJECT_URL, "1. Intro")])
-    site.add_subject_page(
-        SUBJECT_URL,
-        _activities_html(
-            f'<li><a class="icon icon--lecture" href="{LECTURE_URL}">Lecture 1</a></li>'
-        ),
-    )
-    site.add_lecture_page(LECTURE_URL, f"<p>content</p>{wrap(_DOWNLOAD_TOOL_HTML)}")
-    course = site.course()
-    course.parse()
-    out = tmp_path / "course.mbz"
-    MBZBuilder(course).build(out)
+def test_wp_cc7_download_tool_widget_inlined_from_tool_page(tmp_path, wrap):
+    """The DelftxDownloads widget is rebuilt inline from its server-rendered tool page, instead
+    of depending on the CDN script chain (TUD_download_tool.js -> builder.js -> resizer.js),
+    which aborts under Moodle's RequireJS. Dropdowns become native `details` so no JS is needed.
+    Matched by class so it's patched whether or not WP wraps it in `id="download_tool"`."""
+    site = _widget_site(f"<p>content</p>{wrap(_DOWNLOAD_TOOL_HTML)}")
+    page_xml = _built_page_xml(site, tmp_path)
 
-    with tarfile.open(out) as tar:
-        page_xml = next(
-            tar.extractfile(m).read().decode()
-            for m in tar.getmembers()
-            if m.name.endswith("page.xml")
-        )
     assert esc(_TUD_HOST_CHECK) not in page_xml
-    assert "TUD_download_tool.js" not in page_xml
-    assert "resizer.js" not in page_xml
-    assert "TUD_box_download" not in page_xml
-    assert "<iframe" in page_xml or esc("<iframe") in page_xml
-    assert (
-        esc(
-            esc(
-                "https://delftxdownloads.tudelft.nl/_tools/dl/TUD_download_tool.php"
-                "?src=ocw&path=Course/Week_1/Course_lec&lang=en&ft=mp4&ccSA=y&ccNC=y"
-            )
-        )
-        in page_xml
-    )
-    assert esc(esc("calc(100%")) not in page_xml
-    assert esc(esc("margin: 0 -12px")) not in page_xml
-    assert esc(esc("width:100%; margin:0;")) in page_xml
+    assert "TUD_download_tool" not in page_xml
+    assert "iframeResizer" not in page_xml
+    assert "transfer_div" not in page_xml
+    assert esc("<iframe") not in page_xml
+    assert esc('<details class="tud-button tud-float video-download"') in page_xml
+    assert esc('<summary class="tud-button-top video-download-top">') in page_xml
+    assert esc(".tud-button[open]") in page_xml
+    assert f"{_WIDGET_BASE}-video.mp4" in page_xml
+    assert f"{_WIDGET_BASE}-video.srt" in page_xml
 
 
-def test_wp_cc7_download_tool_widget_defaults_filetype_when_missing(tmp_path):
-    """builder.js defaults a missing/empty filetype to "mp4"; the parse-time replacement does too."""
+def test_wp_cc7_download_tool_widget_placeholder_icons_not_reported_lost(caplog):
+    """The WP box's own placeholder markup is replaced wholesale, so its icons going missing is
+    expected, not content loss."""
+    course = _widget_site(f"<p>content</p>{_DOWNLOAD_TOOL_HTML}").course()
+    with caplog.at_level("WARNING"):
+        course.parse()
+
+    assert "icon_grey1_video_blanc_36.png" not in caplog.text
+
+
+def test_wp_cc7_download_tool_widget_defaults_filetype_when_missing():
+    """builder.js defaults a missing/empty filetype to "mp4"; the tool page is requested with
+    the same default (the fixture only serves the `ft=mp4` URL)."""
     html = (
-        '<div class="TUD_box_download" data-downloadid="Course/Week_1/Course_lec">'
+        f'<div class="TUD_box_download" data-downloadid="{_WIDGET_ID}">'
         '<ul class="TUD"><li class="TUD TUD_High_Video"><a href="#">High</a></li></ul>'
         "</div>"
     )
-    site = WPFixtureSite()
-    site.add_home([(SUBJECT_URL, "1. Intro")])
-    site.add_subject_page(
-        SUBJECT_URL,
-        _activities_html(
-            f'<li><a class="icon icon--lecture" href="{LECTURE_URL}">Lecture 1</a></li>'
-        ),
-    )
-    site.add_lecture_page(LECTURE_URL, f"<p>content</p>{html}")
-    course = site.course()
+    course = _widget_site(f"<p>content</p>{html}").course()
     course.parse()
-    out = tmp_path / "course.mbz"
-    MBZBuilder(course).build(out)
 
-    with tarfile.open(out) as tar:
-        page_xml = next(
-            tar.extractfile(m).read().decode()
-            for m in tar.getmembers()
-            if m.name.endswith("page.xml")
-        )
-    assert esc("ft=mp4") in page_xml
+    lecture = course.chapters[0]["sequentials"][0]["verticals"][0]
+    assert any(
+        f"{_WIDGET_BASE}-video.mp4" in c["content"]
+        for c in lecture["components"]
+        if c["type"] == "html"
+    )
+
+
+def test_wp_cc7_download_tool_widget_without_id_is_dropped():
+    html = '<div class="TUD_box_download" data-videotype=".mp4"></div>'
+    course = _widget_site(f"<p>content</p>{html}").course()
+    course.parse()
+
+    lecture = course.chapters[0]["sequentials"][0]["verticals"][0]
+    assert not any(
+        "TUD_box_download" in c["content"]
+        for c in lecture["components"]
+        if c["type"] == "html"
+    )
+
+
+def test_wp_cc7_download_tool_widget_icons_bundled_locally(tmp_path):
+    site = _widget_site(
+        f'<div class="TUD_box_download" data-downloadid="{_WIDGET_ID}" '
+        'data-videotype=".mp4"></div>'
+    )
+    site.add_static_file("icon_video_blanc_36.png", content=b"\x89PNG\r\n\x1a\n")
+    site.add_static_file("icon_subtitles_blanc_36.png", content=b"\x89PNG\r\n\x1a\n")
+    page_xml = _built_page_xml(site, tmp_path)
+
+    assert esc("@@PLUGINFILE@@/icon_video_blanc_36.png") in page_xml
+    assert esc("@@PLUGINFILE@@/icon_subtitles_blanc_36.png") in page_xml
+    assert "img/icon_video_blanc_36.png" not in page_xml
 
 
 # WP-CC7 (negative case)
 def test_wp_cc7_no_download_tool_widget_is_a_no_op():
-    site = WPFixtureSite()
-    site.add_home([(SUBJECT_URL, "1. Intro")])
-    site.add_subject_page(
-        SUBJECT_URL,
-        _activities_html(
-            f'<li><a class="icon icon--lecture" href="{LECTURE_URL}">Lecture 1</a></li>'
-        ),
-    )
-    site.add_lecture_page(LECTURE_URL, "<p>content</p>")
-    course = site.course()
+    course = _widget_site("<p>content</p>").course()
     course.parse()
 
     lecture = course.chapters[0]["sequentials"][0]["verticals"][0]
@@ -326,6 +349,83 @@ def test_wp_cc7_no_download_tool_widget_is_a_no_op():
         c["content"] for c in lecture["components"] if c["type"] == "html"
     ]
     assert any("content" in html for html in html_components)
+
+
+# WP-CC7 (tuddownloadid pairing)
+def test_wp_cc7_download_widget_pairs_tuddownloadid_onto_the_page_video():
+    """A lecture page with exactly one download widget and one video gets the widget's id
+    attached to the video's vidrouter record, the same cross-reference OLX already populates
+    for dframe/video pairs."""
+    html = (
+        '<iframe src="https://www.youtube.com/embed/abc123"></iframe>'
+        f'<div class="TUD_box_download" data-downloadid="{_WIDGET_ID}" '
+        'data-videotype=".mp4"></div>'
+    )
+    course = _widget_site(html).course()
+    course.parse()
+
+    video = next(
+        c
+        for c in course.chapters[0]["sequentials"][0]["verticals"][0]["components"]
+        if c["type"] == "video"
+    )
+    assert video["tuddownloadid"] == _WIDGET_ID
+
+
+def test_wp_cc7_download_widget_tuddownloadid_ambiguous_multiple_widgets(caplog):
+    """Two download widgets and one video on the same page -> ambiguous, logged, left
+    unpaired. Mirrors OLX's `_attach_video_download_ids` ambiguity rule exactly."""
+    html = (
+        '<iframe src="https://www.youtube.com/embed/abc123"></iframe>'
+        '<div class="TUD_box_download" data-downloadid="a" data-videotype=".mp4"></div>'
+        '<div class="TUD_box_download" data-downloadid="b" data-videotype=".mp4"></div>'
+    )
+    course = _widget_site(html, "a", "b").course()
+    with caplog.at_level("WARNING"):
+        course.parse()
+
+    video = next(
+        c
+        for c in course.chapters[0]["sequentials"][0]["verticals"][0]["components"]
+        if c["type"] == "video"
+    )
+    assert video["tuddownloadid"] is None
+    assert "Ambiguous" in caplog.text
+
+
+# WP-CC7 (slides / "Other" tab)
+def test_wp_cc7_download_widget_other_tab_serves_slides_from_mbz(tmp_path):
+    """The "Other" tab's slide deck is fetched and bundled, and the tab's own link points at
+    the bundled copy; Video/Subtitles links keep pointing at delftxdownloads."""
+    site = _widget_site(
+        f'<div class="TUD_box_download" data-downloadid="{_WIDGET_ID}" '
+        'data-videotype=".mp4"></div>'
+    )
+    site.add_static_file("Course_lec-slides.pdf")
+    page_xml = _built_page_xml(site, tmp_path)
+
+    assert esc('<details class="tud-button tud-float other-download"') in page_xml
+    assert esc('href="@@PLUGINFILE@@/Course_lec-slides.pdf"') in page_xml
+    assert f"{_WIDGET_BASE}-slides.pdf" not in page_xml
+    assert f"{_WIDGET_BASE}-video.mp4" in page_xml
+    assert esc(">Slides<") in page_xml
+
+
+def test_wp_cc7_download_widget_no_slides_is_a_no_op():
+    """Lectures without a deck get no Other tab from the tool page, so none is rendered."""
+    html = (
+        f'<div class="TUD_box_download" data-downloadid="{_WIDGET_ID}" '
+        'data-videotype=".mp4"></div>'
+    )
+    course = _widget_site(html, slides=False).course()
+    course.parse()
+
+    lecture = course.chapters[0]["sequentials"][0]["verticals"][0]
+    assert not any(
+        "Slides" in c["content"] or "other-download" in c["content"]
+        for c in lecture["components"]
+        if c["type"] == "html"
+    )
 
 
 # WP-C1
