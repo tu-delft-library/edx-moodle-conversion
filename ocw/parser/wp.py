@@ -5,13 +5,13 @@ import itertools
 import logging
 import re
 from collections import Counter
-from urllib.parse import quote
 
 import requests
 from bs4 import BeautifulSoup
 from bs4.element import NavigableString
 
 from ocw.fetcher import AssetFetcher
+from ocw.parser import download_tool
 from ocw.parser.base import BaseParser
 from ocw.utils import resolve_asset_name, safe_vidkey, warn_external_wp_urls
 
@@ -200,13 +200,18 @@ class WPCourse(BaseParser):
         for sep in article.select("div.vc_separator"):
             sep.replace_with(article.new_tag("hr"))
 
-    def _clean_article(self, article) -> None:
-        """Apply all WordPress-widget-to-Moodle-safe-HTML conversions to `article`."""
+    def _clean_article(self, article) -> list[str]:
+        """Apply all WordPress-widget-to-Moodle-safe-HTML conversions to `article`.
+
+        Returns the page's download widget ids (see `_fix_download_tool_widgets`), so the
+        caller can pair one onto the page's video component.
+        """
         self._convert_expandable_widgets(article)
         self._apply_wp_image_alignment(article)
         self._replace_separators(article)
-        self._fix_download_tool_widgets(article)
+        download_ids = self._fix_download_tool_widgets(article)
         self._localize_images(article)
+        return download_ids
 
     def _localize_images(self, article) -> None:
         """Fetch external image sources locally and rewrite them to the `/static/` convention."""
@@ -238,46 +243,41 @@ class WPCourse(BaseParser):
 
     _TUD_HOST_CHECK = 'TUD_location.indexOf("ocw.tudelft.nl")!=-1'
 
-    _DELFTX_IFRAME_SRC = (
-        "https://delftxdownloads.tudelft.nl/_tools/dl/TUD_download_tool.php"
-        "?src=ocw&path={download_id}&lang=en&ft={filetype}&ccSA=y&ccNC=y"
-    )
+    def _fix_download_tool_widgets(self, article) -> list[str]:
+        """Inline WordPress's DelftxDownloads widget instead of relying on its CDN script chain.
 
-    def _fix_download_tool_widgets(self, article) -> None:
-        """Replace WordPress's DelftxDownloads widget with a direct iframe embed.
+        The widget normally runs client-side (TUD_download_tool.js -> builder.js -> resizer.js),
+        iframing the server-rendered `TUD_download_tool.php`. resizer.js detects Moodle's global
+        RequireJS and throws "Mismatched anonymous define() module", so the widget never builds.
+        Fetching that tool page at parse time yields the same per-lecture markup; it's inlined
+        with native `details` dropdowns so it works without JS, and the "Other" tab's files are
+        bundled locally. The bootstrap <script> (matched by the host-check signature) is dropped.
 
-        The widget normally runs client-side via a chain of three CDN scripts
-        (TUD_download_tool.js -> builder.js -> resizer.js). resizer.js detects Moodle's own
-        global RequireJS and hands off to it, which throws "Mismatched anonymous define()
-        module" and aborts before the widget finishes building. builder.js's own logic is
-        deterministic (reads data-* attrs off the DOM, sets an iframe src), so we replicate it
-        here at parse time instead of depending on the CDN script chain at all. This also makes
-        the bootstrap <script> (matched by the host-check signature) dead weight, so it's dropped.
+        Returns each box's download id, so the caller can pair one onto the page's video.
         """
+        download_ids = []
         for box in article.select(".TUD_box_download"):
             download_id = box.get("data-downloadid", "")
+            if not download_id:
+                box.decompose()
+                continue
             filetype = (box.get("data-videotype") or ".mp4").lstrip(".")
-            iframe = article.new_tag(
-                "iframe",
-                src=self._DELFTX_IFRAME_SRC.format(
-                    download_id=quote(download_id, safe="/"), filetype=filetype
-                ),
-                height="180",
-                scrolling="yes",
-                frameborder="0",
-                style="width:100%; margin:0;",
-            )
-            box.clear()
-            box.append(iframe)
+            box.replace_with(self._download_tool_widget(download_id, filetype))
+            download_ids.append(download_id)
 
         for script in article.select("script"):
             if script.string and self._TUD_HOST_CHECK in script.string:
                 script.decompose()
+        return download_ids
+
+    def _download_tool_widget(self, download_id: str, filetype: str):
+        url = download_tool.tool_url(download_id, "ocw", filetype=filetype)
+        return download_tool.inline_widget(self._fetch_page(url), url, self._resolve_and_fetch)
 
     def _excluded_imgs(self, article) -> set[str]:
         """Return image srcs the parser intentionally drops, for the content-loss audit to skip."""
         excluded: set[str] = set()
-        for region in article.select("section.license"):
+        for region in article.select("section.license, .TUD_box_download"):
             excluded.update(
                 img["src"] for img in region.select("img") if img.get("src")
             )
@@ -461,8 +461,7 @@ class WPCourse(BaseParser):
         )
         expected_separators = len(article.select("div.vc_separator")) if article else 0
         expected_downloads = len(article.select("div.vc_download")) if article else 0
-        if article is not None:
-            self._clean_article(article)
+        download_ids = self._clean_article(article) if article is not None else []
         total_videos = (
             len([el for el in article.select("iframe") if self._is_playable_video(el)])
             if article
@@ -495,9 +494,31 @@ class WPCourse(BaseParser):
             found_downloads=found_downloads,
         )
         self._warn_external_wp_links(components, title)
+        self._attach_video_download_ids(components, download_ids, title)
         if not components:
             log.warning("Parsing WP: lecture '%s' at %s produced no components", title, url)
         return {"display_name": title, "components": components, "dedup_url": url}
+
+    def _attach_video_download_ids(
+        self, components: list[dict], download_ids: list[str], title: str = ""
+    ) -> None:
+        """Attach a download widget id to a video only when the page has exactly one of each,
+        the same unambiguous-only rule OLX uses for `dframe`/video pairing
+        (`olx.py`'s `_attach_video_download_ids`). Ambiguous pairings are warned about and left
+        unset."""
+        videos = [c for c in components if c["type"] == "video"]
+        if not download_ids or not videos:
+            return
+        if len(download_ids) != 1 or len(videos) != 1:
+            log.warning(
+                "Ambiguous download widget/video pairing on page '%s': %d widget(s), %d video(s) "
+                "— skipping tuddownloadid",
+                title,
+                len(download_ids),
+                len(videos),
+            )
+            return
+        videos[0]["tuddownloadid"] = download_ids[0]
 
     def _append_pdf_group(self, blocks: list[dict], components: list[dict]) -> int:
         """Resolve a pdf_url_group's download blocks into one grouped HTML component.

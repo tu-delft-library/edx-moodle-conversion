@@ -4,7 +4,10 @@ import re
 from pathlib import Path
 from xml.etree import ElementTree as ET
 
+from bs4 import BeautifulSoup
+
 from ocw.fetcher import AssetFetcher
+from ocw.parser import download_tool
 from ocw.parser.base import BaseParser
 from ocw.utils import (
     _ABSOLUTE_ASSET_RE,
@@ -244,11 +247,53 @@ class Course(BaseParser):
             is not None
         ]
         self._attach_video_download_ids(components, display_name)
+        self._inline_download_tools(components)
         return {
             "url_name": url_name,
             "display_name": display_name,
             "components": components,
         }
+
+    def _inline_download_tools(self, components: list[dict]) -> None:
+        """Replace each dframe (plus its builder.js loader) with the inlined DelftxDownloads
+        widget; see `ocw.parser.download_tool`. Left untouched when fetching is disabled."""
+        if self.fetcher is None:
+            return
+        for comp in components:
+            if comp["type"] != "html" or not _find_dframe_downloadids(comp["content"]):
+                continue
+            soup = BeautifulSoup(comp["content"], "html.parser")
+            for frame in soup.select("iframe.dframe"):
+                url = download_tool.tool_url(
+                    frame.get("data-downloadid", ""),
+                    "edx",
+                    lang=frame.get("data-lang") or "en",
+                    filetype=frame.get("data-filetype") or "mp4",
+                    cc_sa=frame.get("data-ccsa") or "y",
+                    cc_nc=frame.get("data-ccnc") or "y",
+                )
+                page = self.fetcher.fetch_text(url)
+                if page is None:
+                    continue
+                frame.replace_with(
+                    download_tool.inline_widget(
+                        BeautifulSoup(page, "html.parser"), url, self._fetch_static
+                    )
+                )
+            for script in soup.select('script[src$="builder.js"]'):
+                script.decompose()
+            comp["content"] = str(soup)
+
+    def _fetch_static(self, url: str) -> str | None:
+        """Bundle `url` as a static file and return its name, or `None` when unavailable."""
+        name = resolve_asset_name(url)
+        if name in self.static_files:
+            return name
+        fetched = self.fetcher.fetch(url)
+        if fetched is None:
+            return None
+        self.static_files[fetched.name] = fetched
+        return fetched.name
 
     def _attach_video_download_ids(
         self, components: list[dict], vertical_name: str = ""

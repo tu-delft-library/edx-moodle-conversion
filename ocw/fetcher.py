@@ -50,6 +50,7 @@ class AssetFetcher:
         self.dest_dir = dest_dir
         self._session = requests.Session()
         self._cache: dict[str, Path | None] = {}
+        self._text_cache: dict[str, str | None] = {}
         self._last_request_at: dict[str, float] = {}
 
     def fetch(self, url: str) -> Path | None:
@@ -91,6 +92,22 @@ class AssetFetcher:
         path.write_bytes(resp.content)
         log.info("DOWNLOAD: Fetched external asset '%s' -> %s", url, name)
         return path
+
+    def fetch_text(self, url: str) -> str | None:
+        """Fetch a page's text once, or `None` when unavailable. Failures are cached too."""
+        if url not in self._text_cache:
+            self._text_cache[url] = self._fetch_text_uncached(url)
+        return self._text_cache[url]
+
+    def _fetch_text_uncached(self, url: str) -> str | None:
+        self._throttle(urlparse(url).netloc)
+        try:
+            resp = self._session.get(url, timeout=_TIMEOUT)
+            resp.raise_for_status()
+        except requests.RequestException as e:
+            log.warning("Failed to fetch page '%s': %s", url, e)
+            return None
+        return resp.text
 
     def _throttle(self, host: str) -> None:
         """Wait when necessary to enforce the minimum interval before a request to `host`."""
