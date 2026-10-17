@@ -12,6 +12,11 @@ def pytest_addoption(parser):
     parser.addoption(
         "--real-courses", action="store_true", help="convert and URL-audit real courses"
     )
+    parser.addoption(
+        "--all-courses",
+        action="store_true",
+        help="with --real-courses, run every course instead of the pinned 5 per source",
+    )
 
 
 @pytest.fixture(scope="module")

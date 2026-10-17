@@ -786,6 +786,10 @@ _DELFTX_EXTRAS = (
     "onclick=\"window.location.href='https://ecommerce.edx.org/basket/add/?sku=F064C6D'\" /></p>"
     '<div data-block-type="video" authoring_mfe_base_url="https://course-authoring.edx.org/'
     'course/course-v1:DelftX+MECH1x+2T2025/editor" use-new-editor-video="True">v</div>'
+    '<script type="text/javascript">if(x){$.getScript("https://delftxdownloads.tudelft.nl/'
+    'download-tool/OCW/TUD_download_tool.js")}\nelse $.getScript("/static/TUD_download_tool.js");</script>'
+    "<script>keep()</script>"
+    '<audio controls="controls"><source src="https://delftxdownloads.tudelft.nl/URED1x/Podcast.mp3" /></audio>'
 )
 
 
@@ -803,16 +807,19 @@ def _single_page_course(tmp_path, content: str, fetcher) -> Course:
     return course
 
 
-def test_delftx_pdf_bundled_and_widget_stylesheet_dropped(tmp_path):
+def test_delftx_pdf_and_mp3_bundled_and_widget_markup_dropped(tmp_path):
     course = _single_page_course(tmp_path, _DELFTX_EXTRAS, _DaCGFetcher())
 
     assert _html_contents(course) == (
         '<a href="/static/MOOC_Forum_Guidelines.pdf">forum</a><p></p>'
         '<div data-block-type="video" use-new-editor-video="True">v</div>'
+        "<script>keep()</script>"
+        '<audio controls="controls"><source src="/static/Podcast.mp3" /></audio>'
     )
     assert course.static_files["MOOC_Forum_Guidelines.pdf"] == Path(
         "/tmp/dest/MOOC_Forum_Guidelines.pdf"
     )
+    assert course.static_files["Podcast.mp3"] == Path("/tmp/dest/Podcast.mp3")
 
 
 def test_platform_markup_dropped_without_fetcher(tmp_path):
@@ -820,6 +827,8 @@ def test_platform_markup_dropped_without_fetcher(tmp_path):
 
     assert "<link" not in html
     assert "builder.js" not in html
+    assert "TUD_download_tool.js" not in html
+    assert "<script>keep()</script>" in html
     assert "ecommerce.edx.org" not in html
     assert "authoring_mfe_base_url" not in html
     assert "_tools/syllabus/MOOC_Forum_Guidelines.pdf" in html

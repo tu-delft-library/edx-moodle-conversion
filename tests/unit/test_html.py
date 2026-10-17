@@ -35,6 +35,15 @@ def test_unlink_platform_hrefs_drops_link_without_text():
     )
 
 
+def test_unlink_platform_hrefs_drops_url_as_display_text():
+    html = (
+        '<p>Follow this link:\xa0<a href="https://www.edx.org/course/demox-edx-demox-1" target="_blank">'
+        "https://www.edx.org/course/demox-edx-demox-1</a>. Or <a href='https://www.edx.org/about-us'>"
+        "<em> www.edx.org </em></a>.</p>"
+    )
+    assert unlink_platform_hrefs(html) == "<p>Follow this link:\xa0. Or <em> www.edx.org </em>.</p>"
+
+
 def test_unlink_platform_hrefs_keeps_other_links():
     html = (
         '<a href="https://example.org/paper">x</a>'

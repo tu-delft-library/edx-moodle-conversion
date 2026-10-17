@@ -50,6 +50,13 @@ def test_pdf_fetch_writes_file_and_returns_path(tmp_path):
     assert path.parent == tmp_path
 
 
+def test_mp3_fetch_expects_audio_mpeg(tmp_path):
+    session = _FakeSession(response=_FakeResponse(content=b"ID3", content_type="audio/mpeg"))
+    path = _fetcher(tmp_path, session).fetch("https://x/podcast.mp3")
+    assert path is not None
+    assert path.read_bytes() == b"ID3"
+
+
 def test_fetch_result_is_cached_and_not_refetched(tmp_path):
     session = _FakeSession(response=_FakeResponse())
     fetcher = _fetcher(tmp_path, session)

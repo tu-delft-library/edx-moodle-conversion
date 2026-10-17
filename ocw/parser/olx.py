@@ -23,19 +23,21 @@ log = logging.getLogger("ocw.parser")
 # Tags the parser actively converts into page content.
 # _WHITELISTED_TAGS = frozenset({"html", "video"})
 
-# PDFs on DelftX hosts, plus delftxtools' extensionless Discussion and Collaboration Guidelines.
-_DELFTX_PDF_RE = re.compile(
-    r"https?://delftx[\w-]*\.tudelft\.nl/(?:[^\"'\s#?<>]*\.pdf|DaCG)(?=[#?\"'\s<>]|$)",
+# PDFs and mp3s on DelftX hosts, plus delftxtools' extensionless Discussion and Collaboration Guidelines.
+_DELFTX_FILE_RE = re.compile(
+    r"https?://delftx[\w-]*\.tudelft\.nl/(?:[^\"'\s#?<>]*\.(?:pdf|mp3)|DaCG)(?=[#?\"'\s<>]|$)",
     re.IGNORECASE,
 )
 _DACG_NAME = "DaCG.pdf"
 # edX/DelftX markup with no use on Moodle: old dframe widget stylesheets and builder.js loaders
-# (superseded by the inlined widget), edX "verify" purchase buttons, and Studio editor attributes.
+# (superseded by the inlined widget), inline download tool loaders (only run on ocw.tudelft.nl),
+# edX "verify" purchase buttons, and Studio editor attributes.
 _PLATFORM_JUNK_RES = tuple(
-    re.compile(pattern, re.IGNORECASE)
+    re.compile(pattern, re.IGNORECASE | re.DOTALL)
     for pattern in (
         r"<link\b[^>]*\bhref=[\"']https?://delftxdownloads\.tudelft\.nl/download-tool/[^>]*>",
         r"<script\b[^>]*\bsrc=[\"'][^\"']*/_tools/dl/js/builder\.js[\"'][^>]*>\s*</script>",
+        r"<script\b[^>]*>(?:(?!</script>).)*?delftxdownloads\.tudelft\.nl/download-tool/(?:(?!</script>).)*</script>",
         r"<input\b[^>]*ecommerce\.edx\.org[^>]*>",
         r"\s+authoring_mfe_base_url=([\"'])[^\"']*\1",
     )
@@ -301,8 +303,8 @@ class Course(BaseParser):
             comp["content"] = str(soup)
 
     def _localize_delftx(self, html: str) -> str:
-        """Drop edX/DelftX platform markup, then bundle PDFs linked on DelftX hosts and point
-        links at the local copy, keeping any `#page=` fragment. PDFs that can't be fetched stay."""
+        """Drop edX/DelftX platform markup, then bundle PDFs and mp3s linked on DelftX hosts and
+        point links at the local copy, keeping any `#page=` fragment. Files that can't be fetched stay."""
         for junk_re in _PLATFORM_JUNK_RES:
             html = junk_re.sub("", html)
         if self.fetcher is None:
@@ -317,7 +319,7 @@ class Course(BaseParser):
             self.static_files[fetched.name] = fetched
             return f"/static/{fetched.name}"
 
-        return _DELFTX_PDF_RE.sub(_bundle, html)
+        return _DELFTX_FILE_RE.sub(_bundle, html)
 
     def _fetch_static(self, url: str) -> str | None:
         """Bundle `url` as a static file and return its name, or `None` when unavailable."""

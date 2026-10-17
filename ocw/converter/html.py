@@ -69,6 +69,7 @@ _PLATFORM_LINK_RE = re.compile(
     r"(?:[/:?#][^\"']*)?\1[^>]*>(.*?)</a>",
     re.DOTALL | re.IGNORECASE,
 )
+_BARE_URL_RE = re.compile(r"\s*(?:https?:)?//\S+\s*", re.IGNORECASE)
 
 
 def unlink_platform_hrefs(html: str, context: str = "") -> str:
@@ -83,7 +84,12 @@ def unlink_platform_hrefs(html: str, context: str = "") -> str:
             f" on page '{context}'" if context else "",
             re.search(r"href=[\"']([^\"']*)", m.group(0)).group(1),
         )
-        return m.group(2)
+        text = m.group(2)
+        # Links showing their own URL as text lose the text too, so no edX URL survives as prose.
+        # Revert to `return text` to keep it.
+        if _BARE_URL_RE.fullmatch(re.sub(r"<[^>]+>", "", text)):
+            return ""
+        return text
 
     return _PLATFORM_LINK_RE.sub(_unlink, html)
 
