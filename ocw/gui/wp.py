@@ -1,4 +1,5 @@
 import argparse
+import logging
 import shutil
 import tempfile
 from pathlib import Path
@@ -8,6 +9,7 @@ from tkinter.scrolledtext import ScrolledText
 from ocw.converter import MBZBuilder
 from ocw.fetcher import AssetFetcher
 from ocw.gui.common import ConverterApp, _input_label
+from ocw.url_audit import log_url_audit
 from ocw.utils import versioned_output_path
 from ocw.parser.wp import WPCourse
 
@@ -112,6 +114,7 @@ class App(ConverterApp):
                 disable_custom_fields=not self.enable_custom_fields.get(),
                 authora=self.authora.get(),
             ).build(out)
+            log_url_audit(out, logging.getLogger("ocw"))
             return out
         finally:
             if fetch_tmp:

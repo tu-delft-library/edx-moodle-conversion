@@ -39,3 +39,5 @@ docs/api/php/
 tools/phpdoc/vendor/
 .phpdoc/
 phpdoc.xml
+
+.cache/

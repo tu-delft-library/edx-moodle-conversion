@@ -11,6 +11,7 @@ from ocw.fetcher import AssetFetcher
 from ocw.gui.common import ConverterApp, _input_label
 from ocw.hybrid_checks import log_hybrid_checks
 from ocw.parser.olx import Course
+from ocw.url_audit import log_url_audit
 from ocw.utils import versioned_output_path
 
 OLX_WINDOW_TITLE = "OLX to Moodle Converter"
@@ -98,6 +99,7 @@ class App(ConverterApp):
             log_hybrid_checks(
                 olx_path, out, logging.getLogger("ocw"), authora=self.authora.get()
             )
+            log_url_audit(out, logging.getLogger("ocw"))
             return out
         finally:
             if tmp:

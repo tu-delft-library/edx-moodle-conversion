@@ -56,6 +56,21 @@ LECTURE_WITH_PDF = """
 </article>
 """
 
+LECTURE_WITH_PDF_BESIDE_VIDEO = """
+<article>
+<h1>Lecture 1</h1>
+<div class="vc_row">
+<div class="wpb_wrapper">
+<div class="vc_lecture"><iframe src="https://www.youtube.com/embed/abc123"></iframe></div>
+<div class="wpb_text_column"><p>Key concepts</p></div>
+<div class="vc_download">
+<a class="icon fa-file" href="https://ocw.tudelft.nl/wp-content/uploads/slides.pdf"><strong>Slides</strong></a>
+</div>
+</div>
+</div>
+</article>
+"""
+
 READING_WITH_UNRESOLVABLE_PDF = """
 <article>
 <h1>Reading 1</h1>
@@ -226,6 +241,7 @@ def test_parse_discovers_chapter_from_subjects_sidebar():
     course = _course(pages)
     course.parse()
     assert course.course_name == "Example Course"
+    assert course.course_id == "example"
     assert len(course.chapters) == 1
     assert course.chapters[0]["display_name"] == "1. Intro"
     assert len(course.chapters[0]["sequentials"]) == 1
@@ -609,6 +625,45 @@ def test_lecture_with_download_block_resolves_pdf_into_link_component():
     contents = [c["content"] for c in result["components"] if c["type"] == "html"]
     assert any('href="/static/slides.pdf"' in c for c in contents)
     assert course.static_files["slides.pdf"] == Path("/tmp/slides.pdf")
+
+
+def test_platform_hosted_pdf_link_bundled_and_other_links_kept():
+    course = _course({})
+    course.fetcher = _FakeFetcher(Path("/tmp/Guide.pdf"))
+    article = BeautifulSoup(
+        "<article>"
+        '<a href="https://d37djvu3ytnwxt.cloudfront.net/assets/courseware/v1/abc/c4x/DelftX/'
+        'DDA691x/asset/Guide.pdf">Guide</a>'
+        '<a href="https://example.com/paper.pdf">Paper</a>'
+        "</article>",
+        "lxml",
+    ).article
+    course._clean_article(article)
+    hrefs = [a["href"] for a in article.select("a")]
+    assert hrefs == ["/static/Guide.pdf", "https://example.com/paper.pdf"]
+    assert course.static_files["Guide.pdf"] == Path("/tmp/Guide.pdf")
+    assert len(course.fetcher.calls) == 1
+
+
+def test_platform_hosted_link_kept_when_fetch_fails():
+    course = _course({})
+    course.fetcher = _FakeFetcher(None)
+    url = "https://d37djvu3ytnwxt.cloudfront.net/assets/courseware/v1/abc/Guide.pdf"
+    article = BeautifulSoup(f'<article><a href="{url}">Guide</a></article>', "lxml").article
+    course._clean_article(article)
+    assert article.a["href"] == url
+
+
+def test_lecture_download_beside_video_appears_once_and_local():
+    course = _course({})
+    course.fetcher = _FakeFetcher(Path("/tmp/slides.pdf"))
+    course._fetch_page = lambda url: BeautifulSoup(LECTURE_WITH_PDF_BESIDE_VIDEO, "lxml")
+    result = course._parse_lecture_uncached("https://x/lec1/", "Lecture 1", "Ch 1", "Seq 1")
+    html = "".join(c["content"] for c in result["components"] if c["type"] == "html")
+    assert html.count('class="vc_download"') == 1
+    assert 'href="/static/slides.pdf"' in html
+    assert "wp-content/uploads/slides.pdf" not in html
+    assert "Key concepts" in html
 
 
 def test_reading_with_unresolvable_pdf_logs_warning_and_omits_readings_entry(caplog):

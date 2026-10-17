@@ -14,7 +14,7 @@ log = logging.getLogger("ocw.fetcher")
 # Supported download types and their expected MIME types. Keep the mappings in sync.
 FETCHABLE_EXTENSIONS = frozenset({
     ".pdf", ".xls", ".xlsx", ".doc", ".docx", ".ppt", ".pptx", ".zip", ".woff2", ".woff",
-    ".jpg", ".jpeg", ".png", ".gif", ".svg", ".webp",
+    ".jpg", ".jpeg", ".png", ".gif", ".svg", ".webp", ".mp3",
 })
 _CONTENT_TYPE_BY_EXT = {
     ".pdf": "application/pdf",
@@ -33,41 +33,65 @@ _CONTENT_TYPE_BY_EXT = {
     ".gif": "image/gif",
     ".svg": "image/svg+xml",
     ".webp": "image/webp",
+    ".mp3": "audio/mpeg",
 }
 
 _MIN_HOST_INTERVAL = 1.0
 _TIMEOUT = 15
 
 
+class HostThrottle:
+    """Enforce a minimum interval between requests to the same host, across every session."""
+
+    def __init__(self, interval: float) -> None:
+        self._interval = interval
+        self._last: dict[str, float] = {}
+
+    def wait(self, url: str) -> None:
+        host = urlparse(url).netloc
+        delay = self._interval - (time.monotonic() - self._last.get(host, 0.0))
+        if delay > 0:
+            time.sleep(delay)
+        self._last[host] = time.monotonic()
+
+
+THROTTLE = HostThrottle(_MIN_HOST_INTERVAL)
+
+
 class AssetFetcher:
     """Fetch approved external assets into `dest_dir`.
 
     Results are cached by URL for this fetcher's lifetime. Requests to the same host are rate
-    limited to avoid repeatedly hitting the source service.
+    limited through `THROTTLE` to avoid repeatedly hitting the source service.
     """
 
     def __init__(self, dest_dir: Path) -> None:
         self.dest_dir = dest_dir
         self._session = requests.Session()
         self._cache: dict[str, Path | None] = {}
-        self._last_request_at: dict[str, float] = {}
+        self._text_cache: dict[str, str | None] = {}
 
-    def fetch(self, url: str) -> Path | None:
+    def fetch(self, url: str, name: str | None = None) -> Path | None:
         """Fetch `url` once and return its local path, or `None` when it is unsupported or unavailable.
 
-        Failed results are cached too, so repeated references do not repeat network requests.
+        `name` saves the file under that name and takes its expected type from it, for URLs
+        without a file extension. Failed results are cached too, so repeated references do not
+        repeat network requests.
         """
         if url not in self._cache:
-            self._cache[url] = self._fetch_uncached(url)
+            self._cache[url] = self._fetch_uncached(url, name or _safe_filename(url))
         return self._cache[url]
 
-    def _fetch_uncached(self, url: str) -> Path | None:
+    def _fetch_uncached(self, url: str, name: str) -> Path | None:
         """Download one uncached supported asset and validate its response type."""
-        ext = Path(urlparse(url).path).suffix.lower()
+        ext = Path(name).suffix.lower()
         if ext not in FETCHABLE_EXTENSIONS:
             return None
+        path = self.dest_dir / name
+        if path.exists():
+            return path
 
-        self._throttle(urlparse(url).netloc)
+        THROTTLE.wait(url)
         try:
             resp = self._session.get(url, timeout=_TIMEOUT)
             resp.raise_for_status()
@@ -86,20 +110,25 @@ class AssetFetcher:
             )
             return None
 
-        name = _safe_filename(url)
-        path = self.dest_dir / name
         path.write_bytes(resp.content)
-        log.info("DOWNLOAD: Fetched external asset '%s' -> %s", url, name)
+        log.info("DOWNLOAD: Fetched external asset '%s' -> %s", url, path.name)
         return path
 
-    def _throttle(self, host: str) -> None:
-        """Wait when necessary to enforce the minimum interval before a request to `host`."""
-        wait = _MIN_HOST_INTERVAL - (
-            time.monotonic() - self._last_request_at.get(host, 0.0)
-        )
-        if wait > 0:
-            time.sleep(wait)
-        self._last_request_at[host] = time.monotonic()
+    def fetch_text(self, url: str) -> str | None:
+        """Fetch a page's text once, or `None` when unavailable. Failures are cached too."""
+        if url not in self._text_cache:
+            self._text_cache[url] = self._fetch_text_uncached(url)
+        return self._text_cache[url]
+
+    def _fetch_text_uncached(self, url: str) -> str | None:
+        THROTTLE.wait(url)
+        try:
+            resp = self._session.get(url, timeout=_TIMEOUT)
+            resp.raise_for_status()
+        except requests.RequestException as e:
+            log.warning("Failed to fetch page '%s': %s", url, e)
+            return None
+        return resp.text
 
 
 def _safe_filename(url: str) -> str:

@@ -4,7 +4,10 @@ import re
 from pathlib import Path
 from xml.etree import ElementTree as ET
 
+from bs4 import BeautifulSoup
+
 from ocw.fetcher import AssetFetcher
+from ocw.parser import download_tool
 from ocw.parser.base import BaseParser
 from ocw.utils import (
     _ABSOLUTE_ASSET_RE,
@@ -19,6 +22,26 @@ log = logging.getLogger("ocw.parser")
 
 # Tags the parser actively converts into page content.
 # _WHITELISTED_TAGS = frozenset({"html", "video"})
+
+# PDFs and mp3s on DelftX hosts, plus delftxtools' extensionless Discussion and Collaboration Guidelines.
+_DELFTX_FILE_RE = re.compile(
+    r"https?://delftx[\w-]*\.tudelft\.nl/(?:[^\"'\s#?<>]*\.(?:pdf|mp3)|DaCG)(?=[#?\"'\s<>]|$)",
+    re.IGNORECASE,
+)
+_DACG_NAME = "DaCG.pdf"
+# edX/DelftX markup with no use on Moodle: old dframe widget stylesheets and builder.js loaders
+# (superseded by the inlined widget), inline download tool loaders (only run on ocw.tudelft.nl),
+# edX "verify" purchase buttons, and Studio editor attributes.
+_PLATFORM_JUNK_RES = tuple(
+    re.compile(pattern, re.IGNORECASE | re.DOTALL)
+    for pattern in (
+        r"<link\b[^>]*\bhref=[\"']https?://delftxdownloads\.tudelft\.nl/download-tool/[^>]*>",
+        r"<script\b[^>]*\bsrc=[\"'][^\"']*/_tools/dl/js/builder\.js[\"'][^>]*>\s*</script>",
+        r"<script\b[^>]*>(?:(?!</script>).)*?delftxdownloads\.tudelft\.nl/download-tool/(?:(?!</script>).)*</script>",
+        r"<input\b[^>]*ecommerce\.edx\.org[^>]*>",
+        r"\s+authoring_mfe_base_url=([\"'])[^\"']*\1",
+    )
+)
 
 # Component tags deliberately dropped because the converter has no Moodle equivalent.
 _BLACKLISTED_TAGS = frozenset(
@@ -146,7 +169,7 @@ class Course(BaseParser):
         tab_path = self.root / "tabs" / f"{url_slug}.html"
         if not tab_path.exists():
             return
-        self.syllabus_html = tab_path.read_text(encoding="utf-8")
+        self.syllabus_html = self._localize_delftx(tab_path.read_text(encoding="utf-8"))
         self.syllabus_title = tab.get("name") or "Syllabus"
 
     def _parse_readings(self, course: ET.Element) -> None:
@@ -244,11 +267,77 @@ class Course(BaseParser):
             is not None
         ]
         self._attach_video_download_ids(components, display_name)
+        self._inline_download_tools(components)
         return {
             "url_name": url_name,
             "display_name": display_name,
             "components": components,
         }
+
+    def _inline_download_tools(self, components: list[dict]) -> None:
+        """Replace each dframe and inline `TUD_box_download` with the inlined DelftxDownloads
+        widget; see `ocw.parser.download_tool`. Left untouched when fetching is disabled."""
+        if self.fetcher is None:
+            return
+        for comp in components:
+            if comp["type"] != "html" or not (
+                _find_dframe_downloadids(comp["content"]) or "TUD_box_download" in comp["content"]
+            ):
+                continue
+            soup = BeautifulSoup(comp["content"], "html.parser")
+            download_tool.replace_inline_boxes(soup, "edx", self._fetch_tool_page, self._fetch_static)
+            for frame in soup.select("iframe.dframe"):
+                url = download_tool.tool_url(
+                    frame.get("data-downloadid", ""),
+                    "edx",
+                    lang=frame.get("data-lang") or "en",
+                    filetype=frame.get("data-filetype") or "mp4",
+                    cc_sa=frame.get("data-ccsa") or "y",
+                    cc_nc=frame.get("data-ccnc") or "y",
+                )
+                page = self.fetcher.fetch_text(url)
+                if page is None:
+                    continue
+                frame.replace_with(
+                    download_tool.inline_widget(
+                        BeautifulSoup(page, "html.parser"), url, self._fetch_static
+                    )
+                )
+            comp["content"] = str(soup)
+
+    def _fetch_tool_page(self, url: str) -> BeautifulSoup | None:
+        page = self.fetcher.fetch_text(url)
+        return BeautifulSoup(page, "html.parser") if page is not None else None
+
+    def _localize_delftx(self, html: str) -> str:
+        """Drop edX/DelftX platform markup, then bundle PDFs and mp3s linked on DelftX hosts and
+        point links at the local copy, keeping any `#page=` fragment. Files that can't be fetched stay."""
+        for junk_re in _PLATFORM_JUNK_RES:
+            html = junk_re.sub("", html)
+        if self.fetcher is None:
+            return html
+
+        def _bundle(m: re.Match) -> str:
+            url = m.group(0)
+            name = _DACG_NAME if url.lower().endswith("/dacg") else None
+            fetched = self.fetcher.fetch(url, name=name)
+            if fetched is None:
+                return url
+            self.static_files[fetched.name] = fetched
+            return f"/static/{fetched.name}"
+
+        return _DELFTX_FILE_RE.sub(_bundle, html)
+
+    def _fetch_static(self, url: str) -> str | None:
+        """Bundle `url` as a static file and return its name, or `None` when unavailable."""
+        name = resolve_asset_name(url)
+        if name in self.static_files:
+            return name
+        fetched = self.fetcher.fetch(url)
+        if fetched is None:
+            return None
+        self.static_files[fetched.name] = fetched
+        return fetched.name
 
     def _attach_video_download_ids(
         self, components: list[dict], vertical_name: str = ""
@@ -326,7 +415,9 @@ class Course(BaseParser):
         el = ET.parse(path).getroot()
         filename = el.get("filename", url_name)
         html_path = root / "html" / f"{filename}.html"
-        content = html_path.read_text(encoding="utf-8") if html_path.exists() else ""
+        content = self._localize_delftx(
+            html_path.read_text(encoding="utf-8") if html_path.exists() else ""
+        )
 
         for match in _ABSOLUTE_ASSET_RE.finditer(content):
             absolute_url, name = match.group(0), match.group(1)

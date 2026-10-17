@@ -9,6 +9,7 @@ from ocw.converter.html import (
     strip_blacklisted_classes,
     strip_templated_iframes,
     style_figcaption,
+    unlink_platform_hrefs,
 )
 from ocw.parser.base import BaseParser
 from ocw.utils import _Counter, rewrite_static_urls, warn_external_edx_urls
@@ -73,6 +74,9 @@ class SectionStrategy(ABC):
 
     def _process_html(self, content: str, context: str = "") -> str:
         """Apply the standard source-to-Moodle HTML transformation pipeline."""
+        content = unlink_platform_hrefs(
+            rewrite_static_urls(content, self.c.static_files), context
+        )
         warn_external_edx_urls(
             content, context=context, static_files=self.c.static_files
         )
@@ -80,11 +84,7 @@ class SectionStrategy(ABC):
             constrain_table_size(
                 constrain_img_size(
                     mark_hyperlinks_nomediaplugin(
-                        strip_templated_iframes(
-                            strip_blacklisted_classes(
-                                rewrite_static_urls(content, self.c.static_files)
-                            )
-                        )
+                        strip_templated_iframes(strip_blacklisted_classes(content))
                     )
                 )
             )
@@ -124,7 +124,7 @@ class SectionStrategy(ABC):
         if vert.get("dedup_url"):
             self._dedup_page_ids[vert["dedup_url"]] = mod_id
         combined = "".join(parts)
-        file_refs = re.findall(r'@@PLUGINFILE@@/([^"\'>\s]+)', combined)
+        file_refs = re.findall(r'@@PLUGINFILE@@/([^"\'>\s#?]+)', combined)
         return {
             "id": mod_id,
             "ctx": ctx_id,

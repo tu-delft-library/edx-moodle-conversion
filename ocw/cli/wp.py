@@ -9,6 +9,7 @@ from ocw._version import __version__
 from ocw.converter import MBZBuilder
 from ocw.fetcher import AssetFetcher
 from ocw.logging_setup import setup_cli_logging
+from ocw.url_audit import log_url_audit
 from ocw.utils import versioned_output_path
 from ocw.parser.wp import WPCourse
 
@@ -72,6 +73,7 @@ def main() -> None:
             disable_custom_fields=args.disable_custom_fields,
             authora=args.authora,
         ).build(output)
+        log_url_audit(output, log)
     except Exception as e:
         print(f"error: {e}", file=sys.stderr)
         sys.exit(1)

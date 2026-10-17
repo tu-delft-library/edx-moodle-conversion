@@ -1,3 +1,4 @@
+import html
 import re
 import tarfile
 from pathlib import Path
@@ -1450,7 +1451,7 @@ def test_warn_external_edx_urls_fires_for_page_with_edx_link(tmp_path, caplog):
                                 HtmlComponent(
                                     "pg1",
                                     "Page 1",
-                                    content='<a href="https://courses.edx.org/asset-v1:x.png">link</a>',
+                                    content='<img src="https://courses.edx.org/asset-v1:x.png">',
                                 )
                             ],
                         )
@@ -1521,7 +1522,7 @@ def test_warn_external_edx_urls_fires_for_syllabus_with_edx_link(tmp_path, caplo
     ]
     b.static_tabs = [StaticTab("Syllabus", "syllabus-slug")]
     b.tabs_files = {
-        "syllabus-slug": '<a href="https://learning.edx.org/course/x">still on edx</a>'
+        "syllabus-slug": '<img src="https://learning.edx.org/course/x.png">'
     }
     course = Course(b.build())
     course.parse()
@@ -1530,3 +1531,96 @@ def test_warn_external_edx_urls_fires_for_syllabus_with_edx_link(tmp_path, caplo
         MBZBuilder(course).build(out)
     assert "still hosted on edX" in caplog.text
     assert "learning.edx.org" in caplog.text
+
+
+def test_edx_links_unlinked_in_pages_and_syllabus_keeping_text(tmp_path, caplog):
+    b = OLXFixtureBuilder(tmp_path / "course")
+    b.chapters = [
+        Chapter(
+            "ch1",
+            "Ch 1",
+            [
+                Sequential(
+                    "s1",
+                    "S1",
+                    [
+                        Vertical(
+                            "v1",
+                            "V1",
+                            [
+                                HtmlComponent(
+                                    "pg1",
+                                    "Page 1",
+                                    content='<p><a href="https://www.edx.org/edx-terms-service">'
+                                    "edX terms</a></p>",
+                                )
+                            ],
+                        )
+                    ],
+                )
+            ],
+        )
+    ]
+    b.static_tabs = [StaticTab("Syllabus", "syllabus-slug")]
+    b.tabs_files = {
+        "syllabus-slug": '<p><a href="https://support.edx.org/hc/x">edX help</a></p>'
+    }
+    course = Course(b.build())
+    course.parse()
+    out = tmp_path / "out.mbz"
+    with caplog.at_level("INFO", logger="ocw.converter"):
+        MBZBuilder(course).build(out)
+    with tarfile.open(out) as tar:
+        pages = "".join(
+            html.unescape(tar.extractfile(m).read().decode())
+            for m in tar.getmembers()
+            if m.name.endswith("page.xml")
+        )
+    assert "<p>edX terms</p>" in pages
+    assert "<p>edX help</p>" in pages
+    assert "edx.org" not in pages
+    assert "still hosted on edX" not in caplog.text
+    assert caplog.text.count("Unlinked platform link") == 2
+
+
+def test_static_link_with_page_fragment_still_attaches_file(tmp_path):
+    b = OLXFixtureBuilder(tmp_path / "course")
+    b.static_files = {"guide.pdf": b"%PDF-1.4"}
+    b.chapters = [
+        Chapter(
+            "ch1",
+            "Ch 1",
+            [
+                Sequential(
+                    "s1",
+                    "S1",
+                    [
+                        Vertical(
+                            "v1",
+                            "V1",
+                            [
+                                HtmlComponent(
+                                    "pg1",
+                                    "Page 1",
+                                    content='<a href="/static/guide.pdf#page=2">guide</a>',
+                                )
+                            ],
+                        )
+                    ],
+                )
+            ],
+        )
+    ]
+    course = Course(b.build())
+    course.parse()
+    out = tmp_path / "out.mbz"
+    MBZBuilder(course).build(out)
+    with tarfile.open(out) as tar:
+        files_xml = tar.extractfile("files.xml").read().decode()
+        pages = "".join(
+            html.unescape(tar.extractfile(m).read().decode())
+            for m in tar.getmembers()
+            if m.name.endswith("page.xml")
+        )
+    assert "<filename>guide.pdf</filename>" in files_xml
+    assert 'href="@@PLUGINFILE@@/guide.pdf#page=2"' in pages

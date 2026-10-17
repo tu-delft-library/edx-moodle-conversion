@@ -26,10 +26,12 @@ deptry = "^0.25.1"
 mkdocs = "^1.6.1"
 mkdocs-material = "^9.7.3"
 mkdocstrings = { version = "^0.30.1", extras = ["python"] }
+pymdown-extensions = "<12"
 ruff = "^0.14.0"
 
 [tool.pytest.ini_options]
 testpaths = ["tests/unit", "tests/integration"]
+markers = ["real_courses: converts real courses over the network (opt-in via --real-courses, slow)"]
 
 [tool.ruff.lint]
 select = ["F", "C901"]

@@ -12,6 +12,7 @@ from ocw.fetcher import AssetFetcher
 from ocw.hybrid_checks import log_hybrid_checks
 from ocw.logging_setup import setup_cli_logging
 from ocw.parser.olx import Course
+from ocw.url_audit import log_url_audit
 from ocw.utils import versioned_output_path
 
 
@@ -74,6 +75,7 @@ def main() -> None:
             authora=args.authora,
         ).build(output)
         log_hybrid_checks(olx_path, output, log, authora=args.authora)
+        log_url_audit(output, log)
     except Exception as e:
         print(f"error: {e}", file=sys.stderr)
         sys.exit(1)

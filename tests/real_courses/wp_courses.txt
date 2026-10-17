@@ -1,0 +1,22 @@
+# picked from https://ocw.tudelft.nl/sitemap_index.xml (course-sitemap1..3), profiled on the first
+# lecture of the first subject. Limited to 5; the rest are kept commented out.
+# DelftX widget + YouTube, verified end to end
+https://ocw.tudelft.nl/courses/introduction-seismic-essentials-groningen/
+# DelftX widget, readings
+https://ocw.tudelft.nl/courses/understanding-nuclear-energy/
+# no widget but delftxdownloads referenced, 8 readings
+https://ocw.tudelft.nl/courses/electric-cars-technology/
+# YouTube, heavy vc_download PDFs
+https://ocw.tudelft.nl/courses/development-teaching-active-learning/
+# Dutch, Collegerama, 16 subjects
+https://ocw.tudelft.nl/courses/thermodynamica-1/
+# DelftX widget, 9 subjects
+# https://ocw.tudelft.nl/courses/delft-design-approach/
+# no widget but delftxdownloads referenced, newer course
+# https://ocw.tudelft.nl/courses/ai-skills-for-engineers-supervised-machine-learning/
+# YouTube + Collegerama mixed
+# https://ocw.tudelft.nl/courses/agent-based-modeling-of-complex-adaptive-systems-basic/
+# Collegerama, old theme, vc_download
+# https://ocw.tudelft.nl/courses/theory-of-computation/
+# Dutch, Collegerama, 19 subjects
+# https://ocw.tudelft.nl/courses/inleiding-watermanagement/

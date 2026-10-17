@@ -1,6 +1,7 @@
 import pytest
 from pathlib import Path
 
+from ocw.fetcher import THROTTLE
 from tests.builders import Chapter, HtmlComponent, OLXFixtureBuilder, Sequential, Vertical, VideoComponent
 
 MINIMAL_FIXTURE = Path(__file__).parent / "fixtures" / "minimal"
@@ -9,6 +10,20 @@ MINIMAL_FIXTURE = Path(__file__).parent / "fixtures" / "minimal"
 def pytest_addoption(parser):
     parser.addoption("--olx-path", default=None, help="OLX directory for hybrid checks")
     parser.addoption("--mbz-path", default=None, help="MBZ file for hybrid checks")
+    parser.addoption(
+        "--real-courses", action="store_true", help="convert and URL-audit real courses"
+    )
+    parser.addoption(
+        "--all-courses",
+        action="store_true",
+        help="with --real-courses, run every course instead of the pinned 5 per source",
+    )
+
+
+@pytest.fixture(autouse=True)
+def _no_throttle(request, monkeypatch):
+    if not request.config.getoption("--real-courses"):
+        monkeypatch.setattr(THROTTLE, "_interval", 0.0)
 
 
 @pytest.fixture(scope="module")

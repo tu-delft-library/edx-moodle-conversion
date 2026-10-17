@@ -232,7 +232,7 @@ def test_c3_warns_missing_asset_v1_reference(tmp_path, caplog):
 
 
 # CC5
-def test_cc5_course_image_and_banner_in_overviewfiles(tmp_path):
+def test_cc5_course_image_in_overviewfiles_without_banner(tmp_path):
     png = b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01\x08\x02\x00\x00\x00\x90wS\xde\x00\x00\x00\x0cIDATx\x9cc\xf8\x0f\x00\x00\x01\x01\x00\x05\x18\xd8N\x00\x00\x00\x00IEND\xaeB`\x82"
     b = OLXFixtureBuilder(tmp_path / "course")
     b.chapters = [
@@ -261,15 +261,14 @@ def test_cc5_course_image_and_banner_in_overviewfiles(tmp_path):
         for f in root.findall("file")
         if f.findtext("component") == "course"
         and f.findtext("filearea") == "overviewfiles"
+        and f.findtext("filename") != "."
     }
-    assert set(overview_files) == {"course_image.jpg", "banner.png"}
-    ctxids = {f.findtext("contextid") for f in overview_files.values()}
-    assert len(ctxids) == 1
-    assert next(iter(ctxids)) != "1"
-    for f in overview_files.values():
-        assert f.findtext("itemid") == "0"
-    assert overview_files["course_image.jpg"].findtext("sortorder") == "0"
-    assert overview_files["banner.png"].findtext("sortorder") == "1"
+    # Moodle sorts overviewfiles by filename, so a banner here could take over the catalogue tile.
+    assert set(overview_files) == {"course_image.jpg"}
+    image = overview_files["course_image.jpg"]
+    assert image.findtext("contextid") != "1"
+    assert image.findtext("itemid") == "0"
+    assert image.findtext("sortorder") == "0"
 
 
 # CC5
