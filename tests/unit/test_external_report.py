@@ -143,10 +143,10 @@ def test_zip_contains_docx_at_root_and_index_links_it(tmp_path):
     out = tmp_path / "course.zip"
     ZipBuilder(course).build(out)
     with zipfile.ZipFile(out) as zf:
-        assert "Example_Course/external_content.docx" in zf.namelist()
-        assert 'href="external_content.docx"' in zf.read("Example_Course/index.html").decode()
-        zf.extract("Example_Course/external_content.docx", tmp_path)
-    urls = [row[2] for row in _rows(tmp_path / "Example_Course/external_content.docx")]
+        assert "Example_Course/course.docx" in zf.namelist()
+        assert 'href="course.docx"' in zf.read("Example_Course/index.html").decode()
+        zf.extract("Example_Course/course.docx", tmp_path)
+    urls = [row[2] for row in _rows(tmp_path / "Example_Course/course.docx")]
     assert "https://www.youtube.com/embed/abc123" in urls
 
 

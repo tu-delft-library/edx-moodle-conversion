@@ -306,10 +306,12 @@ def test_download_widget_becomes_a_type_file_link_table(walker, doc):
     assert doc.paragraphs == [] and len(doc.inline_shapes) == 0
 
 
-def test_download_widget_without_real_links_is_dropped(walker, doc):
-    walker.add(
-        '<div class="TUD_box_download"><div class="tud-button video-download"><ul>'
-        '<li><a href="#">High</a></li></ul></div><p>Sorry but there are no downloads</p></div><p>after</p>'
-    )
+def test_download_widget_without_real_links_is_dropped_with_a_warning(walker, doc, caplog):
+    with caplog.at_level(logging.WARNING, logger="ocw.html_to_docx"):
+        walker.add(
+            '<div class="TUD_box_download"><div class="tud-button video-download"><ul>'
+            '<li><a href="#">High</a></li></ul></div><p>Sorry but there are no downloads</p></div><p>after</p>'
+        )
+    assert "no real links" in caplog.text
     assert doc.tables == []
     assert [p.text for p in doc.paragraphs] == ["after"]

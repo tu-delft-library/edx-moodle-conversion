@@ -325,6 +325,7 @@ class HtmlToDocx:
                 if href and not href.startswith("#"):
                     rows.append((group, _SPACE_RE.sub(" ", link.get_text(" ")).strip(), _local_url(href)))
         if not rows:
+            log.warning("Download widget has no real links, dropping it (tool page probably not fetched)")
             return
         table = target.add_table(rows=len(rows) + 1, cols=len(_DOWNLOAD_HEADER))
         table.style = "Table Grid"

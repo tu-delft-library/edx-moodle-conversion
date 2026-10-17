@@ -52,10 +52,10 @@ def test_zip_strips_scripts_and_inline_handlers(tmp_path):
 
 
 # WP-ZIP4
-def test_zip_always_includes_external_content_docx(tmp_path):
+def test_zip_always_includes_course_docx(tmp_path):
     with _build(tmp_path) as zf:
-        assert "external_content.docx" in _relative(zf)
-        assert "external_content.docx" in _read(zf, "index.html")
+        assert "course.docx" in _relative(zf)
+        assert "course.docx" in _read(zf, "index.html")
 
 
 # WP-ZIP5
@@ -83,9 +83,9 @@ def test_blacklisted_asset_and_its_references_are_dropped(tmp_path):
 # WP-ZIP9
 def test_docx_in_zip_has_row_for_copied_local_file(tmp_path):
     with _build(tmp_path) as zf:
-        docx_name = next(n for n in zf.namelist() if n.endswith("external_content.docx"))
+        docx_name = next(n for n in zf.namelist() if n.endswith("course.docx"))
         docx_bytes = zf.read(docx_name)
-    docx_path = tmp_path / "external_content.docx"
+    docx_path = tmp_path / "course.docx"
     docx_path.write_bytes(docx_bytes)
     table = Document(docx_path).tables[0]
     rows = [[c.text for c in row.cells] for row in table.rows]

@@ -298,7 +298,7 @@ def _docx(tmp_path, site=None) -> Document:
     out = tmp_path / "course.zip"
     ZipBuilder(course).build(out)
     with zipfile.ZipFile(out) as zf:
-        return Document(io.BytesIO(zf.read("Example_Course/external_content.docx")))
+        return Document(io.BytesIO(zf.read("Example_Course/course.docx")))
 
 
 def _headings(doc) -> list[tuple[str, str]]:

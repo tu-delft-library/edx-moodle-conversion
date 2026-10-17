@@ -25,7 +25,7 @@ from ocw.utils import _UNSAFE_FILENAME_RE
 log = logging.getLogger("ocw.zip_builder")
 _ASSET_REF_RE = re.compile(r"(?:/static/|@@PLUGINFILE@@/)([^\"'>\s)#?]+)")
 _ROOT_INDEX = PurePosixPath("index.html")
-_EXTERNAL_DOCX = "external_content.docx"
+_COURSE_DOCX = "course.docx"
 _EXTERNAL_XLSX = "external_content.xlsx"
 _CONTENT_HEADING_OFFSET = 4
 _PAGE = """<!doctype html>
@@ -131,7 +131,7 @@ class ZipBuilder:
             HtmlToDocx(doc, root / "assets", Path(scratch)).add(
                 self._flatten(plan), heading_offset=_CONTENT_HEADING_OFFSET
             )
-            doc.save(root / _EXTERNAL_DOCX)
+            doc.save(root / _COURSE_DOCX)
 
     @staticmethod
     def _add_contents(doc, plan: Plan) -> None:
@@ -336,7 +336,7 @@ class ZipBuilder:
             if pages:
                 parts.append(f"<h2>{heading}</h2>")
                 parts.append(self._link_list(pages, _ROOT_INDEX))
-        parts.append(f'<p><a href="{_EXTERNAL_DOCX}">External content overview (Docx)</a></p>')
+        parts.append(f'<p><a href="{_COURSE_DOCX}">Course overview (Docx)</a></p>')
         parts.append(f'<p><a href="{_EXTERNAL_XLSX}">External content, one row per occurrence (Excel)</a></p>')
         self._write_html(root / _ROOT_INDEX, self.course.course_name, "\n".join(parts))
 
