@@ -11,9 +11,8 @@ from pathlib import Path
 
 from bs4 import BeautifulSoup, XMLParsedAsHTMLWarning
 
-WATCHED_HOST_RE = re.compile(
-    r"(^|\.)(edx\.org|edx-video\.net|edx-cdn\.org|edxapp\.org|delftx[\w-]*\.tudelft\.nl)$"
-)
+from ocw.utils import PLATFORM_HOST_RE
+
 _URL_RE = re.compile(r"(?:https?:)?//[^\s\"'<>)]+")
 _WIDGET_TABS = (
     ".TUD_box_download .video-download a[href], .TUD_box_download .subtitle-download a[href]"
@@ -32,7 +31,7 @@ class Hit:
 
 def _watched(url: str) -> bool:
     host = url.split("//", 1)[1].split("/", 1)[0].split(":")[0].lower()
-    return bool(WATCHED_HOST_RE.search(host))
+    return bool(PLATFORM_HOST_RE.search(host))
 
 
 def audit_html(member: str, fragment: str) -> list[Hit]:

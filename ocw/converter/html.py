@@ -65,7 +65,8 @@ def constrain_table_size(html: str) -> str:
 
 _PLATFORM_LINK_RE = re.compile(
     r"<a\b[^>]*?\bhref=([\"'])(?:https?:)?//(?:[\w-]+\.)*"
-    r"(?:edx\.org|edx-video\.net|edx-cdn\.org|edxapp\.org|delftxtools\.tudelft\.nl)"
+    r"(?:edx\.org|edx-video\.net|edx-cdn\.org|edxapp\.org|edx\.readthedocs\.(?:org|io)"
+    r"|delftxtools\.tudelft\.nl)"
     r"(?:[/:?#][^\"']*)?\1[^>]*>(.*?)</a>",
     re.DOTALL | re.IGNORECASE,
 )

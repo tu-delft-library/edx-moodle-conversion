@@ -29,6 +29,14 @@ def test_unlink_platform_hrefs_covers_delftxtools_apps():
     assert unlink_platform_hrefs(html) == "<p>Forensic Escape Room</p>"
 
 
+def test_unlink_platform_hrefs_covers_edx_docs():
+    html = (
+        '<li><a href="http://edx.readthedocs.io/projects/edx-partner-course-staff/en/latest/index.html" '
+        'target="_blank">Building and Running an edX Course</a></li>'
+    )
+    assert unlink_platform_hrefs(html) == "<li>Building and Running an edX Course</li>"
+
+
 def test_unlink_platform_hrefs_drops_link_without_text():
     assert unlink_platform_hrefs('<p>a<a href="https://courses.edx.org/x/jump_to/y"></a>b</p>') == (
         "<p>ab</p>"
