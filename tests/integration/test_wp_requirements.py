@@ -789,7 +789,9 @@ def test_wp_cc8_banner_image_registered_as_course_image_and_banner(tmp_path):
     overview_files = [
         f
         for f in root.findall("file")
-        if f.findtext("component") == "course" and f.findtext("filearea") == "overviewfiles"
+        if f.findtext("component") == "course"
+        and f.findtext("filearea") == "overviewfiles"
+        and f.findtext("filename") != "."
     ]
     # Exactly one entry, not one per course_image_path/banner_image_path field: WP registers
     # the same file under both, and a duplicate filename in one area would collide on restore.

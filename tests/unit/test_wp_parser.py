@@ -56,6 +56,21 @@ LECTURE_WITH_PDF = """
 </article>
 """
 
+LECTURE_WITH_PDF_BESIDE_VIDEO = """
+<article>
+<h1>Lecture 1</h1>
+<div class="vc_row">
+<div class="wpb_wrapper">
+<div class="vc_lecture"><iframe src="https://www.youtube.com/embed/abc123"></iframe></div>
+<div class="wpb_text_column"><p>Key concepts</p></div>
+<div class="vc_download">
+<a class="icon fa-file" href="https://ocw.tudelft.nl/wp-content/uploads/slides.pdf"><strong>Slides</strong></a>
+</div>
+</div>
+</div>
+</article>
+"""
+
 READING_WITH_UNRESOLVABLE_PDF = """
 <article>
 <h1>Reading 1</h1>
@@ -610,6 +625,18 @@ def test_lecture_with_download_block_resolves_pdf_into_link_component():
     contents = [c["content"] for c in result["components"] if c["type"] == "html"]
     assert any('href="/static/slides.pdf"' in c for c in contents)
     assert course.static_files["slides.pdf"] == Path("/tmp/slides.pdf")
+
+
+def test_lecture_download_beside_video_appears_once_and_local():
+    course = _course({})
+    course.fetcher = _FakeFetcher(Path("/tmp/slides.pdf"))
+    course._fetch_page = lambda url: BeautifulSoup(LECTURE_WITH_PDF_BESIDE_VIDEO, "lxml")
+    result = course._parse_lecture_uncached("https://x/lec1/", "Lecture 1", "Ch 1", "Seq 1")
+    html = "".join(c["content"] for c in result["components"] if c["type"] == "html")
+    assert html.count('class="vc_download"') == 1
+    assert 'href="/static/slides.pdf"' in html
+    assert "wp-content/uploads/slides.pdf" not in html
+    assert "Key concepts" in html
 
 
 def test_reading_with_unresolvable_pdf_logs_warning_and_omits_readings_entry(caplog):

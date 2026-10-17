@@ -519,6 +519,42 @@ def test_inline_download_tool_keeps_dframe_when_tool_page_unavailable(tmp_path):
     assert 'class="dframe"' in _html_contents(course)
 
 
+_INLINE_BOX = (
+    '<div class="TUD_box_download" data-DownloadID="FE01x-6.5.1" data-VideoType=".mp4">'
+    '<div class="tud-button tud-float video-download">'
+    '<div class="tud-button-top video-download-top" onclick="videoClick(this)">Video</div>'
+    '<ul class="TUD"><li class="TUD TUD_High_Video"><a href="#">High</a></li></ul></div>'
+    '<p class="TUD_subtext no-download">Sorry, there don\'t seem to be any downloads.</p>'
+    "</div>"
+)
+
+
+def test_inline_download_tool_replaces_inline_box_with_widget(tmp_path):
+    """The 2017 inline box is a `#`-linked shell filled by a CDN script, so it's swapped for the
+    tool page widget whole, leftover subtexts included."""
+    fetcher = _ToolFetcher()
+    course = _dframe_course(tmp_path, _INLINE_BOX, [VideoComponent("vid1", "Video 1")], fetcher)
+    html = _html_contents(course)
+
+    assert 'href="#"' not in html
+    assert "videoClick" not in html
+    assert "no-download" not in html
+    assert '<details class="tud-button tud-float video-download"' in html
+    assert 'href="/static/FE01x-6.5.1-slides.pdf"' in html
+    assert 'href="https://delftxdownloads.tudelft.nl/FE01x-6.5.1-video.mp4"' in html
+    assert "src=edx&path=FE01x-6.5.1&lang=en&ft=mp4" in fetcher.text_calls[0]
+
+
+def test_inline_download_tool_keeps_inline_box_when_tool_page_unavailable(tmp_path):
+    class _NoPages(_ToolFetcher):
+        def fetch_text(self, url: str) -> str | None:
+            return None
+
+    course = _dframe_course(tmp_path, _INLINE_BOX, [], _NoPages())
+
+    assert "TUD_box_download" in _html_contents(course)
+
+
 def test_course_videos_flat_list_matches_video_components(tmp_path):
     b = _minimal_builder(tmp_path)
     b.chapters = [

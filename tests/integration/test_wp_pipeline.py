@@ -253,6 +253,10 @@ def test_lecture_linked_from_two_subjects_redirects_via_hidden_section(tmp_path)
             for n in names
             if re.match(r"sections/section_\d+/section\.xml", n)
         ]
-        hidden_sections = [s for s in section_xmls if "<visible>0</visible>" in s]
+        hidden_sections = [
+            s
+            for s in section_xmls
+            if "<visible>0</visible>" in s and "<number>0</number>" not in s
+        ]
         assert len(hidden_sections) == 1
         assert canonical_id in hidden_sections[0]

@@ -101,3 +101,30 @@ def inline_widget(
             link["href"] = f"/static/{name}"
     widget.insert(0, BeautifulSoup(CSS, "html.parser").style)
     return widget
+
+
+def replace_inline_boxes(
+    root: Tag,
+    src: str,
+    fetch_page: Callable[[str], BeautifulSoup | None],
+    localize: Callable[[str], str | None],
+) -> list[str]:
+    """Replace each inline `TUD_box_download` placeholder under `root` with the inlined widget.
+
+    The placeholder's links stay `#` until the CDN script fills them, so a box without a download
+    id is dropped, and one whose tool page can't be fetched is left as is. Returns the ids replaced.
+    """
+    download_ids = []
+    for box in root.select("div.TUD_box_download"):
+        download_id = box.get("data-downloadid", "")
+        if not download_id:
+            box.decompose()
+            continue
+        filetype = (box.get("data-videotype") or ".mp4").lstrip(".")
+        url = tool_url(download_id, src, filetype=filetype)
+        page = fetch_page(url)
+        if page is None:
+            continue
+        box.replace_with(inline_widget(page, url, localize))
+        download_ids.append(download_id)
+    return download_ids

@@ -275,14 +275,17 @@ class Course(BaseParser):
         }
 
     def _inline_download_tools(self, components: list[dict]) -> None:
-        """Replace each dframe with the inlined DelftxDownloads widget; see
-        `ocw.parser.download_tool`. Left untouched when fetching is disabled."""
+        """Replace each dframe and inline `TUD_box_download` with the inlined DelftxDownloads
+        widget; see `ocw.parser.download_tool`. Left untouched when fetching is disabled."""
         if self.fetcher is None:
             return
         for comp in components:
-            if comp["type"] != "html" or not _find_dframe_downloadids(comp["content"]):
+            if comp["type"] != "html" or not (
+                _find_dframe_downloadids(comp["content"]) or "TUD_box_download" in comp["content"]
+            ):
                 continue
             soup = BeautifulSoup(comp["content"], "html.parser")
+            download_tool.replace_inline_boxes(soup, "edx", self._fetch_tool_page, self._fetch_static)
             for frame in soup.select("iframe.dframe"):
                 url = download_tool.tool_url(
                     frame.get("data-downloadid", ""),
@@ -301,6 +304,10 @@ class Course(BaseParser):
                     )
                 )
             comp["content"] = str(soup)
+
+    def _fetch_tool_page(self, url: str) -> BeautifulSoup | None:
+        page = self.fetcher.fetch_text(url)
+        return BeautifulSoup(page, "html.parser") if page is not None else None
 
     def _localize_delftx(self, html: str) -> str:
         """Drop edX/DelftX platform markup, then bundle PDFs and mp3s linked on DelftX hosts and

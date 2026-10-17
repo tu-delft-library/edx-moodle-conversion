@@ -256,24 +256,13 @@ class WPCourse(BaseParser):
 
         Returns each box's download id, so the caller can pair one onto the page's video.
         """
-        download_ids = []
-        for box in article.select(".TUD_box_download"):
-            download_id = box.get("data-downloadid", "")
-            if not download_id:
-                box.decompose()
-                continue
-            filetype = (box.get("data-videotype") or ".mp4").lstrip(".")
-            box.replace_with(self._download_tool_widget(download_id, filetype))
-            download_ids.append(download_id)
-
+        download_ids = download_tool.replace_inline_boxes(
+            article, "ocw", self._fetch_page, self._resolve_and_fetch
+        )
         for script in article.select("script"):
             if script.string and self._TUD_HOST_CHECK in script.string:
                 script.decompose()
         return download_ids
-
-    def _download_tool_widget(self, download_id: str, filetype: str):
-        url = download_tool.tool_url(download_id, "ocw", filetype=filetype)
-        return download_tool.inline_widget(self._fetch_page(url), url, self._resolve_and_fetch)
 
     def _excluded_imgs(self, article) -> set[str]:
         """Return image srcs the parser intentionally drops, for the content-loss audit to skip."""
@@ -687,6 +676,8 @@ class WPCourse(BaseParser):
     def _non_download_remainder(child) -> str | None:
         """Return `child`'s HTML with all `div.vc_download` blocks stripped out, or `None` when
         nothing real -- text, image, or `<hr>` -- is left once they're removed."""
+        if "vc_download" in (child.get("class") or []):
+            return None
         remainder = copy.copy(child)
         for dl in remainder.select("div.vc_download"):
             dl.decompose()
