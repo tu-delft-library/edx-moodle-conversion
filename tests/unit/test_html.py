@@ -6,40 +6,48 @@ from ocw.converter.html import (
     strip_blacklisted_classes,
     strip_templated_iframes,
     style_figcaption,
-    unlink_edx_hrefs,
+    unlink_platform_hrefs,
 )
 
 
-def test_unlink_edx_hrefs_keeps_display_text():
+def test_unlink_platform_hrefs_keeps_display_text():
     html = (
         '<p>See <a href="https://support.edx.org/hc/en-us/sections/1-Financial-Assistance" '
         'target="_blank"><strong>financial assistance</strong></a> and '
         "<a href='https://www.edx.org/edx-terms-service'>terms</a>.</p>"
     )
-    assert unlink_edx_hrefs(html) == (
+    assert unlink_platform_hrefs(html) == (
         "<p>See <strong>financial assistance</strong> and terms.</p>"
     )
 
 
-def test_unlink_edx_hrefs_drops_link_without_text():
-    assert unlink_edx_hrefs('<p>a<a href="https://courses.edx.org/x/jump_to/y"></a>b</p>') == (
+def test_unlink_platform_hrefs_covers_delftxtools_apps():
+    html = (
+        '<p><a href="https://delftxtools.tudelft.nl/ForensicEscapeRoom/" target="_blank">'
+        "Forensic Escape Room</a></p>"
+    )
+    assert unlink_platform_hrefs(html) == "<p>Forensic Escape Room</p>"
+
+
+def test_unlink_platform_hrefs_drops_link_without_text():
+    assert unlink_platform_hrefs('<p>a<a href="https://courses.edx.org/x/jump_to/y"></a>b</p>') == (
         "<p>ab</p>"
     )
 
 
-def test_unlink_edx_hrefs_keeps_other_links():
+def test_unlink_platform_hrefs_keeps_other_links():
     html = (
         '<a href="https://example.org/paper">x</a>'
         '<a href="https://delftxdownloads.tudelft.nl/A-video.mp4">v</a>'
         '<a href="https://notedx.org.example.com/x">l</a>'
         '<a href="@@PLUGINFILE@@/notes.pdf">n</a>'
     )
-    assert unlink_edx_hrefs(html) == html
+    assert unlink_platform_hrefs(html) == html
 
 
-def test_unlink_edx_hrefs_keeps_edx_images():
+def test_unlink_platform_hrefs_keeps_edx_images():
     html = '<img src="https://prod-edxapp.edx.org/asset.png">'
-    assert unlink_edx_hrefs(html) == html
+    assert unlink_platform_hrefs(html) == html
 
 
 def test_strip_blacklisted_classes_noop_when_blacklist_empty():

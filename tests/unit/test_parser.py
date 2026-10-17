@@ -711,7 +711,7 @@ class _DaCGFetcher:
 
     def fetch(self, url: str, name: str | None = None) -> Path | None:
         self.calls.append((url, name))
-        return Path(f"/tmp/dest/{name}") if self._available else None
+        return Path(f"/tmp/dest/{name or url.rsplit('/', 1)[-1]}") if self._available else None
 
 
 def _dacg_course(tmp_path, fetcher) -> Course:
@@ -774,3 +774,52 @@ def test_dacg_links_untouched_without_fetcher(tmp_path):
     course = _dacg_course(tmp_path, None)
 
     assert "https://delftxtools.tudelft.nl/DaCG#page=2" in _html_contents(course)
+
+
+_DELFTX_EXTRAS = (
+    '<link rel="stylesheet" href="https://delftxdownloads.tudelft.nl/download-tool/data/'
+    'edx-styles.css" type="text/css" />'
+    '<a href="https://delftxdownloads.tudelft.nl/_tools/syllabus/MOOC_Forum_Guidelines.pdf">'
+    "forum</a>"
+    "<script src='https://delftxdownloads.tudelft.nl/_tools/dl/js/builder.js'></script>"
+    '<p><input type="button" value="Verify for this course ($49)" '
+    "onclick=\"window.location.href='https://ecommerce.edx.org/basket/add/?sku=F064C6D'\" /></p>"
+    '<div data-block-type="video" authoring_mfe_base_url="https://course-authoring.edx.org/'
+    'course/course-v1:DelftX+MECH1x+2T2025/editor" use-new-editor-video="True">v</div>'
+)
+
+
+def _single_page_course(tmp_path, content: str, fetcher) -> Course:
+    b = _minimal_builder(tmp_path)
+    b.chapters = [
+        Chapter(
+            "ch1",
+            "Ch 1",
+            [Sequential("s1", "S1", [Vertical("v1", "V1", [HtmlComponent("pg1", "P", content=content)])])],
+        )
+    ]
+    course = Course(b.build(), fetcher=fetcher)
+    course.parse()
+    return course
+
+
+def test_delftx_pdf_bundled_and_widget_stylesheet_dropped(tmp_path):
+    course = _single_page_course(tmp_path, _DELFTX_EXTRAS, _DaCGFetcher())
+
+    assert _html_contents(course) == (
+        '<a href="/static/MOOC_Forum_Guidelines.pdf">forum</a><p></p>'
+        '<div data-block-type="video" use-new-editor-video="True">v</div>'
+    )
+    assert course.static_files["MOOC_Forum_Guidelines.pdf"] == Path(
+        "/tmp/dest/MOOC_Forum_Guidelines.pdf"
+    )
+
+
+def test_platform_markup_dropped_without_fetcher(tmp_path):
+    html = _html_contents(_single_page_course(tmp_path, _DELFTX_EXTRAS, None))
+
+    assert "<link" not in html
+    assert "builder.js" not in html
+    assert "ecommerce.edx.org" not in html
+    assert "authoring_mfe_base_url" not in html
+    assert "_tools/syllabus/MOOC_Forum_Guidelines.pdf" in html

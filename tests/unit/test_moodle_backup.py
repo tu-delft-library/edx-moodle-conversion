@@ -1580,7 +1580,7 @@ def test_edx_links_unlinked_in_pages_and_syllabus_keeping_text(tmp_path, caplog)
     assert "<p>edX help</p>" in pages
     assert "edx.org" not in pages
     assert "still hosted on edX" not in caplog.text
-    assert caplog.text.count("Unlinked edX link") == 2
+    assert caplog.text.count("Unlinked platform link") == 2
 
 
 def test_static_link_with_page_fragment_still_attaches_file(tmp_path):
