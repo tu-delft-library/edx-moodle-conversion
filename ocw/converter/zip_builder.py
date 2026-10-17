@@ -1,6 +1,5 @@
 import logging
 import posixpath
-import re
 import shutil
 import tempfile
 import zipfile
@@ -11,6 +10,7 @@ from pathlib import Path, PurePosixPath
 from bs4 import BeautifulSoup
 from docx import Document
 
+from ocw.assets import STATIC_REF_RE, asset_name, is_skipped_asset
 from ocw.converter.external_report import (
     ExternalContentReport,
     ExternalRef,
@@ -23,7 +23,6 @@ from ocw.parser.base import BaseParser
 from ocw.utils import _UNSAFE_FILENAME_RE
 
 log = logging.getLogger("ocw.zip_builder")
-_ASSET_REF_RE = re.compile(r"(?:/static/|@@PLUGINFILE@@/)([^\"'>\s)#?]+)")
 _ROOT_INDEX = PurePosixPath("index.html")
 _COURSE_DOCX = "course.docx"
 _EXTERNAL_XLSX = "external_content.xlsx"
@@ -39,16 +38,6 @@ _PAGE = """<!doctype html>
 _EMPTY_BODY = "<p>No content was found on the source page.</p>"
 _COURSE_OVERVIEW = "course overview"
 _NOT_REFERENCED = "not referenced on any page"
-_ASSET_BLACKLIST = (
-    re.compile(r"^88x31\.png$"),
-    re.compile(r"^featured-Image\.[a-z]+$"),
-)
-
-
-def _is_blacklisted_asset(name: str) -> bool:
-    return any(pattern.search(name) for pattern in _ASSET_BLACKLIST)
-
-
 def _key(url: str) -> str:
     return url.split("#")[0].rstrip("/")
 
@@ -56,10 +45,6 @@ def _key(url: str) -> str:
 def _safe_name(text: str, index: int) -> str:
     cleaned = _UNSAFE_FILENAME_RE.sub("_", text).strip("._") or "untitled"
     return f"{index:02d}_{cleaned[:60]}"
-
-
-def _asset_name(name: str) -> str:
-    return _UNSAFE_FILENAME_RE.sub("_", name)
 
 
 def _rel(target: PurePosixPath, page: PurePosixPath) -> str:
@@ -205,11 +190,7 @@ class ZipBuilder:
         refs: list[ExternalRef] = []
 
         def _add(folder: str, components: list[dict]) -> None:
-            for comp in components:
-                if comp["type"] == "video" and not _is_blacklisted(comp["src"]):
-                    refs.append(ExternalRef(comp["display_name"], comp["src"], "video", folder))
-                elif comp["type"] == "html":
-                    refs.extend(_refs_in_html(comp["content"], folder))
+            refs.extend(self._component_refs(folder, components))
 
         if self.course.overview_summary_html:
             _add(_COURSE_OVERVIEW, [{"type": "html", "content": self.course.overview_summary_html}])
@@ -221,6 +202,16 @@ class ZipBuilder:
                     _add(_folder(vertical.path), vertical.components)
         for page in plan.readings + plan.shared:
             _add(_folder(page.path), page.components)
+        return refs
+
+    @staticmethod
+    def _component_refs(folder: str, components: list[dict]) -> list[ExternalRef]:
+        refs = []
+        for comp in components:
+            if comp["type"] == "video" and not _is_blacklisted(comp["src"]):
+                refs.append(ExternalRef(comp["display_name"], comp["src"], "video", folder))
+            elif comp["type"] == "html":
+                refs.extend(_refs_in_html(comp["content"], folder))
         return refs
 
     def _plan_linked(
@@ -277,17 +268,17 @@ class ZipBuilder:
 
     def _localise(self, html: str, page: PurePosixPath) -> str:
         prefix = _rel(PurePosixPath("assets"), page)
-        html = _ASSET_REF_RE.sub(
+        html = STATIC_REF_RE.sub(
             lambda m: self._use(m.group(1), page, prefix), html
         )
         return self._strip_scripts(html)
 
     def _use(self, name: str, page: PurePosixPath, prefix: str) -> str:
         folder = _COURSE_OVERVIEW if page == _ROOT_INDEX else _folder(page)
-        folders = self._usage.setdefault(_asset_name(name), [])
+        folders = self._usage.setdefault(asset_name(name), [])
         if folder not in folders:
             folders.append(folder)
-        return f"{prefix}/{_asset_name(name)}"
+        return f"{prefix}/{asset_name(name)}"
 
     def _page_link(self, url: str, page: PurePosixPath) -> str:
         target = self._by_url[_key(url)]
@@ -355,11 +346,11 @@ class ZipBuilder:
         assets = root / "assets"
         assets.mkdir(parents=True, exist_ok=True)
         for name, source in self.course.static_files.items():
-            if _is_blacklisted_asset(name):
-                self._skipped_assets.add(_asset_name(name))
+            if is_skipped_asset(name):
+                self._skipped_assets.add(asset_name(name))
                 log.info("Skipping blacklisted asset '%s'", name)
                 continue
-            shutil.copyfile(source, assets / _asset_name(name))
+            shutil.copyfile(source, assets / asset_name(name))
 
     def _local_refs(self) -> list[ExternalRef]:
         refs = []
@@ -371,10 +362,10 @@ class ZipBuilder:
             if url is None:
                 log.warning("No source url recorded for static file '%s', skipping its report row", name)
                 continue
-            skipped = _is_blacklisted_asset(name)
+            skipped = is_skipped_asset(name)
             status = "left alone" if skipped else "copied"
-            location = "" if skipped else f"assets/{_asset_name(name)}"
-            for folder in self._usage.get(_asset_name(name), [_NOT_REFERENCED]):
+            location = "" if skipped else f"assets/{asset_name(name)}"
+            for folder in self._usage.get(asset_name(name), [_NOT_REFERENCED]):
                 refs.append(ExternalRef(name, url, kind, folder, status, location))
         return refs
 

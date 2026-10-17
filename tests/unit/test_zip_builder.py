@@ -11,9 +11,7 @@ from PIL import Image
 
 from ocw.converter.zip_builder import (
     ZipBuilder,
-    _asset_name,
     _EMPTY_BODY,
-    _is_blacklisted_asset,
     _key,
     _safe_name,
 )
@@ -182,18 +180,8 @@ def test_safe_name_falls_back_for_empty_titles():
     assert _safe_name("///", 1) == "01_untitled"
 
 
-def test_asset_name_and_key_helpers():
-    assert _asset_name("a b/c.png") == "a_b_c.png"
+def test_key_drops_fragment_and_trailing_slash():
     assert _key("https://x/y/#frag") == "https://x/y"
-
-
-def test_blacklist_matches_badge_and_featured_image_only():
-    assert _is_blacklisted_asset("88x31.png")
-    assert _is_blacklisted_asset("featured-Image.jpg")
-    assert not _is_blacklisted_asset("Course_bundle.zip")
-    assert not _is_blacklisted_asset("ct530801.pdf")
-    assert not _is_blacklisted_asset("fontawesome-webfont.woff2")
-    assert not _is_blacklisted_asset("diagram.png")
 
 
 def test_skipped_asset_is_logged_at_info(tmp_path, caplog):

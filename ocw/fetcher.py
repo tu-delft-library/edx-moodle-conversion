@@ -7,7 +7,8 @@ from urllib.parse import urlparse
 
 import requests
 
-from ocw.utils import _UNSAFE_FILENAME_RE, resolve_asset_name
+from ocw.assets import asset_name
+from ocw.utils import resolve_asset_name
 
 log = logging.getLogger("ocw.fetcher")
 
@@ -133,4 +134,4 @@ class AssetFetcher:
 
 def _safe_filename(url: str) -> str:
     """Convert a resolved asset name from `url` into a filesystem-safe filename."""
-    return _UNSAFE_FILENAME_RE.sub("_", resolve_asset_name(url))
+    return asset_name(resolve_asset_name(url))

@@ -1,7 +1,7 @@
 import logging
-import re
 from abc import ABC, abstractmethod
 
+from ocw.assets import static_refs
 from ocw.converter.html import (
     constrain_img_size,
     constrain_table_size,
@@ -124,7 +124,7 @@ class SectionStrategy(ABC):
         if vert.get("dedup_url"):
             self._dedup_page_ids[vert["dedup_url"]] = mod_id
         combined = "".join(parts)
-        file_refs = re.findall(r'@@PLUGINFILE@@/([^"\'>\s#?]+)', combined)
+        file_refs = static_refs(combined)
         return {
             "id": mod_id,
             "ctx": ctx_id,

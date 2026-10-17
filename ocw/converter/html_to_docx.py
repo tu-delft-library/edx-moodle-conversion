@@ -26,6 +26,18 @@ _BLOCK_TAGS = frozenset(
 _SKIPPED_TAGS = frozenset({"script", "style", "noscript", "svg", "hr", "head", "meta", "link"})
 _KNOWN_INLINE = frozenset({"span", "u", "small", "mark", "abbr", "cite", "label", "font", "s", "strike", "del", "ins"})
 _NATIVE_IMAGE_FORMATS = frozenset({"PNG", "JPEG", "GIF", "BMP", "TIFF"})
+_FORMAT_TAGS = {
+    "strong": {"bold": True},
+    "b": {"bold": True},
+    "em": {"italic": True},
+    "i": {"italic": True},
+    "code": {"mono": True},
+    "kbd": {"mono": True},
+    "samp": {"mono": True},
+    "tt": {"mono": True},
+    "sup": {"superscript": True},
+    "sub": {"subscript": True},
+}
 _FIXED_HEADING_ATTR = "data-structural"
 _PAGE_BREAK_ATTR = "data-page-break"
 _DOWNLOAD_WIDGET_CLASS = "TUD_box_download"
@@ -160,16 +172,8 @@ class HtmlToDocx:
             log.debug("Skipping <%s> element", name)
         elif name == "br":
             para.get().add_run().add_break()
-        elif name in ("strong", "b"):
-            self._inline_children(node, para, replace(fmt, bold=True))
-        elif name in ("em", "i"):
-            self._inline_children(node, para, replace(fmt, italic=True))
-        elif name in ("code", "kbd", "samp", "tt"):
-            self._inline_children(node, para, replace(fmt, mono=True))
-        elif name == "sup":
-            self._inline_children(node, para, replace(fmt, superscript=True))
-        elif name == "sub":
-            self._inline_children(node, para, replace(fmt, subscript=True))
+        elif name in _FORMAT_TAGS:
+            self._inline_children(node, para, replace(fmt, **_FORMAT_TAGS[name]))
         elif name == "a":
             self._link(node, para, fmt)
         elif name == "img":
