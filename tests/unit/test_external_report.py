@@ -1,6 +1,7 @@
 import zipfile
 
 from docx import Document
+from docx.table import Table
 from openpyxl import load_workbook
 
 from ocw.converter.external_report import (
@@ -110,6 +111,24 @@ def test_report_strips_xml_illegal_characters(tmp_path):
     path = tmp_path / "report.docx"
     ExternalContentReport([ExternalRef("bad\x0btitle", "https://e.com/", "link", "P")]).write(path)
     assert _rows(path)[1][0] == "badtitle"
+
+
+def test_add_to_appends_the_table_after_existing_content_in_the_given_document():
+    doc = Document()
+    doc.add_paragraph("before")
+    ExternalContentReport([ExternalRef("T", "https://example.com/a", "link", "P")]).add_to(doc)
+    doc.add_paragraph("after")
+    blocks = ["<table>" if isinstance(b, Table) else b.text for b in doc.iter_inner_content()]
+    assert blocks == ["before", "External content", "<table>", "after"]
+    assert [c.text for c in doc.tables[0].rows[1].cells][:2] == ["T", "link"]
+
+
+def test_table_text_is_nine_point_without_touching_the_normal_style(tmp_path):
+    doc = Document()
+    ExternalContentReport([ExternalRef("T", "https://example.com/a", "link", "P")]).add_to(doc)
+    sizes = {run.font.size.pt for row in doc.tables[0].rows for c in row.cells for run in c.paragraphs[0].runs}
+    assert sizes == {9.0}
+    assert doc.styles["Normal"].font.size is None
 
 
 def test_empty_report_is_header_only(tmp_path):

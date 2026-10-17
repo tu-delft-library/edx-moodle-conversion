@@ -9,6 +9,7 @@ from html import escape
 from pathlib import Path, PurePosixPath
 
 from bs4 import BeautifulSoup
+from docx import Document
 
 from ocw.converter.external_report import (
     ExternalContentReport,
@@ -17,14 +18,16 @@ from ocw.converter.external_report import (
     _local_kind,
     _refs_in_html,
 )
+from ocw.converter.html_to_docx import HtmlToDocx
 from ocw.parser.base import BaseParser
 from ocw.utils import _UNSAFE_FILENAME_RE
 
 log = logging.getLogger("ocw.zip_builder")
-_ASSET_REF_RE = re.compile(r"(?:/static/|@@PLUGINFILE@@/)([^\"'>\s)]+)")
+_ASSET_REF_RE = re.compile(r"(?:/static/|@@PLUGINFILE@@/)([^\"'>\s)#?]+)")
 _ROOT_INDEX = PurePosixPath("index.html")
 _EXTERNAL_DOCX = "external_content.docx"
 _EXTERNAL_XLSX = "external_content.xlsx"
+_CONTENT_HEADING_OFFSET = 4
 _PAGE = """<!doctype html>
 <html lang="en">
 <head><meta charset="utf-8"><title>{title}</title></head>
@@ -114,11 +117,63 @@ class ZipBuilder:
             self._write_pages(root, plan)
             self._write_index(root, plan)
             report = ExternalContentReport(self._external_refs(plan) + self._local_refs())
-            report.write(root / _EXTERNAL_DOCX)
+            self._write_docx(root, plan, report)
             report.write_xlsx(root / _EXTERNAL_XLSX)
             self._zip(tmp, out)
         finally:
             shutil.rmtree(tmp, ignore_errors=True)
+
+    def _write_docx(self, root: Path, plan: Plan, report: ExternalContentReport) -> None:
+        doc = Document()
+        report.add_to(doc)
+        self._add_contents(doc, plan)
+        with tempfile.TemporaryDirectory() as scratch:
+            HtmlToDocx(doc, root / "assets", Path(scratch)).add(
+                self._flatten(plan), heading_offset=_CONTENT_HEADING_OFFSET
+            )
+            doc.save(root / _EXTERNAL_DOCX)
+
+    @staticmethod
+    def _add_contents(doc, plan: Plan) -> None:
+        doc.add_heading("Contents", level=1)
+        for chapter in plan.chapters:
+            doc.add_paragraph(chapter.index.title, style="List Bullet")
+            for title, _ in chapter.sequentials:
+                doc.add_paragraph(title, style="List Bullet 2")
+
+    def _flatten(self, plan: Plan) -> str:
+        """The whole course as one linear HTML document, structure headings marked `data-structural`."""
+        parts = [f"<h1 data-structural>{escape(self.course.course_name)}</h1>"]
+        if self.course.overview_summary_html:
+            parts.append(self._localise(self.course.overview_summary_html, _ROOT_INDEX))
+        for chapter in plan.chapters:
+            parts.append(f"<h2 data-structural data-page-break>{escape(chapter.index.title)}</h2>")
+            if chapter.index.summary_html:
+                parts.append(self._localise(chapter.index.summary_html, chapter.index.path))
+            for title, verticals in chapter.sequentials:
+                parts.append(f"<h3 data-structural>{escape(title)}</h3>")
+                for vertical in verticals:
+                    parts.append(f"<h4 data-structural>{escape(vertical.title)}</h4>")
+                    parts.append(self._body_docx(vertical.components, vertical.path) or _EMPTY_BODY)
+        return "\n".join(parts)
+
+    def _body_docx(self, components: list[dict], page: PurePosixPath, stack: tuple = ()) -> str:
+        return "\n".join(self._render_docx(comp, page, stack) for comp in components)
+
+    def _render_docx(self, comp: dict, page: PurePosixPath, stack: tuple = ()) -> str:
+        """Like `_render`, but a linked page is written in full where it is linked and a video is only a link."""
+        match comp["type"]:
+            case "video":
+                return self._video_link(comp)
+            case "reading_link" | "dedup_link":
+                url = comp["reading_url"] if comp["type"] == "reading_link" else comp["dedup_url"]
+                target = self._by_url[_key(url)]
+                if target.path in stack:
+                    return f"<p>{escape(target.title)} (see above)</p>"
+                body = self._body_docx(target.components, target.path, (*stack, target.path))
+                return f"<h5 data-structural>{escape(target.title)}</h5>\n{body}"
+            case _:
+                return self._render(comp, page)
 
     def _plan(self) -> Plan:
         plan = Plan()
@@ -239,12 +294,13 @@ class ZipBuilder:
         return f'<p><a href="{escape(_rel(target.path, page))}">{escape(target.title)}</a></p>'
 
     @staticmethod
-    def _video_html(comp: dict) -> str:
+    def _video_link(comp: dict) -> str:
+        return f'<p><a href="{escape(comp["src"])}">{escape(comp["display_name"])} (video)</a></p>'
+
+    @classmethod
+    def _video_html(cls, comp: dict) -> str:
         src, label = escape(comp["src"]), escape(comp["display_name"])
-        return (
-            f'<p><a href="{src}">{label} (video)</a></p>'
-            f'<iframe src="{src}" title="{label}"></iframe>'
-        )
+        return cls._video_link(comp) + f'<iframe src="{src}" title="{label}"></iframe>'
 
     def _strip_scripts(self, html: str) -> str:
         soup = BeautifulSoup(html, "html.parser")

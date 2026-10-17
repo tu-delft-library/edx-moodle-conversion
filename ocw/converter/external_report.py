@@ -18,6 +18,7 @@ _OCW_HOST = "ocw.tudelft.nl"
 _BLACKLIST = frozenset({"creativecommons.org", "amazon.com"})
 _HYPERLINK_REL = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/hyperlink"
 _HTML_REFS = (("a", "href", "link"), ("iframe", "src", "embed"), ("img", "src", "image"))
+_TABLE_FONT = Pt(9)
 _COLUMN_WIDTHS = (Inches(1.3), Inches(0.7), Inches(1.8), Inches(1.9), Inches(0.6), Inches(1.2))
 _XLSX_HEADERS = ("File / link title", "Type", "URL", "Status", "Saved to", "Found at path")
 _XLSX_COLUMN_WIDTHS = (32, 8, 60, 20, 36, 60)
@@ -117,10 +118,14 @@ class ExternalContentReport:
 
     def write(self, path: Path) -> None:
         doc = Document()
+        self.add_to(doc)
+        doc.save(path)
+
+    def add_to(self, doc) -> None:
+        """Append the heading and the merged references table to `doc`."""
         section = doc.sections[0]
         section.left_margin = section.right_margin = Inches(0.5)
         section.top_margin = section.bottom_margin = Inches(0.5)
-        doc.styles["Normal"].font.size = Pt(9)
         doc.add_heading("External content", level=0)
         table = doc.add_table(rows=1, cols=6)
         table.autofit = False
@@ -138,7 +143,10 @@ class ExternalContentReport:
             table.columns[i].width = width
             for row in table.rows:
                 row.cells[i].width = width
-        doc.save(path)
+        for row in table.rows:
+            for cell in row.cells:
+                for run in cell.paragraphs[0].runs:
+                    run.font.size = _TABLE_FONT
 
     def write_xlsx(self, path: Path) -> None:
         """Write one row per (file, path it was found on) observation, unlike the merged Docx table."""
@@ -185,8 +193,11 @@ class ExternalContentReport:
         color.set(qn("w:val"), "0563C1")
         underline = OxmlElement("w:u")
         underline.set(qn("w:val"), "single")
+        size = OxmlElement("w:sz")
+        size.set(qn("w:val"), str(int(_TABLE_FONT.pt * 2)))
         rpr.append(color)
         rpr.append(underline)
+        rpr.append(size)
         text = OxmlElement("w:t")
         text.text = _clean(url)
         run.append(rpr)

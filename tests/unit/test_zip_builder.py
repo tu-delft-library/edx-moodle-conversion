@@ -1,8 +1,13 @@
+import io
 import logging
 import zipfile
 from pathlib import PurePosixPath
 
 import pytest
+from docx import Document
+from docx.oxml.ns import qn
+from docx.table import Table
+from PIL import Image
 
 from ocw.converter.zip_builder import (
     ZipBuilder,
@@ -271,3 +276,131 @@ def test_empty_vertical_keeps_chapter_index_intact(tmp_path):
     assert 'href="01_1.1_Basics/01_Lecture_1.html"' in index
     assert _EMPTY_BODY in lecture
     assert _EMPTY_BODY not in index
+
+
+@pytest.mark.parametrize("suffix", ["#page=3", "?download=1", "?a=1#b"])
+def test_static_ref_keeps_fragment_and_query_off_the_asset_name(suffix):
+    builder = ZipBuilder(_site().course())
+    html = builder._localise(f'<a href="/static/Chapter.pdf{suffix}">c</a>', PurePosixPath("a/b.html"))
+    assert f'href="../assets/Chapter.pdf{suffix}"' in html
+    assert builder._usage == {"Chapter.pdf": ["a/"]}
+
+
+def _png_bytes() -> bytes:
+    buffer = io.BytesIO()
+    Image.new("RGB", (40, 30), "red").save(buffer, format="PNG")
+    return buffer.getvalue()
+
+
+def _docx(tmp_path, site=None) -> Document:
+    course = (site or _site()).course(keep_all_content=True)
+    course.parse()
+    out = tmp_path / "course.zip"
+    ZipBuilder(course).build(out)
+    with zipfile.ZipFile(out) as zf:
+        return Document(io.BytesIO(zf.read("Example_Course/external_content.docx")))
+
+
+def _headings(doc) -> list[tuple[str, str]]:
+    return [(p.style.name, p.text) for p in doc.paragraphs if p.style.name.startswith(("Heading", "Title"))]
+
+
+def test_docx_starts_with_the_external_table_then_contents_then_the_course(tmp_path):
+    doc = _docx(tmp_path)
+    blocks = ["<table>" if isinstance(b, Table) else b.text for b in doc.iter_inner_content()]
+    assert blocks[0] == "External content"
+    assert blocks.index("<table>") < blocks.index("Contents") < blocks.index("Example Course")
+
+
+def test_docx_contents_lists_chapters_and_sequentials(tmp_path):
+    doc = _docx(tmp_path)
+    items = [(p.style.name, p.text) for p in doc.paragraphs if p.style.name.startswith("List Bullet")]
+    assert items == [("List Bullet", "1. Intro"), ("List Bullet 2", "1.1 Basics")]
+
+
+def test_docx_course_follows_chapter_sequential_vertical_order(tmp_path):
+    headings = _headings(_docx(tmp_path))
+    course = headings[headings.index(("Heading 1", "Example Course")) :]
+    assert course[:6] == [
+        ("Heading 1", "Example Course"),
+        ("Heading 2", "1. Intro"),
+        ("Heading 3", "1.1 Basics"),
+        ("Heading 4", "Lecture 1"),
+        ("Heading 5", "Lecture 1"),
+        ("Heading 4", "Exercise 1"),
+    ]
+
+
+def test_docx_chapter_summary_and_lecture_text_are_written(tmp_path):
+    text = "\n".join(p.text for p in _docx(tmp_path).paragraphs)
+    assert "Subject intro." in text
+    assert "Text." in text
+    assert "alert(1)" not in text
+
+
+def test_docx_renders_reading_page_inline_under_its_title(tmp_path):
+    headings = _headings(_docx(tmp_path))
+    reading = [h for h in headings if h == ("Heading 5", "Reading 1")]
+    assert len(reading) == 1
+    assert ("Heading 4", "Reading 1") in headings
+
+
+def test_docx_renders_a_page_linked_twice_every_time(tmp_path):
+    site = _site()
+    second = "https://ocw.tudelft.nl/courses/example/subjects/2-more/"
+    site.add_home([(SUBJECT_URL, "1. Intro"), (second, "2. More")])
+    site.add_subject_page(
+        second,
+        f"""
+        <ul class="activities"><li>
+        <h4><span class="course-title">2.1 Again</span></h4>
+        <ul><li><a class="icon icon--lecture" href="{LECTURE_URL}">Lecture 1</a></li></ul>
+        </li></ul>
+        """,
+    )
+    doc = _docx(tmp_path, site)
+    assert [p.text for p in doc.paragraphs].count("Text.") == 2
+
+
+def test_docx_embeds_course_images_and_links_downloads_into_assets(tmp_path):
+    site = _site()
+    site.add_static_file("diagram.png", _png_bytes())
+    doc = _docx(tmp_path, site)
+    assert len(doc.inline_shapes) == 1
+    targets = [
+        doc.part.rels[link.get(qn("r:id"))].target_ref
+        for p in doc.paragraphs
+        for link in p._p.findall(qn("w:hyperlink"))
+    ]
+    assert "assets/Chapter.pdf" in targets
+
+
+def test_docx_has_no_relative_page_links_or_iframes(tmp_path):
+    doc = _docx(tmp_path)
+    targets = [rel.target_ref for rel in doc.part.rels.values() if rel.is_external]
+    assert not any(t.endswith(".html") or t.startswith("..") for t in targets)
+    assert "https://www.youtube.com/embed/abc123" in targets
+
+
+def test_docx_empty_vertical_gets_the_placeholder(tmp_path):
+    doc = _docx(tmp_path, _site(empty_lecture=True))
+    assert any("No content was found on the source page." in p.text for p in doc.paragraphs)
+
+
+def test_video_component_is_only_a_link_in_docx_mode():
+    builder = ZipBuilder(_site().course())
+    comp = {"type": "video", "display_name": "Intro", "src": "https://v.example/x"}
+    assert "<iframe" not in builder._render_docx(comp, PurePosixPath("a.html"))
+    assert "<iframe" in builder._render(comp, PurePosixPath("a.html"))
+
+
+def test_self_referencing_page_does_not_loop():
+    builder = ZipBuilder(_site().course(keep_all_content=True))
+    builder.course.parse()
+    builder._plan()
+    page = builder._by_url[_key(READING_URL)]
+    link = {"type": "reading_link", "reading_url": READING_URL}
+    page.components = [link]
+    html = builder._render_docx(link, PurePosixPath("v.html"))
+    assert html.count("(see above)") == 1
+    assert html.count("<h5") == 1
