@@ -566,6 +566,17 @@ def test_subject_page_without_activities_list_logs_warning_and_returns_empty_seq
     assert "No activities list found" in caplog.text
 
 
+def test_subject_page_without_activities_list_keeps_its_intro_rows(caplog):
+    page = '<article><div class="vc_row"><p>Teacher card.</p></div></article>'
+    course = _course({})
+    course._fetch_page = lambda url: BeautifulSoup(page, "lxml")
+    with caplog.at_level("WARNING"):
+        chapter = course._parse_subject_page("https://x/subj1/", "6. Teachers")
+    assert chapter["sequentials"] == []
+    assert "Teacher card." in chapter["summary_html"]
+    assert "No activities list found" in caplog.text
+
+
 def test_reading_with_dangling_wp_link_logs_warning(caplog):
     course = _course({})
     course._fetch_page = lambda url: BeautifulSoup(READING_WITH_DANGLING_WP_LINK, "lxml")

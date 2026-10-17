@@ -384,9 +384,9 @@ class WPCourse(BaseParser):
                     intro_rows.append(child)
         if activities is None:
             log.warning("No activities list found on subject page '%s'", url)
-            return self._with_source_url({"display_name": title, "sequentials": []}, url)
         sequentials = []
-        for group in activities.find_all("li", recursive=False):
+        groups = activities.find_all("li", recursive=False) if activities is not None else []
+        for group in groups:
             seq_title_el = group.select_one("span.course-title")
             seq_title = seq_title_el.get_text(strip=True) if seq_title_el else title
             verticals = [
