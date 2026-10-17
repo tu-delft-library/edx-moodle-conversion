@@ -3,7 +3,7 @@ import pytest
 from ocw.converter import MBZBuilder
 from ocw.fetcher import AssetFetcher
 from ocw.parser.wp import WPCourse
-from tests.real_courses.url_audit import audit_mbz, report
+from ocw.url_audit import audit_mbz, report
 
 pytestmark = pytest.mark.real_courses
 

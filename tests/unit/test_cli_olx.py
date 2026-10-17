@@ -1,3 +1,6 @@
+import logging
+import tarfile
+
 import pytest
 
 from ocw.cli import olx as cli_olx
@@ -22,7 +25,7 @@ class _FakeBuilder:
         self.authora = authora
 
     def build(self, output):
-        output.write_text("mbz")
+        tarfile.open(output, "w:gz").close()
 
 
 @pytest.fixture(autouse=True)
@@ -44,9 +47,22 @@ def test_main_builds_mbz_from_olx_directory(monkeypatch, tmp_path):
     assert list(tmp_path.glob("out_*.mbz"))
 
 
-def test_main_extracts_gz_archive(monkeypatch, tmp_path):
-    import tarfile
+def test_main_logs_url_audit_summary(monkeypatch, tmp_path, caplog):
+    olx_dir = tmp_path / "course"
+    olx_dir.mkdir()
+    monkeypatch.setattr(cli_olx, "Course", _FakeCourse)
+    monkeypatch.setattr(cli_olx, "MBZBuilder", _FakeBuilder)
+    monkeypatch.setattr(cli_olx, "log_hybrid_checks", lambda *a, **k: None)
+    monkeypatch.setattr(cli_olx, "setup_cli_logging", lambda *a, **k: None)
+    monkeypatch.setattr(
+        "sys.argv", ["ocw", str(olx_dir), "--output", str(tmp_path / "out.mbz"), "--no-fetch-external-assets"]
+    )
+    with caplog.at_level(logging.INFO, logger="ocw"):
+        cli_olx.main()
+    assert "URL AUDIT: 0 edX/DelftX URL(s) left in out_" in caplog.text
 
+
+def test_main_extracts_gz_archive(monkeypatch, tmp_path):
     course_dir = tmp_path / "course_src" / "course"
     course_dir.mkdir(parents=True)
     (course_dir / "marker.txt").write_text("x")

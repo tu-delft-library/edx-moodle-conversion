@@ -1,6 +1,10 @@
+import logging
 import tarfile
+import warnings
 
-from tests.real_courses.url_audit import Hit, audit_html, audit_mbz
+from bs4 import XMLParsedAsHTMLWarning
+
+from ocw.url_audit import Hit, audit_html, audit_mbz, log_url_audit
 
 W = "https://delftxdownloads.tudelft.nl/A/b"
 
@@ -104,3 +108,33 @@ def test_audit_mbz_skips_vidrouter_block_only(tmp_path):
     mbz = _mbz(tmp_path, {"course/course.xml": course_xml, "files/abc": "https://edx.org/bin"})
 
     assert audit_mbz(mbz) == [Hit("course/course.xml", "<a href>", "https://courses.edx.org/x")]
+
+
+def test_log_url_audit_warns_per_hit_and_summarises(tmp_path, caplog):
+    page = "&lt;a href=&quot;https://courses.edx.org/x&quot;&gt;x&lt;/a&gt;"
+    mbz = _mbz(tmp_path, {"activities/page_1/page.xml": f"<page>{page}{page}</page>"})
+
+    with caplog.at_level(logging.INFO, logger="t"):
+        log_url_audit(mbz, logging.getLogger("t"))
+
+    assert [(r.levelno, r.getMessage()) for r in caplog.records] == [
+        (logging.WARNING, "URL AUDIT: activities/page_1/page.xml <a href> https://courses.edx.org/x"),
+        (logging.WARNING, "URL AUDIT: 1 edX/DelftX URL(s) left in c.mbz"),
+    ]
+
+
+def test_log_url_audit_info_when_clean(tmp_path, caplog):
+    mbz = _mbz(tmp_path, {"activities/page_1/page.xml": "<page>ok</page>"})
+
+    with caplog.at_level(logging.INFO, logger="t"):
+        log_url_audit(mbz, logging.getLogger("t"))
+
+    assert [(r.levelno, r.getMessage()) for r in caplog.records] == [
+        (logging.INFO, "URL AUDIT: 0 edX/DelftX URL(s) left in c.mbz")
+    ]
+
+
+def test_audit_mbz_does_not_leak_warning_filter(tmp_path):
+    audit_mbz(_mbz(tmp_path, {"course/course.xml": "<course/>"}))
+
+    assert not any(f[2] is XMLParsedAsHTMLWarning for f in warnings.filters)

@@ -15,7 +15,7 @@ from pathlib import Path
 from tests.builders import Chapter, HtmlComponent, OLXFixtureBuilder, Sequential, Vertical, VideoComponent
 from tests.domain_guard import foreign_asset_hosts
 from tests.download_tool_pages import tool_page_html
-from tests.real_courses.url_audit import audit_mbz, report
+from ocw.url_audit import audit_mbz, report
 from tests.wp_builders import WPFixtureSite
 from ocw.converter import MBZBuilder
 from ocw.parser.olx import Course

@@ -1,3 +1,6 @@
+import logging
+import tarfile
+
 import pytest
 
 from ocw.cli import wp as cli_wp
@@ -21,7 +24,7 @@ class _FakeBuilder:
         self.authora = authora
 
     def build(self, output):
-        output.write_text("mbz")
+        tarfile.open(output, "w:gz").close()
 
 
 @pytest.fixture(autouse=True)
@@ -45,6 +48,20 @@ def test_main_builds_mbz_from_site_url(monkeypatch, tmp_path):
     )
     cli_wp.main()
     assert list(tmp_path.glob("out_*.mbz"))
+
+
+def test_main_logs_url_audit_summary(monkeypatch, tmp_path, caplog):
+    monkeypatch.setattr(cli_wp, "WPCourse", _FakeCourse)
+    monkeypatch.setattr(cli_wp, "MBZBuilder", _FakeBuilder)
+    monkeypatch.setattr(cli_wp, "setup_cli_logging", lambda *a, **k: None)
+    monkeypatch.setattr(
+        "sys.argv",
+        ["ocw-wp", "https://ocw.tudelft.nl/courses/example/", "--output", str(tmp_path / "out.mbz"),
+         "--no-fetch-external-assets"],
+    )
+    with caplog.at_level(logging.INFO, logger="ocw"):
+        cli_wp.main()
+    assert "URL AUDIT: 0 edX/DelftX URL(s) left in out_" in caplog.text
 
 
 def test_main_creates_fetcher_when_enabled(monkeypatch, tmp_path):

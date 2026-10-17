@@ -3,6 +3,7 @@ a Video/Subtitles link inside the inlined download widget, or a video record in 
 vidrouter block."""
 
 import html
+import logging
 import re
 import tarfile
 import warnings
@@ -55,8 +56,8 @@ def audit_mbz(mbz: Path) -> list[Hit]:
     """Audit every XML member, once unescaped back to the HTML it carries. The vidrouter block
     in `course/course.xml` is the one place videos may live, so it's cut out first."""
     hits = []
-    warnings.filterwarnings("ignore", category=XMLParsedAsHTMLWarning)
-    with tarfile.open(mbz) as tar:
+    with warnings.catch_warnings(), tarfile.open(mbz) as tar:
+        warnings.simplefilter("ignore", XMLParsedAsHTMLWarning)
         for m in tar.getmembers():
             if not (m.isfile() and m.name.endswith(".xml")):
                 continue
@@ -67,3 +68,12 @@ def audit_mbz(mbz: Path) -> list[Hit]:
 
 def report(hits: list[Hit]) -> str:
     return "\n".join(f"{h.member}  {h.element}  {h.url}" for h in hits)
+
+
+def log_url_audit(mbz: Path, log: logging.Logger) -> None:
+    """Warn about every edX/DelftX URL left in a built MBZ, besides widget links and video records."""
+    hits = sorted(set(audit_mbz(mbz)), key=lambda h: (h.member, h.url))
+    for h in hits:
+        log.warning("URL AUDIT: %s %s %s", h.member, h.element, h.url)
+    level = logging.WARNING if hits else logging.INFO
+    log.log(level, "URL AUDIT: %d edX/DelftX URL(s) left in %s", len(hits), mbz.name)
