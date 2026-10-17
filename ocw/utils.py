@@ -128,7 +128,8 @@ def rewrite_static_urls(html: str, static_files: dict[str, Path] | None = None) 
 # Hosts that mean "still depends on edX or DelftX infrastructure".
 PLATFORM_HOST_RE = re.compile(
     r"(^|\.)(edx\.org|edx-video\.net|edx-cdn\.org|edxapp\.org|edx\.readthedocs\.(?:org|io)"
-    r"|d2f1egay8yehza\.cloudfront\.net|delftx[\w-]*\.tudelft\.nl)$",
+    r"|d2f1egay8yehza\.cloudfront\.net|d37djvu3ytnwxt\.cloudfront\.net"
+    r"|delftx[\w-]*\.tudelft\.nl)$",
     re.IGNORECASE,
 )
 
@@ -138,6 +139,7 @@ _EDX_HOST_RE = re.compile(
     r'(?!www\.edx\.org)(?:[\w-]+\.)*edx\.org'
     r'|(?:[\w-]+\.)*edx-video\.net'
     r'|d2f1egay8yehza\.cloudfront\.net'
+    r'|d37djvu3ytnwxt\.cloudfront\.net'
     r'|edx\.readthedocs\.(?:org|io)'
     r')[^"\'>\s]*'
 )

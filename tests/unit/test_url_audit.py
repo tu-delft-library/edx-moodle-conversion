@@ -66,6 +66,7 @@ def test_edx_url_in_plain_text_flagged():
 
 def test_edx_cdn_and_docs_hosts_flagged():
     assert audit_html("p", '<img src="https://d2f1egay8yehza.cloudfront.net/x.png">')
+    assert audit_html("p", '<a href="https://d37djvu3ytnwxt.cloudfront.net/assets/x.pdf">d</a>')
     assert audit_html("p", '<a href="https://edx.readthedocs.io/projects/x">d</a>')
     assert audit_html("p", '<a href="http://EDX.readthedocs.org/projects/x">d</a>')
 

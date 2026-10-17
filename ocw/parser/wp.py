@@ -5,6 +5,7 @@ import itertools
 import logging
 import re
 from collections import Counter
+from urllib.parse import urlparse
 
 import requests
 from bs4 import BeautifulSoup
@@ -13,7 +14,7 @@ from bs4.element import NavigableString
 from ocw.fetcher import THROTTLE, AssetFetcher
 from ocw.parser import download_tool
 from ocw.parser.base import BaseParser
-from ocw.utils import resolve_asset_name, safe_vidkey, warn_external_wp_urls
+from ocw.utils import PLATFORM_HOST_RE, resolve_asset_name, safe_vidkey, warn_external_wp_urls
 
 log = logging.getLogger("ocw.wp_parser")
 
@@ -210,9 +211,22 @@ class WPCourse(BaseParser):
         self._convert_expandable_widgets(article)
         self._apply_wp_image_alignment(article)
         self._replace_separators(article)
+        self._localize_platform_links(article)
         download_ids = self._fix_download_tool_widgets(article)
         self._localize_images(article)
         return download_ids
+
+    def _localize_platform_links(self, article) -> None:
+        """Bundle files linked on edX/DelftX hosts and point the links at the local copy.
+
+        Runs before the download widget is inlined, so its Video/Subtitles links stay remote.
+        Links that can't be fetched are left for the URL audit to report.
+        """
+        for link in article.select("a[href]"):
+            if PLATFORM_HOST_RE.search(urlparse(link["href"]).hostname or ""):
+                name = self._resolve_and_fetch(link["href"])
+                if name:
+                    link["href"] = f"/static/{name}"
 
     def _localize_images(self, article) -> None:
         """Fetch external image sources locally and rewrite them to the `/static/` convention."""

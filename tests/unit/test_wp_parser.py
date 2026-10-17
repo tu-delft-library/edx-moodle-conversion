@@ -627,6 +627,33 @@ def test_lecture_with_download_block_resolves_pdf_into_link_component():
     assert course.static_files["slides.pdf"] == Path("/tmp/slides.pdf")
 
 
+def test_platform_hosted_pdf_link_bundled_and_other_links_kept():
+    course = _course({})
+    course.fetcher = _FakeFetcher(Path("/tmp/Guide.pdf"))
+    article = BeautifulSoup(
+        "<article>"
+        '<a href="https://d37djvu3ytnwxt.cloudfront.net/assets/courseware/v1/abc/c4x/DelftX/'
+        'DDA691x/asset/Guide.pdf">Guide</a>'
+        '<a href="https://example.com/paper.pdf">Paper</a>'
+        "</article>",
+        "lxml",
+    ).article
+    course._clean_article(article)
+    hrefs = [a["href"] for a in article.select("a")]
+    assert hrefs == ["/static/Guide.pdf", "https://example.com/paper.pdf"]
+    assert course.static_files["Guide.pdf"] == Path("/tmp/Guide.pdf")
+    assert len(course.fetcher.calls) == 1
+
+
+def test_platform_hosted_link_kept_when_fetch_fails():
+    course = _course({})
+    course.fetcher = _FakeFetcher(None)
+    url = "https://d37djvu3ytnwxt.cloudfront.net/assets/courseware/v1/abc/Guide.pdf"
+    article = BeautifulSoup(f'<article><a href="{url}">Guide</a></article>', "lxml").article
+    course._clean_article(article)
+    assert article.a["href"] == url
+
+
 def test_lecture_download_beside_video_appears_once_and_local():
     course = _course({})
     course.fetcher = _FakeFetcher(Path("/tmp/slides.pdf"))
