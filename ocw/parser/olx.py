@@ -23,12 +23,25 @@ log = logging.getLogger("ocw.parser")
 # Tags the parser actively converts into page content.
 # _WHITELISTED_TAGS = frozenset({"html", "video"})
 
-# Component tags deliberately dropped because the converter has no Moodle equivalent.
-# delftxtools' Discussion and Collaboration Guidelines, an extensionless PDF linked by `#page=`.
-_DACG_URL = "https://delftxtools.tudelft.nl/DaCG"
+# PDFs on DelftX hosts, plus delftxtools' extensionless Discussion and Collaboration Guidelines.
+_DELFTX_PDF_RE = re.compile(
+    r"https?://delftx[\w-]*\.tudelft\.nl/(?:[^\"'\s#?<>]*\.pdf|DaCG)(?=[#?\"'\s<>]|$)",
+    re.IGNORECASE,
+)
 _DACG_NAME = "DaCG.pdf"
-_DACG_RE = re.compile(r"https?://delftxtools\.tudelft\.nl/DaCG(?=[#\"'\s]|$)")
+# edX/DelftX markup with no use on Moodle: old dframe widget stylesheets and builder.js loaders
+# (superseded by the inlined widget), edX "verify" purchase buttons, and Studio editor attributes.
+_PLATFORM_JUNK_RES = tuple(
+    re.compile(pattern, re.IGNORECASE)
+    for pattern in (
+        r"<link\b[^>]*\bhref=[\"']https?://delftxdownloads\.tudelft\.nl/download-tool/[^>]*>",
+        r"<script\b[^>]*\bsrc=[\"'][^\"']*/_tools/dl/js/builder\.js[\"'][^>]*>\s*</script>",
+        r"<input\b[^>]*ecommerce\.edx\.org[^>]*>",
+        r"\s+authoring_mfe_base_url=([\"'])[^\"']*\1",
+    )
+)
 
+# Component tags deliberately dropped because the converter has no Moodle equivalent.
 _BLACKLISTED_TAGS = frozenset(
     {
         "problem",
@@ -154,7 +167,7 @@ class Course(BaseParser):
         tab_path = self.root / "tabs" / f"{url_slug}.html"
         if not tab_path.exists():
             return
-        self.syllabus_html = self._bundle_dacg(tab_path.read_text(encoding="utf-8"))
+        self.syllabus_html = self._localize_delftx(tab_path.read_text(encoding="utf-8"))
         self.syllabus_title = tab.get("name") or "Syllabus"
 
     def _parse_readings(self, course: ET.Element) -> None:
@@ -260,8 +273,8 @@ class Course(BaseParser):
         }
 
     def _inline_download_tools(self, components: list[dict]) -> None:
-        """Replace each dframe (plus its builder.js loader) with the inlined DelftxDownloads
-        widget; see `ocw.parser.download_tool`. Left untouched when fetching is disabled."""
+        """Replace each dframe with the inlined DelftxDownloads widget; see
+        `ocw.parser.download_tool`. Left untouched when fetching is disabled."""
         if self.fetcher is None:
             return
         for comp in components:
@@ -285,20 +298,26 @@ class Course(BaseParser):
                         BeautifulSoup(page, "html.parser"), url, self._fetch_static
                     )
                 )
-            for script in soup.select('script[src$="builder.js"]'):
-                script.decompose()
             comp["content"] = str(soup)
 
-    def _bundle_dacg(self, html: str) -> str:
-        """Point DaCG links at a bundled copy, keeping any `#page=` fragment. Left untouched
-        when it can't be fetched."""
-        if self.fetcher is None or not _DACG_RE.search(html):
+    def _localize_delftx(self, html: str) -> str:
+        """Drop edX/DelftX platform markup, then bundle PDFs linked on DelftX hosts and point
+        links at the local copy, keeping any `#page=` fragment. PDFs that can't be fetched stay."""
+        for junk_re in _PLATFORM_JUNK_RES:
+            html = junk_re.sub("", html)
+        if self.fetcher is None:
             return html
-        fetched = self.fetcher.fetch(_DACG_URL, name=_DACG_NAME)
-        if fetched is None:
-            return html
-        self.static_files[_DACG_NAME] = fetched
-        return _DACG_RE.sub(f"/static/{_DACG_NAME}", html)
+
+        def _bundle(m: re.Match) -> str:
+            url = m.group(0)
+            name = _DACG_NAME if url.lower().endswith("/dacg") else None
+            fetched = self.fetcher.fetch(url, name=name)
+            if fetched is None:
+                return url
+            self.static_files[fetched.name] = fetched
+            return f"/static/{fetched.name}"
+
+        return _DELFTX_PDF_RE.sub(_bundle, html)
 
     def _fetch_static(self, url: str) -> str | None:
         """Bundle `url` as a static file and return its name, or `None` when unavailable."""
@@ -387,7 +406,7 @@ class Course(BaseParser):
         el = ET.parse(path).getroot()
         filename = el.get("filename", url_name)
         html_path = root / "html" / f"{filename}.html"
-        content = self._bundle_dacg(
+        content = self._localize_delftx(
             html_path.read_text(encoding="utf-8") if html_path.exists() else ""
         )
 

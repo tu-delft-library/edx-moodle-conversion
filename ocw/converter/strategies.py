@@ -9,7 +9,7 @@ from ocw.converter.html import (
     strip_blacklisted_classes,
     strip_templated_iframes,
     style_figcaption,
-    unlink_edx_hrefs,
+    unlink_platform_hrefs,
 )
 from ocw.parser.base import BaseParser
 from ocw.utils import _Counter, rewrite_static_urls, warn_external_edx_urls
@@ -74,7 +74,7 @@ class SectionStrategy(ABC):
 
     def _process_html(self, content: str, context: str = "") -> str:
         """Apply the standard source-to-Moodle HTML transformation pipeline."""
-        content = unlink_edx_hrefs(
+        content = unlink_platform_hrefs(
             rewrite_static_urls(content, self.c.static_files), context
         )
         warn_external_edx_urls(

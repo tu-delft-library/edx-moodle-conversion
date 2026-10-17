@@ -18,7 +18,7 @@ from ocw.converter.html import (
     strip_blacklisted_classes,
     strip_templated_iframes,
     style_figcaption,
-    unlink_edx_hrefs,
+    unlink_platform_hrefs,
 )
 from ocw.converter.strategies import (
     FlatSectionStrategy,
@@ -285,7 +285,7 @@ class MBZBuilder:
         if c.syllabus_html is None:
             return None
 
-        content = unlink_edx_hrefs(
+        content = unlink_platform_hrefs(
             rewrite_static_urls(c.syllabus_html, c.static_files), "Syllabus"
         )
         warn_external_edx_urls(content, context="Syllabus", static_files=c.static_files)

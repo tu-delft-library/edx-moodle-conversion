@@ -63,27 +63,29 @@ def constrain_table_size(html: str) -> str:
     return re.sub(r"<table\b[^>]*>", _inject, html)
 
 
-_EDX_LINK_RE = re.compile(
+_PLATFORM_LINK_RE = re.compile(
     r"<a\b[^>]*?\bhref=([\"'])(?:https?:)?//(?:[\w-]+\.)*"
-    r"(?:edx\.org|edx-video\.net|edx-cdn\.org|edxapp\.org)(?:[/:?#][^\"']*)?\1[^>]*>(.*?)</a>",
+    r"(?:edx\.org|edx-video\.net|edx-cdn\.org|edxapp\.org|delftxtools\.tudelft\.nl)"
+    r"(?:[/:?#][^\"']*)?\1[^>]*>(.*?)</a>",
     re.DOTALL | re.IGNORECASE,
 )
 
 
-def unlink_edx_hrefs(html: str, context: str = "") -> str:
-    """Replace links into the edX platform with their display text.
+def unlink_platform_hrefs(html: str, context: str = "") -> str:
+    """Replace links into the edX platform and DelftX's interactive tools with their display
+    text.
 
-    Run after `rewrite_static_urls`, so edX asset links that were bundled are already local.
+    Run after `rewrite_static_urls`, so links to assets that were bundled are already local.
     """
     def _unlink(m: re.Match) -> str:
         log.info(
-            "Unlinked edX link%s: %s",
+            "Unlinked platform link%s: %s",
             f" on page '{context}'" if context else "",
             re.search(r"href=[\"']([^\"']*)", m.group(0)).group(1),
         )
         return m.group(2)
 
-    return _EDX_LINK_RE.sub(_unlink, html)
+    return _PLATFORM_LINK_RE.sub(_unlink, html)
 
 
 def mark_hyperlinks_nomediaplugin(html: str) -> str:
