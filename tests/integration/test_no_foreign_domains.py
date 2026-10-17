@@ -159,7 +159,6 @@ def test_olx_export_has_no_foreign_asset_domains(tmp_path):
             return tool_page_html("NGI101x-3.1") if "path=NGI101x-3.1&" in url else None
 
         def fetch(self, url: str) -> Path | None:
-            name = url.rsplit("/", 1)[-1].split("@")[-1]
             for candidate, content in self._files.items():
                 if url.endswith(candidate):
                     dest = self._dir / candidate
