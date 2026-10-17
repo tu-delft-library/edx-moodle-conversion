@@ -85,6 +85,7 @@ class WPCourse(BaseParser):
         """Parse the course home page, its subject pages, and all video components."""
         home = self._fetch_page(self.root)
         self.course_name = home.select_one("h1").get_text(strip=True)
+        self.course_id = self.root.rstrip("/").rsplit("/", 1)[-1]
         self._parse_home_summary(home)
         self._parse_home_banner_image(home)
         subjects = self._parse_subjects_sidebar(home)

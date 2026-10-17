@@ -226,6 +226,7 @@ def test_parse_discovers_chapter_from_subjects_sidebar():
     course = _course(pages)
     course.parse()
     assert course.course_name == "Example Course"
+    assert course.course_id == "example"
     assert len(course.chapters) == 1
     assert course.chapters[0]["display_name"] == "1. Intro"
     assert len(course.chapters[0]["sequentials"]) == 1
