@@ -40,11 +40,29 @@ _MIN_HOST_INTERVAL = 1.0
 _TIMEOUT = 15
 
 
+class HostThrottle:
+    """Enforce a minimum interval between requests to the same host, across every session."""
+
+    def __init__(self, interval: float) -> None:
+        self._interval = interval
+        self._last: dict[str, float] = {}
+
+    def wait(self, url: str) -> None:
+        host = urlparse(url).netloc
+        delay = self._interval - (time.monotonic() - self._last.get(host, 0.0))
+        if delay > 0:
+            time.sleep(delay)
+        self._last[host] = time.monotonic()
+
+
+THROTTLE = HostThrottle(_MIN_HOST_INTERVAL)
+
+
 class AssetFetcher:
     """Fetch approved external assets into `dest_dir`.
 
     Results are cached by URL for this fetcher's lifetime. Requests to the same host are rate
-    limited to avoid repeatedly hitting the source service.
+    limited through `THROTTLE` to avoid repeatedly hitting the source service.
     """
 
     def __init__(self, dest_dir: Path) -> None:
@@ -52,7 +70,6 @@ class AssetFetcher:
         self._session = requests.Session()
         self._cache: dict[str, Path | None] = {}
         self._text_cache: dict[str, str | None] = {}
-        self._last_request_at: dict[str, float] = {}
 
     def fetch(self, url: str, name: str | None = None) -> Path | None:
         """Fetch `url` once and return its local path, or `None` when it is unsupported or unavailable.
@@ -74,7 +91,7 @@ class AssetFetcher:
         if path.exists():
             return path
 
-        self._throttle(urlparse(url).netloc)
+        THROTTLE.wait(url)
         try:
             resp = self._session.get(url, timeout=_TIMEOUT)
             resp.raise_for_status()
@@ -104,7 +121,7 @@ class AssetFetcher:
         return self._text_cache[url]
 
     def _fetch_text_uncached(self, url: str) -> str | None:
-        self._throttle(urlparse(url).netloc)
+        THROTTLE.wait(url)
         try:
             resp = self._session.get(url, timeout=_TIMEOUT)
             resp.raise_for_status()
@@ -112,15 +129,6 @@ class AssetFetcher:
             log.warning("Failed to fetch page '%s': %s", url, e)
             return None
         return resp.text
-
-    def _throttle(self, host: str) -> None:
-        """Wait when necessary to enforce the minimum interval before a request to `host`."""
-        wait = _MIN_HOST_INTERVAL - (
-            time.monotonic() - self._last_request_at.get(host, 0.0)
-        )
-        if wait > 0:
-            time.sleep(wait)
-        self._last_request_at[host] = time.monotonic()
 
 
 def _safe_filename(url: str) -> str:

@@ -10,7 +10,7 @@ import requests
 from bs4 import BeautifulSoup
 from bs4.element import NavigableString
 
-from ocw.fetcher import AssetFetcher
+from ocw.fetcher import THROTTLE, AssetFetcher
 from ocw.parser import download_tool
 from ocw.parser.base import BaseParser
 from ocw.utils import resolve_asset_name, safe_vidkey, warn_external_wp_urls
@@ -907,6 +907,7 @@ class WPCourse(BaseParser):
 
         HTTP failures propagate to the conversion workflow.
         """
+        THROTTLE.wait(url)
         resp = self._session.get(url, timeout=15)
         resp.raise_for_status()
         return BeautifulSoup(resp.text, "lxml")

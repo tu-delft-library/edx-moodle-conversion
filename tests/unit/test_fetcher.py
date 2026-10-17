@@ -1,6 +1,8 @@
 import requests
 
-from ocw.fetcher import AssetFetcher
+from ocw import fetcher as fetcher_module
+from ocw.fetcher import AssetFetcher, HostThrottle
+from ocw.parser import wp as wp_module
 
 
 class _FakeResponse:
@@ -133,3 +135,36 @@ def test_fetch_text_failure_returns_none_and_is_cached(tmp_path, caplog):
     fetcher.fetch_text("https://x/tool.php")
     assert "Failed to fetch page" in caplog.text
     assert session.calls == ["https://x/tool.php"]
+
+
+class _FakeClock:
+    def __init__(self):
+        self.now = 100.0
+        self.sleeps = []
+
+    def monotonic(self):
+        return self.now
+
+    def sleep(self, seconds):
+        self.sleeps.append(round(seconds, 3))
+        self.now += seconds
+
+
+def test_host_throttle_spaces_requests_per_host(monkeypatch):
+    clock = _FakeClock()
+    monkeypatch.setattr(fetcher_module.time, "monotonic", clock.monotonic)
+    monkeypatch.setattr(fetcher_module.time, "sleep", clock.sleep)
+    throttle = HostThrottle(1.0)
+
+    throttle.wait("https://ocw.tudelft.nl/a")
+    throttle.wait("https://delftxdownloads.tudelft.nl/x.pdf")
+    clock.now += 0.25
+    throttle.wait("https://ocw.tudelft.nl/b")
+    clock.now += 2.0
+    throttle.wait("https://ocw.tudelft.nl/c")
+
+    assert clock.sleeps == [0.75]
+
+
+def test_wp_pages_and_assets_share_one_throttle():
+    assert wp_module.THROTTLE is fetcher_module.THROTTLE
