@@ -12,6 +12,11 @@ ASSET_BLACKLIST = (
     re.compile(r"^featured-Image\.[a-z]+$"),
 )
 
+# The inlined download widget's Video/Subtitles links: the one place a platform URL may stay a link.
+WIDGET_MEDIA_LINKS = (
+    ".TUD_box_download .video-download a[href], .TUD_box_download .subtitle-download a[href]"
+)
+
 
 def static_refs(html: str) -> list[str]:
     return STATIC_REF_RE.findall(html)

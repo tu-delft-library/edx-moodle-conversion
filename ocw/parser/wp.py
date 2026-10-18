@@ -17,6 +17,7 @@ from ocw.parser.base import BaseParser
 from ocw.utils import PLATFORM_HOST_RE, resolve_asset_name, safe_vidkey, warn_external_wp_urls
 
 log = logging.getLogger("ocw.wp_parser")
+_OCW_UPLOAD_RE = re.compile(r"^https?://ocw\.tudelft\.nl/wp-content/uploads/", re.IGNORECASE)
 
 
 class WPCourse(BaseParser):
@@ -219,14 +220,15 @@ class WPCourse(BaseParser):
         return download_ids
 
     def _localize_platform_links(self, article) -> None:
-        """Bundle files linked on edX/DelftX hosts and point the links at the local copy.
+        """Bundle files linked on edX/DelftX hosts or in the OCW uploads folder and point the links at the local copy.
 
         Runs before the download widget is inlined, so its Video/Subtitles links stay remote.
         Links that can't be fetched are left for the URL audit to report.
         """
         for link in article.select("a[href]"):
-            if PLATFORM_HOST_RE.search(urlparse(link["href"]).hostname or ""):
-                name = self._resolve_and_fetch(link["href"])
+            href = link["href"].strip()
+            if PLATFORM_HOST_RE.search(urlparse(href).hostname or "") or _OCW_UPLOAD_RE.match(href):
+                name = self._resolve_and_fetch(href)
                 if name:
                     link["href"] = f"/static/{name}"
 

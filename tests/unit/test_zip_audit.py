@@ -1,3 +1,4 @@
+import io
 import zipfile
 
 import pytest
@@ -94,3 +95,52 @@ def test_asset_used_only_from_a_style_block_is_not_an_orphan(built):
         zf.writestr(f"{ROOT}assets/icons.woff2", b"x")
     _append_to_page(built, "<style>@font-face{src:url(../../assets/icons.woff2)}</style>")
     assert audit_zip(built) == []
+
+
+def test_platform_link_is_flagged(built):
+    _append_to_page(built, '<a href="https://delftxdownloads.tudelft.nl/x/other.zip">o</a>')
+    assert Hit(PAGE, "platform link <a href>", "https://delftxdownloads.tudelft.nl/x/other.zip") in audit_zip(built)
+
+
+def test_widget_video_and_subtitle_links_are_allowed(built):
+    _append_to_page(
+        built,
+        '<div class="TUD_box_download"><div class="video-download"><a href="https://delftxdownloads.tudelft.nl/v.mp4">v</a></div>'
+        '<div class="subtitle-download"><a href="https://delftxdownloads.tudelft.nl/s.srt">s</a></div></div>',
+    )
+    assert not [h for h in audit_zip(built) if h.element.startswith("platform link")]
+
+
+def _docx_with_link(path, url: str):
+    with zipfile.ZipFile(path) as zf:
+        everything = {n: zf.read(n) for n in zf.namelist()}
+    with zipfile.ZipFile(io.BytesIO(everything[f"{ROOT}course.docx"])) as inner:
+        members = {n: inner.read(n) for n in inner.namelist()}
+    link = (
+        '<Relationship Id="rIdX" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/hyperlink" '
+        f'Target="{url}" TargetMode="External"/>'
+    )
+    rels = members["word/_rels/document.xml.rels"].decode()
+    members["word/_rels/document.xml.rels"] = rels.replace("</Relationships>", f"{link}</Relationships>").encode()
+    out = io.BytesIO()
+    with zipfile.ZipFile(out, "w") as inner:
+        for name, data in members.items():
+            inner.writestr(name, data)
+    _rewrite(path, {f"{ROOT}course.docx": None})
+    with zipfile.ZipFile(path, "a") as zf:
+        zf.writestr(f"{ROOT}course.docx", out.getvalue())
+
+
+def test_ocw_hyperlink_in_the_docx_is_flagged(built):
+    _docx_with_link(built, "https://ocw.tudelft.nl/teachers/x/")
+    assert Hit(f"{ROOT}course.docx", "ocw link <hyperlink>", "https://ocw.tudelft.nl/teachers/x/") in audit_zip(built)
+
+
+def test_broken_relative_hyperlink_in_the_docx_is_flagged(built):
+    _docx_with_link(built, "01_1._Intro/missing.html")
+    assert Hit(f"{ROOT}course.docx", "broken link <hyperlink>", "01_1._Intro/missing.html") in audit_zip(built)
+
+
+def test_platform_hyperlink_in_the_docx_is_flagged_unless_listed(built):
+    _docx_with_link(built, "https://delftxdownloads.tudelft.nl/zzz.zip")
+    assert any(h.element == "platform link <hyperlink>" for h in audit_zip(built))

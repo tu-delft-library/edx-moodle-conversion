@@ -138,7 +138,10 @@ class ExternalContentReport:
             row[0].text, row[1].text = _clean(ref.title), ref.kind
             row[3].text, row[4].text = _clean(_found_on(pages)), ref.status
             row[5].text = ref.location
-            self._add_hyperlink(row[2].paragraphs[0], ref.url)
+            if _in_domain(urlparse(ref.url).hostname or "", _OCW_HOST):
+                row[2].text = ref.url
+            else:
+                self._add_hyperlink(row[2].paragraphs[0], ref.url)
         for i, width in enumerate(_COLUMN_WIDTHS):
             table.columns[i].width = width
             for row in table.rows:

@@ -6,21 +6,24 @@ import zipfile
 from dataclasses import dataclass, field
 from html import escape
 from pathlib import Path, PurePosixPath
+from urllib.parse import urlsplit
 
-from bs4 import BeautifulSoup
+from bs4 import BeautifulSoup, NavigableString
 from docx import Document
 
-from ocw.assets import STATIC_REF_RE, asset_name, is_skipped_asset
+from ocw.assets import STATIC_REF_RE, WIDGET_MEDIA_LINKS, asset_name, is_skipped_asset
 from ocw.converter.external_report import (
     ExternalContentReport,
     ExternalRef,
     _is_blacklisted,
+    _OCW_HOST,
+    _in_domain,
     _local_kind,
     _refs_in_html,
 )
 from ocw.converter.html_to_docx import HtmlToDocx
 from ocw.parser.base import BaseParser
-from ocw.utils import _UNSAFE_FILENAME_RE
+from ocw.utils import _UNSAFE_FILENAME_RE, PLATFORM_HOST_RE
 
 log = logging.getLogger("ocw.zip_builder")
 _ROOT_INDEX = PurePosixPath("index.html")
@@ -38,6 +41,19 @@ _PAGE = """<!doctype html>
 _EMPTY_BODY = "<p>No content was found on the source page.</p>"
 _COURSE_OVERVIEW = "course overview"
 _NOT_REFERENCED = "not referenced on any page"
+_TEACHERS_SEGMENT = "teachers"
+
+
+def _norm(url: str) -> str:
+    """Host and path of `url`, scheme, query, fragment and trailing slash ignored."""
+    parts = urlsplit(url.strip())
+    return f"{(parts.hostname or '').lower()}{parts.path.rstrip('/')}"
+
+
+def _is_dead_host(host: str) -> bool:
+    return _in_domain(host, _OCW_HOST) or bool(PLATFORM_HOST_RE.search(host))
+
+
 def _key(url: str) -> str:
     return url.split("#")[0].rstrip("/")
 
@@ -89,6 +105,9 @@ class ZipBuilder:
     def __init__(self, course: BaseParser) -> None:
         self.course = course
         self._by_url: dict[str, PlannedPage] = {}
+        self._pages: dict[str, PlannedPage] = {}
+        self._teachers: PlannedPage | None = None
+        self._home = PlannedPage(_COURSE_OVERVIEW, _ROOT_INDEX)
         self._skipped_assets: set[str] = set()
         self._usage: dict[str, list[str]] = {}
 
@@ -129,12 +148,13 @@ class ZipBuilder:
     def _flatten(self, plan: Plan) -> str:
         """The whole course as one linear HTML document, structure headings marked `data-structural`."""
         parts = [f"<h1 data-structural>{escape(self.course.course_name)}</h1>"]
+        parts += self._banner()
         if self.course.overview_summary_html:
             parts.append(self._localise(self.course.overview_summary_html, _ROOT_INDEX))
         for chapter in plan.chapters:
             parts.append(f"<h2 data-structural data-page-break>{escape(chapter.index.title)}</h2>")
             if chapter.index.summary_html:
-                parts.append(self._localise(chapter.index.summary_html, chapter.index.path))
+                parts.append(self._localise(chapter.index.summary_html, chapter.index.path, _ROOT_INDEX))
             for title, verticals in chapter.sequentials:
                 parts.append(f"<h3 data-structural>{escape(title)}</h3>")
                 for vertical in verticals:
@@ -158,7 +178,7 @@ class ZipBuilder:
                 body = self._body_docx(target.components, target.path, (*stack, target.path))
                 return f"<h5 data-structural>{escape(target.title)}</h5>\n{body}"
             case _:
-                return self._render(comp, page)
+                return self._render(comp, page, _ROOT_INDEX)
 
     def _plan(self) -> Plan:
         plan = Plan()
@@ -170,6 +190,9 @@ class ZipBuilder:
                 summary_html=chapter.get("summary_html", ""),
             )
             planned = PlannedChapter(index)
+            self._register(chapter.get("source_url"), index)
+            if chapter.get("source_url") and _norm(chapter["source_url"]).endswith(f"/{_TEACHERS_SEGMENT}"):
+                self._teachers = index
             for j, seq in enumerate(chapter["sequentials"], 1):
                 seq_dir = chapter_dir / _safe_name(seq["display_name"], j)
                 verticals = [
@@ -180,6 +203,8 @@ class ZipBuilder:
                     )
                     for k, vert in enumerate(seq["verticals"], 1)
                 ]
+                for vert, page in zip(seq["verticals"], verticals):
+                    self._register(vert.get("source_url"), page)
                 planned.sequentials.append((seq["display_name"], verticals))
             plan.chapters.append(planned)
         self._plan_linked(plan.readings, self.course.reading_pages, "readings", "reading_url")
@@ -221,7 +246,12 @@ class ZipBuilder:
             path = PurePosixPath(folder) / f"{_safe_name(page['display_name'], i)}.html"
             planned = PlannedPage(page["display_name"], path, page["components"])
             self._by_url[_key(page[url_key])] = planned
+            self._register(page[url_key], planned)
             target.append(planned)
+
+    def _register(self, url: str | None, page: PlannedPage) -> None:
+        if url:
+            self._pages[_norm(url)] = page
 
     def _write_pages(self, root: Path, plan: Plan) -> None:
         for chapter in plan.chapters:
@@ -253,10 +283,10 @@ class ZipBuilder:
             parts.append(self._link_list(verticals, index.path))
         return "\n".join(parts)
 
-    def _render(self, comp: dict, page: PurePosixPath) -> str:
+    def _render(self, comp: dict, page: PurePosixPath, links_from: PurePosixPath | None = None) -> str:
         match comp["type"]:
             case "html":
-                return self._localise(comp["content"], page)
+                return self._localise(comp["content"], page, links_from)
             case "video":
                 return self._video_html(comp)
             case "reading_link":
@@ -266,12 +296,39 @@ class ZipBuilder:
             case other:
                 raise ValueError(f"unknown component type: {other}")
 
-    def _localise(self, html: str, page: PurePosixPath) -> str:
+    def _localise(self, html: str, page: PurePosixPath, links_from: PurePosixPath | None = None) -> str:
         prefix = _rel(PurePosixPath("assets"), page)
         html = STATIC_REF_RE.sub(
             lambda m: self._use(m.group(1), page, prefix), html
         )
-        return self._strip_scripts(html)
+        return self._strip_scripts(self._relink(html, links_from or page))
+
+    def _target(self, url: str) -> PlannedPage | None:
+        if page := self._pages.get(_norm(url)):
+            return page
+        segments = [s for s in urlsplit(url.strip()).path.split("/") if s]
+        if segments[:1] == [_TEACHERS_SEGMENT] and len(segments) > 1:
+            return self._teachers
+        if segments[:1] == ["courses"] and len(segments) == 2:
+            return self._home
+        return None
+
+    def _relink(self, html: str, base: PurePosixPath) -> str:
+        """Point links at pages of the zip, and unwrap links to edX/DelftX/OCW hosts that have no copy in it."""
+        soup = BeautifulSoup(html, "html.parser")
+        media = {id(a) for a in soup.select(WIDGET_MEDIA_LINKS)}
+        for link in soup.find_all("a", href=True):
+            url = link["href"].strip()
+            if id(link) in media or not _is_dead_host(urlsplit(url).hostname or ""):
+                continue
+            target = self._target(url)
+            if target:
+                link["href"] = _rel(target.path, base)
+                continue
+            if _norm(link.get_text()) != _norm(url):
+                link.insert_after(NavigableString(f" ({url})"))
+            link.unwrap()
+        return str(soup)
 
     def _use(self, name: str, page: PurePosixPath, prefix: str) -> str:
         folder = _COURSE_OVERVIEW if page == _ROOT_INDEX else _folder(page)
@@ -319,6 +376,7 @@ class ZipBuilder:
 
     def _write_index(self, root: Path, plan: Plan) -> None:
         parts = [f"<h1>{escape(self.course.course_name)}</h1>"]
+        parts += self._banner()
         if self.course.overview_summary_html:
             parts.append(self._localise(self.course.overview_summary_html, _ROOT_INDEX))
         for chapter in plan.chapters:
@@ -330,6 +388,11 @@ class ZipBuilder:
         parts.append(f'<p><a href="{_COURSE_DOCX}">Course overview (Docx)</a></p>')
         parts.append(f'<p><a href="{_EXTERNAL_XLSX}">External content, one row per occurrence (Excel)</a></p>')
         self._write_html(root / _ROOT_INDEX, self.course.course_name, "\n".join(parts))
+
+    def _banner(self) -> list[str]:
+        banner = self.course.banner_image_path
+        names = [n for n, path in self.course.static_files.items() if path == banner and not is_skipped_asset(n)]
+        return [f'<img src="{self._use(names[0], _ROOT_INDEX, "assets")}" alt="">'] if banner and names else []
 
     def _chapter_entry(self, chapter: PlannedChapter) -> str:
         head = (

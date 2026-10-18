@@ -9,6 +9,7 @@ import re
 import tarfile
 import warnings
 import zipfile
+from xml.etree import ElementTree
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 from urllib.parse import unquote, urlparse
@@ -16,18 +17,19 @@ from urllib.parse import unquote, urlparse
 from bs4 import BeautifulSoup, XMLParsedAsHTMLWarning
 from openpyxl import load_workbook
 
+from ocw.assets import WIDGET_MEDIA_LINKS
 from ocw.converter.external_report import _OCW_HOST, _in_domain, _refs_in_html
 from ocw.utils import PLATFORM_HOST_RE
 
 _URL_RE = re.compile(r"(?:https?:)?//[^\s\"'<>)]+")
-_WIDGET_TABS = (
-    ".TUD_box_download .video-download a[href], .TUD_box_download .subtitle-download a[href]"
-)
 _ZIP_URL_ATTRS = (("a", "href"), ("img", "src"), ("iframe", "src"), ("link", "href"), ("source", "src"))
 _ASSET_REF_RE = re.compile(r"assets/([^\"'\s)<>#?]+)")
 _TABLE_URL_COLUMN = 2
 _TABLE_KINDS_ON_PAGES = frozenset({"link", "embed", "video"})
 _ZIP_XLSX = "external_content.xlsx"
+_ZIP_DOCX = "course.docx"
+_DOCX_RELS = "word/_rels/document.xml.rels"
+_HYPERLINK_TYPE = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/hyperlink"
 _VIDROUTER_RE = re.compile(
     r"<plugin_local_vidrouter_course>.*?</plugin_local_vidrouter_course>", re.DOTALL
 )
@@ -40,16 +42,19 @@ class Hit:
     url: str
 
 
-def _watched(url: str) -> bool:
-    host = url.split("//", 1)[1].split("/", 1)[0].split(":")[0].lower()
+def _watched_host(host: str) -> bool:
     return bool(PLATFORM_HOST_RE.search(host))
+
+
+def _watched(url: str) -> bool:
+    return _watched_host(url.split("//", 1)[1].split("/", 1)[0].split(":")[0].lower())
 
 
 def audit_html(member: str, fragment: str) -> list[Hit]:
     """Every watched-host URL in `fragment`, in any attribute or text, that isn't a widget
     Video/Subtitles link."""
     soup = BeautifulSoup(fragment, "html.parser")
-    allowed = {id(a) for a in soup.select(_WIDGET_TABS)}
+    allowed = {id(a) for a in soup.select(WIDGET_MEDIA_LINKS)}
     hits = []
     for el in soup.find_all(True):
         for attr, value in el.attrs.items():
@@ -87,6 +92,10 @@ def _page_urls(page: str) -> list[tuple[str, str, str]]:
     return found
 
 
+def _widget_media_urls(page: str) -> set[str]:
+    return {a["href"].strip() for a in BeautifulSoup(page, "html.parser").select(WIDGET_MEDIA_LINKS)}
+
+
 def _is_local(url: str) -> bool:
     parts = urlparse(url)
     return not (parts.scheme or parts.netloc or url.startswith("#"))
@@ -101,8 +110,29 @@ def _table_urls(zf: zipfile.ZipFile, prefix: str) -> tuple[set[str], set[str]]:
     return {r[_TABLE_URL_COLUMN] for r in rows}, on_pages
 
 
+def _docx_links(zf: zipfile.ZipFile, prefix: str) -> list[str]:
+    with zf.open(f"{prefix}{_ZIP_DOCX}") as handle, zipfile.ZipFile(handle) as docx:
+        rels = ElementTree.fromstring(docx.read(_DOCX_RELS))
+    return [r.get("Target", "").strip() for r in rels if r.get("Type") == _HYPERLINK_TYPE]
+
+
+def _audit_docx(member: str, links: list[str], names: set[str], allowed: set[str]) -> list[Hit]:
+    hits = []
+    for url in links:
+        host = urlparse(url).hostname or ""
+        if _is_local(url):
+            target = posixpath.normpath(posixpath.join(posixpath.dirname(member), unquote(urlparse(url).path)))
+            if urlparse(url).path and target not in names:
+                hits.append(Hit(member, "broken link <hyperlink>", url))
+        elif _in_domain(host, _OCW_HOST):
+            hits.append(Hit(member, "ocw link <hyperlink>", url))
+        elif _watched_host(host) and url not in allowed:
+            hits.append(Hit(member, "platform link <hyperlink>", url))
+    return hits
+
+
 def audit_zip(zip_path: Path) -> list[Hit]:
-    """Check a built WP zip: no `ocw.tudelft.nl` link left, every relative link resolves to a file in
+    """Check a built WP zip: no `ocw.tudelft.nl` or edX/DelftX link left (bar the widget Video/Subtitles links), every relative link resolves to a file in
     the zip, the external content table and the pages list the same non OCW URLs, and every file in
     `assets/` is used by a page."""
     hits = []
@@ -111,9 +141,11 @@ def audit_zip(zip_path: Path) -> list[Hit]:
         prefix = f"{PurePosixPath(sorted(names)[0]).parts[0]}/"
         pages = {n: zf.read(n).decode("utf-8") for n in sorted(names) if n.endswith(".html")}
         table_urls, table_page_urls = _table_urls(zf, prefix)
+        docx_links = _docx_links(zf, prefix)
 
     page_urls = set()
     asset_refs = set()
+    media = set().union(*(_widget_media_urls(page) for page in pages.values()))
     for member, page in pages.items():
         asset_refs.update(unquote(m) for m in _ASSET_REF_RE.findall(page))
         for tag, attr, url in _page_urls(page):
@@ -126,11 +158,14 @@ def audit_zip(zip_path: Path) -> list[Hit]:
                     hits.append(Hit(member, f"broken link {element}", url))
             elif _in_domain(urlparse(url).hostname or "", _OCW_HOST):
                 hits.append(Hit(member, f"ocw link {element}", url))
+            elif _watched_host(urlparse(url).hostname or "") and url not in media:
+                hits.append(Hit(member, f"platform link {element}", url))
         hits += [
             Hit(member, "missing from table", ref.url)
             for ref in _refs_in_html(page, member)
             if ref.url not in table_urls
         ]
+    hits += _audit_docx(f"{prefix}{_ZIP_DOCX}", docx_links, names, media | table_urls)
     hits += [Hit(_ZIP_XLSX, "not on any page", url) for url in sorted(table_page_urls - page_urls)]
     hits += [
         Hit(n, "orphan asset", PurePosixPath(n).name)

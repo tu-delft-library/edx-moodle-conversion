@@ -237,10 +237,23 @@ def test_local_refs_labels_assets_not_used_in_any_page_body(tmp_path):
     site.add_static_file("banner.jpg", b"banner-bytes")
     course = site.course(keep_all_content=True)
     course.parse()
+    course.banner_image_path = None
     builder = ZipBuilder(course)
     builder.build(tmp_path / "course.zip")
     ref = next(r for r in builder._local_refs() if r.title == "banner.jpg")
     assert ref.page == "not referenced on any page"
+
+
+def test_local_refs_labels_the_banner_as_used_by_the_course_overview(tmp_path):
+    site = _site()
+    site.add_home([(SUBJECT_URL, "1. Intro")], banner_url="https://ocw.tudelft.nl/wp-content/uploads/banner.jpg")
+    site.add_static_file("banner.jpg", b"banner-bytes")
+    course = site.course(keep_all_content=True)
+    course.parse()
+    builder = ZipBuilder(course)
+    builder.build(tmp_path / "course.zip")
+    ref = next(r for r in builder._local_refs() if r.title == "banner.jpg")
+    assert ref.page == "course overview"
 
 
 def test_local_refs_drops_font_rows(tmp_path):

@@ -656,6 +656,19 @@ def test_platform_hosted_pdf_link_bundled_and_other_links_kept():
     assert len(course.fetcher.calls) == 1
 
 
+def test_ocw_uploads_link_bundled():
+    course = _course({})
+    course.fetcher = _FakeFetcher(Path("/tmp/Tips.pdf"))
+    article = BeautifulSoup(
+        '<article><a href=" https://ocw.tudelft.nl/wp-content/uploads/Tips.pdf">Tips</a>'
+        '<a href="https://ocw.tudelft.nl/more/hall-of-fame/">Fame</a></article>',
+        "lxml",
+    ).article
+    course._clean_article(article)
+    assert [a["href"] for a in article.select("a")] == ["/static/Tips.pdf", "https://ocw.tudelft.nl/more/hall-of-fame/"]
+    assert len(course.fetcher.calls) == 1
+
+
 def test_platform_hosted_link_kept_when_fetch_fails():
     course = _course({})
     course.fetcher = _FakeFetcher(None)
