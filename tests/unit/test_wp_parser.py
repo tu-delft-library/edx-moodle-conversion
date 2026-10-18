@@ -566,6 +566,17 @@ def test_subject_page_without_activities_list_logs_warning_and_returns_empty_seq
     assert "No activities list found" in caplog.text
 
 
+def test_subject_page_without_activities_list_keeps_its_intro_rows(caplog):
+    page = '<article><div class="vc_row"><p>Teacher card.</p></div></article>'
+    course = _course({})
+    course._fetch_page = lambda url: BeautifulSoup(page, "lxml")
+    with caplog.at_level("WARNING"):
+        chapter = course._parse_subject_page("https://x/subj1/", "6. Teachers")
+    assert chapter["sequentials"] == []
+    assert "Teacher card." in chapter["summary_html"]
+    assert "No activities list found" in caplog.text
+
+
 def test_reading_with_dangling_wp_link_logs_warning(caplog):
     course = _course({})
     course._fetch_page = lambda url: BeautifulSoup(READING_WITH_DANGLING_WP_LINK, "lxml")
@@ -642,6 +653,19 @@ def test_platform_hosted_pdf_link_bundled_and_other_links_kept():
     hrefs = [a["href"] for a in article.select("a")]
     assert hrefs == ["/static/Guide.pdf", "https://example.com/paper.pdf"]
     assert course.static_files["Guide.pdf"] == Path("/tmp/Guide.pdf")
+    assert len(course.fetcher.calls) == 1
+
+
+def test_ocw_uploads_link_bundled():
+    course = _course({})
+    course.fetcher = _FakeFetcher(Path("/tmp/Tips.pdf"))
+    article = BeautifulSoup(
+        '<article><a href=" https://ocw.tudelft.nl/wp-content/uploads/Tips.pdf">Tips</a>'
+        '<a href="https://ocw.tudelft.nl/more/hall-of-fame/">Fame</a></article>',
+        "lxml",
+    ).article
+    course._clean_article(article)
+    assert [a["href"] for a in article.select("a")] == ["/static/Tips.pdf", "https://ocw.tudelft.nl/more/hall-of-fame/"]
     assert len(course.fetcher.calls) == 1
 
 
@@ -742,3 +766,121 @@ def test_fetch_page_propagates_http_errors():
     course._session = _FakeSession()
     with pytest.raises(requests.HTTPError):
         course._fetch_page("https://ocw.tudelft.nl/courses/example/")
+
+
+SUBJECT_PAGE_ALL_ITEM_TYPES = """
+<article>
+<ul class="activities">
+<li>
+<h4 class="expand expand--showing"><span class="icon fa-minus course-title">1.1 Basics</span></h4>
+<ul>
+<li><a class="icon icon--lecture" href="https://ocw.tudelft.nl/course-lectures/lec1/">Lecture 1</a></li>
+<li><a class="icon icon--exercise" href="https://ocw.tudelft.nl/course-exercises/ex1/">Exercise 1</a></li>
+<li><a class="icon icon--exam" href="https://ocw.tudelft.nl/course-exams/exam1/">Exam 1</a></li>
+<li><a class="icon icon--mooc" href="https://ocw.tudelft.nl/course-moocs/mooc1/">Mooc 1</a></li>
+<li><a class="icon icon--quiz" href="https://ocw.tudelft.nl/course-quizzes/q1/">Quiz 1</a></li>
+</ul>
+</li>
+</ul>
+</article>
+"""
+
+ALL_ITEM_TYPES_PAGES = {
+    "https://ocw.tudelft.nl/courses/example/": HOME,
+    "https://ocw.tudelft.nl/courses/example/subjects/1-intro/": SUBJECT_PAGE_ALL_ITEM_TYPES,
+    "https://ocw.tudelft.nl/course-lectures/lec1/": LECTURE_YOUTUBE,
+    "https://ocw.tudelft.nl/course-exercises/ex1/": LECTURE_WITH_SURROUNDING_TEXT,
+    "https://ocw.tudelft.nl/course-exams/exam1/": LECTURE_WITH_SURROUNDING_TEXT,
+    "https://ocw.tudelft.nl/course-moocs/mooc1/": LECTURE_WITH_SURROUNDING_TEXT,
+    "https://ocw.tudelft.nl/course-quizzes/q1/": LECTURE_WITH_SURROUNDING_TEXT,
+}
+
+
+def _keep_course(pages: dict[str, str]) -> WPCourse:
+    course = WPCourse("https://ocw.tudelft.nl/courses/example/", keep_all_content=True)
+    course._fetch_page = lambda url: BeautifulSoup(pages[url], "lxml")
+    return course
+
+
+def _combined(result: dict) -> str:
+    return " ".join(c.get("content", "") for c in result["components"])
+
+
+def test_keep_all_content_parses_skipped_and_unknown_item_types():
+    course = _keep_course(ALL_ITEM_TYPES_PAGES)
+    course.parse()
+    verticals = course.chapters[0]["sequentials"][0]["verticals"]
+    assert [v["display_name"] for v in verticals] == [
+        "Lecture 1",
+        "Exercise 1",
+        "Exam 1",
+        "Mooc 1",
+        "Quiz 1",
+    ]
+    assert all(v["components"] for v in verticals)
+
+
+def test_default_parse_skips_exercise_exam_mooc_and_unknown_items():
+    course = _course(ALL_ITEM_TYPES_PAGES)
+    course.parse()
+    verticals = course.chapters[0]["sequentials"][0]["verticals"]
+    assert [v["display_name"] for v in verticals] == ["Lecture 1"]
+
+
+def test_default_parse_adds_no_source_url_or_video_src():
+    course = _course(ALL_ITEM_TYPES_PAGES)
+    course.parse()
+    chapter = course.chapters[0]
+    vertical = chapter["sequentials"][0]["verticals"][0]
+    assert "source_url" not in chapter
+    assert "source_url" not in vertical
+    assert "src" not in course.videos[0]
+
+
+def test_keep_all_content_records_source_urls():
+    course = _keep_course(ALL_ITEM_TYPES_PAGES)
+    course.parse()
+    chapter = course.chapters[0]
+    assert chapter["source_url"] == "https://ocw.tudelft.nl/courses/example/subjects/1-intro/"
+    urls = [v["source_url"] for v in chapter["sequentials"][0]["verticals"]]
+    assert urls[0] == "https://ocw.tudelft.nl/course-lectures/lec1/"
+    assert urls[1] == "https://ocw.tudelft.nl/course-exercises/ex1/"
+
+
+def test_keep_all_content_keeps_title_link_list_and_license():
+    course = _keep_course({})
+    course._fetch_page = lambda url: BeautifulSoup(LECTURE_WITH_SURROUNDING_TEXT, "lxml")
+    result = course._parse_lecture_uncached("https://x/lec1/", "Lecture 1", "Ch 1", "Seq 1")
+    combined = _combined(result)
+    assert "<h1>Lecture 1</h1>" in combined
+    assert "Course subject(s) 1. Intro" in combined
+    assert 'class="license"' in combined
+    assert "text-align:center" not in combined
+
+
+def test_keep_all_content_keeps_title_link_list_and_license_on_readings():
+    course = _keep_course({})
+    page = READING_WITH_PDF_AND_TEXT.replace(
+        "</article>", '<section class="license"><p>CC license text.</p></section></article>'
+    )
+    course._fetch_page = lambda url: BeautifulSoup(page, "lxml")
+    result = course._parse_reading_uncached("https://x/read1/", "Reading 1")
+    combined = _combined(result)
+    assert "<h1>Reading 1</h1>" in combined
+    assert "Course subject(s) 1. Intro" in combined
+    assert "CC license text." in combined
+
+
+def test_keep_all_content_video_records_carry_iframe_src():
+    course = _keep_course(ALL_ITEM_TYPES_PAGES)
+    course.parse()
+    assert course.videos[0]["src"] == "https://www.youtube.com/embed/abc123"
+
+
+def test_keep_all_content_off_still_drops_title_link_list_and_license():
+    course = _course({})
+    course._fetch_page = lambda url: BeautifulSoup(LECTURE_WITH_SURROUNDING_TEXT, "lxml")
+    result = course._parse_lecture_uncached("https://x/lec1/", "Lecture 1", "Ch 1", "Seq 1")
+    combined = _combined(result)
+    assert "<h1>" not in combined
+    assert "license" not in combined

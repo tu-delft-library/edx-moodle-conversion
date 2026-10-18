@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=OCW WP Zip GUI
+Comment=Back up WordPress-hosted course sites as browsable zip archives
+Exec=ocw-gui-wp-zip
+Icon=ocw-gui-wp-zip
+Categories=Utility;
+Terminal=false

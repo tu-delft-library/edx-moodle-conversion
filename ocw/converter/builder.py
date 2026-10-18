@@ -1,7 +1,6 @@
 import logging
 import mimetypes
 import os
-import re
 import shutil
 import tarfile
 import tempfile
@@ -12,6 +11,7 @@ from dotenv import load_dotenv
 
 from ocw import templates
 from ocw._version import __version__
+from ocw.assets import static_refs
 from ocw.converter.html import (
     constrain_img_size,
     constrain_table_size,
@@ -305,7 +305,7 @@ class MBZBuilder:
             "sec_num": overview_section["number"],
             "name": c.syllabus_title,
             "content": content,
-            "file_refs": re.findall(r'@@PLUGINFILE@@/([^"\'>\s#?]+)', content),
+            "file_refs": static_refs(content),
             "file_ids": [],
         }
 
@@ -384,7 +384,7 @@ class MBZBuilder:
             summary = sec.get("summary")
             if not summary:
                 continue
-            for name in re.findall(r'@@PLUGINFILE@@/([^"\'>\s#?]+)', summary):
+            for name in static_refs(summary):
                 path = c.static_files.get(name)
                 if path is None:
                     continue

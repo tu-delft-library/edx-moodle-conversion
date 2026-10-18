@@ -90,6 +90,8 @@ class ConverterApp:
             return None
         return "break"
 
+    MBZ_OPTIONS = True
+
     def _build_source_widgets(self, pad: dict) -> None:
         """Add source-specific controls above the shared input and output controls.
 
@@ -116,23 +118,24 @@ class ConverterApp:
         ).pack(side="left")
         ttk.Label(output_frame, textvariable=self.output_var).pack(side="left", padx=8)
 
-        ttk.Checkbutton(
-            self.root,
-            text="Flatten sub-sections (one section per sequential)",
-            variable=self.sequential_sections,
-        ).pack(anchor="w", **pad)
+        if self.MBZ_OPTIONS:
+            ttk.Checkbutton(
+                self.root,
+                text="Flatten sub-sections (one section per sequential)",
+                variable=self.sequential_sections,
+            ).pack(anchor="w", **pad)
 
-        ttk.Checkbutton(
-            self.root,
-            text="Authora layout",
-            variable=self.authora,
-        ).pack(anchor="w", **pad)
+            ttk.Checkbutton(
+                self.root,
+                text="Authora layout",
+                variable=self.authora,
+            ).pack(anchor="w", **pad)
 
-        ttk.Checkbutton(
-            self.root,
-            text="Enable Edusources custom fields",
-            variable=self.enable_custom_fields,
-        ).pack(anchor="w", **pad)
+            ttk.Checkbutton(
+                self.root,
+                text="Enable Edusources custom fields",
+                variable=self.enable_custom_fields,
+            ).pack(anchor="w", **pad)
 
         ttk.Checkbutton(
             self.root,

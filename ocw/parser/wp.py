@@ -17,6 +17,7 @@ from ocw.parser.base import BaseParser
 from ocw.utils import PLATFORM_HOST_RE, resolve_asset_name, safe_vidkey, warn_external_wp_urls
 
 log = logging.getLogger("ocw.wp_parser")
+_OCW_UPLOAD_RE = re.compile(r"^https?://ocw\.tudelft\.nl/wp-content/uploads/", re.IGNORECASE)
 
 
 class WPCourse(BaseParser):
@@ -68,9 +69,11 @@ class WPCourse(BaseParser):
         root: str,
         fetcher: AssetFetcher | None = None,
         include_license_banner: bool = False,
+        keep_all_content: bool = False,
     ) -> None:
         super().__init__(root, fetcher)
         self._include_license_banner = include_license_banner
+        self._keep_all_content = keep_all_content
         self._session = requests.Session()
         # URL -> parsed canonical reading vertical (or None), for dedup across subject pages.
         self._reading_pages: dict[str, dict | None] = {}
@@ -217,14 +220,15 @@ class WPCourse(BaseParser):
         return download_ids
 
     def _localize_platform_links(self, article) -> None:
-        """Bundle files linked on edX/DelftX hosts and point the links at the local copy.
+        """Bundle files linked on edX/DelftX hosts or in the OCW uploads folder and point the links at the local copy.
 
         Runs before the download widget is inlined, so its Video/Subtitles links stay remote.
         Links that can't be fetched are left for the URL audit to report.
         """
         for link in article.select("a[href]"):
-            if PLATFORM_HOST_RE.search(urlparse(link["href"]).hostname or ""):
-                name = self._resolve_and_fetch(link["href"])
+            href = link["href"].strip()
+            if PLATFORM_HOST_RE.search(urlparse(href).hostname or "") or _OCW_UPLOAD_RE.match(href):
+                name = self._resolve_and_fetch(href)
                 if name:
                     link["href"] = f"/static/{name}"
 
@@ -382,9 +386,9 @@ class WPCourse(BaseParser):
                     intro_rows.append(child)
         if activities is None:
             log.warning("No activities list found on subject page '%s'", url)
-            return {"display_name": title, "sequentials": []}
         sequentials = []
-        for group in activities.find_all("li", recursive=False):
+        groups = activities.find_all("li", recursive=False) if activities is not None else []
+        for group in groups:
             seq_title_el = group.select_one("span.course-title")
             seq_title = seq_title_el.get_text(strip=True) if seq_title_el else title
             verticals = [
@@ -398,25 +402,39 @@ class WPCourse(BaseParser):
             summary_html = "".join(str(row) for row in intro_rows)
             warn_external_wp_urls(summary_html, context=title)
             chapter["summary_html"] = summary_html
-        return chapter
+        return self._with_source_url(chapter, url)
+
+    def _with_source_url(self, record: dict, url: str) -> dict:
+        """Record the page's own URL on `record` when keeping all content."""
+        if self._keep_all_content:
+            record["source_url"] = url
+        return record
 
     def _parse_item(self, link, chapter_name: str, sequential_name: str) -> dict | None:
+        """Parse one activity link and tag it with its source URL."""
+        vertical = self._dispatch_item(link, chapter_name, sequential_name)
+        if vertical is None:
+            return None
+        return self._with_source_url(vertical, link["href"])
+
+    def _dispatch_item(self, link, chapter_name: str, sequential_name: str) -> dict | None:
         """Dispatch one activity link according to its `icon--...` class.
 
-        Configured unsupported icon types are skipped. Unknown types produce a warning.
+        Configured unsupported icon types are skipped and unknown types produce a warning,
+        unless all content is kept, when both are parsed as ordinary article pages.
         """
         icon_type = next(
             (c for c in link.get("class", []) if c.startswith("icon--")), ""
         )
-        if icon_type in self._SKIPPED_ICON_TYPES:
+        if icon_type in self._SKIPPED_ICON_TYPES and not self._keep_all_content:
             return None
         title = link.get_text(strip=True)
-        if icon_type == "icon--lecture":
+        if icon_type == "icon--reading":
+            return self._parse_reading(link["href"], title)
+        if icon_type == "icon--lecture" or self._keep_all_content:
             return self._parse_lecture(
                 link["href"], title, chapter_name, sequential_name
             )
-        if icon_type == "icon--reading":
-            return self._parse_reading(link["href"], title)
         log.warning(
             "Unhandled WP item type '%s' at %s", icon_type or "<none>", link["href"]
         )
@@ -640,10 +658,12 @@ class WPCourse(BaseParser):
             return [("component", {"type": "html", "content": str(child)})]
         return []
 
-    @staticmethod
-    def _is_boilerplate_child(child) -> bool:
+    def _is_boilerplate_child(self, child) -> bool:
         """True for a lecture-page child that carries no course content -- the page title or
-        the subject link list -- and should be skipped outright."""
+        the subject link list -- and should be skipped outright. Never true when keeping all
+        content."""
+        if self._keep_all_content:
+            return False
         if child.name == "h1":
             return True
         if child.name == "p" and "article__link-list" in (child.get("class") or []):
@@ -659,7 +679,9 @@ class WPCourse(BaseParser):
         """True (and leave `section` untouched) when the flag is off. Otherwise inline the WP
         theme's `.license` rule (centred, padded) since Moodle never loads WP's own CSS, strip
         the dead "Based on a work at <source>" attribution line, and return False so the caller
-        keeps the section."""
+        keeps the section. When keeping all content the footer is left verbatim."""
+        if self._keep_all_content:
+            return False
         if not self._include_license_banner:
             return True
         section["style"] = "text-align:center;padding-top:40px;padding-bottom:40px"
@@ -762,6 +784,10 @@ class WPCourse(BaseParser):
                 results.append((component, src))
             else:
                 results.append(({"type": "html", "content": str(iframe)}, src))
+        if self._keep_all_content:
+            for component, src in results:
+                if component["type"] == "video":
+                    component["src"] = src
         return results
 
     def _video_component(
@@ -849,11 +875,9 @@ class WPCourse(BaseParser):
         self._clean_article(article)
         parts = []
         for child in article.find_all(recursive=False):
-            if child.name == "h1":
-                continue
             if self._is_license_section(child) and self._drop_license_section(child):
                 continue
-            if child.name == "p" and "article__link-list" in (child.get("class") or []):
+            if self._is_boilerplate_child(child):
                 continue
             if self._find_download_link(child):
                 continue
@@ -886,6 +910,7 @@ class WPCourse(BaseParser):
         if fetched is None:
             return None
         self.static_files[fetched.name] = fetched
+        self.static_sources[fetched.name] = asset_url
         return fetched.name
 
     def _find_download_link(self, node) -> list[dict]:

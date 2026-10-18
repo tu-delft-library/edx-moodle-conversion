@@ -32,6 +32,13 @@ poetry run ocw path/to/olx_course/ -o output.mbz
 poetry run ocw-wp https://example.edu/course-home-page/ -o output.mbz
 ```
 
+## WordPress Backup to Zip
+
+```bash
+poetry run ocw-wp-zip https://example.edu/course-home-page/ -o backup.zip
+```
+
+
 ## Flags
 
 | Flag                           | Default | Description                                                           |
@@ -56,11 +63,12 @@ poetry run ocw path/to/olx_course/ -o output.mbz --sequential-sections
 Desktop app, same conversion logic as the CLI:
 
 ```bash
-poetry run python -m ocw.gui.olx   # OLX GUI
-poetry run python -m ocw.gui.wp    # WordPress GUI
+poetry run python -m ocw.gui.olx      # OLX GUI
+poetry run python -m ocw.gui.wp       # WordPress GUI
+poetry run python -m ocw.gui.wp_zip   # WordPress zip backup GUI
 ```
 
-Packaged binaries (`ocw-gui`, `ocw-gui-wp`) are also built per release.
+Packaged binaries (`ocw-gui`, `ocw-gui-wp`, `ocw-gui-wp-zip`) are also built per release.
 
 ## Warnings
 

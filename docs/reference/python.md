@@ -19,6 +19,8 @@ generated reference content.
 
 ::: ocw.hybrid_checks
 
+::: ocw.zip_checks
+
 ## Video source extension points
 
 ### OLX video metadata
@@ -52,6 +54,16 @@ generated reference content.
 ### GUI worker
 
 ::: ocw.gui.wp.App._convert_one
+
+## WordPress zip export
+
+::: ocw.converter.zip_builder
+
+::: ocw.converter.external_report
+
+::: ocw.cli.wp_zip.main
+
+## WordPress subject parsing
 
 ### Subject parser
 

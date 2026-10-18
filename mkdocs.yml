@@ -35,6 +35,7 @@ nav:
       - Architecture: implementation/architecture.md
       - OLX Importer: implementation/olx-importer.md
       - WP Importer: implementation/wordpress-importer.md
+      - WP Zip Export: implementation/wp-zip-export.md
       - Moodle Video Router: implementation/moodle-video-router.md
       - MBZ Format: implementation/mbz-format.md
       - Testing: implementation/testing.md
