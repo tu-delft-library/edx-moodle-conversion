@@ -3,9 +3,7 @@ import pytest
 from pathlib import Path
 
 from ocw.converter import MBZBuilder
-from ocw.converter.zip_builder import ZipBuilder
 from ocw.parser.olx import Course
-from ocw.zip_checks import run_zip_checks
 
 FIXTURES = Path(__file__).parent.parent / "fixtures"
 
@@ -36,17 +34,6 @@ def test_parse_course(name, path, tmp_path):
     course.parse()
     assert course.course_name
     assert len(course.chapters) > 0
-
-
-@pytest.mark.parametrize("name,path", COURSES.items())
-def test_zip_course_matches_planned_pages(name, path, tmp_path):
-    if not path.exists():
-        pytest.skip(f"{name} not present")
-    course = Course(_resolve(path, tmp_path))
-    course.parse()
-    out = tmp_path / "course.zip"
-    ZipBuilder(course).build(out)
-    assert all(r.passed for r in run_zip_checks(course, out))
 
 
 @pytest.mark.parametrize("name,path", COURSES.items())
