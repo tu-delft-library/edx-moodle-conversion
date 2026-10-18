@@ -144,3 +144,9 @@ def test_broken_relative_hyperlink_in_the_docx_is_flagged(built):
 def test_platform_hyperlink_in_the_docx_is_flagged_unless_listed(built):
     _docx_with_link(built, "https://delftxdownloads.tudelft.nl/zzz.zip")
     assert any(h.element == "platform link <hyperlink>" for h in audit_zip(built))
+
+
+def test_table_url_shown_as_plain_text_on_a_page_is_not_flagged(built):
+    url = "https://www.youtube.com/embed/abc123"
+    _rewrite(built, {PAGE: f"<html><body>see the video ({url})</body></html>"})
+    assert Hit("external_content.xlsx", "not on any page", url) not in audit_zip(built)

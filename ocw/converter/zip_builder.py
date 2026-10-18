@@ -1,5 +1,6 @@
 import logging
 import posixpath
+import re
 import shutil
 import tempfile
 import zipfile
@@ -42,6 +43,7 @@ _EMPTY_BODY = "<p>No content was found on the source page.</p>"
 _COURSE_OVERVIEW = "course overview"
 _NOT_REFERENCED = "not referenced on any page"
 _TEACHERS_SEGMENT = "teachers"
+_FOOTNOTE_FRAGMENT_RE = re.compile(r"^#(?:fn|fnref)\d+$")
 
 
 def _norm(url: str) -> str:
@@ -52,6 +54,11 @@ def _norm(url: str) -> str:
 
 def _is_dead_host(host: str) -> bool:
     return _in_domain(host, _OCW_HOST) or bool(PLATFORM_HOST_RE.search(host))
+
+
+def _is_dead_footnote(url: str) -> bool:
+    parts = urlsplit(url.strip())
+    return _is_dead_host(parts.hostname or "") and bool(_FOOTNOTE_FRAGMENT_RE.match(f"#{parts.fragment}"))
 
 
 def _key(url: str) -> str:
@@ -236,7 +243,7 @@ class ZipBuilder:
             if comp["type"] == "video" and not _is_blacklisted(comp["src"]):
                 refs.append(ExternalRef(comp["display_name"], comp["src"], "video", folder))
             elif comp["type"] == "html":
-                refs.extend(_refs_in_html(comp["content"], folder))
+                refs.extend(r for r in _refs_in_html(comp["content"], folder) if not _is_dead_footnote(r.url))
         return refs
 
     def _plan_linked(
@@ -324,6 +331,9 @@ class ZipBuilder:
             target = self._target(url)
             if target:
                 link["href"] = _rel(target.path, base)
+                continue
+            if _is_dead_footnote(url):
+                link["href"] = f"#{urlsplit(url).fragment}"
                 continue
             if _norm(link.get_text()) != _norm(url):
                 link.insert_after(NavigableString(f" ({url})"))

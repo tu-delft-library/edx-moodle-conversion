@@ -115,3 +115,18 @@ def test_course_banner_is_embedded_in_the_docx(tmp_path):
     with zipfile.ZipFile(out) as zf:
         doc = Document(io.BytesIO(zf.read("Example_Course/course.docx")))
     assert any(blip.get(qn("r:embed")) for blip in doc.element.body.iter(qn("a:blip")))
+
+
+def test_footnote_links_to_a_dead_host_become_in_page_anchors():
+    builder = ZipBuilder(_site().course(keep_all_content=True))
+    html = '<a href="https://courses.edx.org/courses/x/courseware/1?a=b#fn1">1</a><a href="https://www.edx.org/course/x#intro">x</a>'
+    out = builder._relink(html, PurePosixPath("a/b.html"))
+    assert 'href="#fn1"' in out
+    assert "courses.edx.org" not in out
+    assert 'href="https://www.edx.org' not in out and "(https://www.edx.org/course/x#intro)" in out
+
+
+def test_dead_host_footnote_links_are_not_listed_as_external_content():
+    html = '<a href="https://courses.edx.org/x/courseware/1#fn1">1</a><a href="https://www.edx.org/course/x">x</a>'
+    refs = ZipBuilder._component_refs("folder/", [{"type": "html", "content": html}])
+    assert [r.url for r in refs] == ["https://www.edx.org/course/x"]

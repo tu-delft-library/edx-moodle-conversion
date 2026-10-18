@@ -166,7 +166,11 @@ def audit_zip(zip_path: Path) -> list[Hit]:
             if ref.url not in table_urls
         ]
     hits += _audit_docx(f"{prefix}{_ZIP_DOCX}", docx_links, names, media | table_urls)
-    hits += [Hit(_ZIP_XLSX, "not on any page", url) for url in sorted(table_page_urls - page_urls)]
+    hits += [
+        Hit(_ZIP_XLSX, "not on any page", url)
+        for url in sorted(table_page_urls - page_urls)
+        if not any(url in page for page in pages.values())
+    ]
     hits += [
         Hit(n, "orphan asset", PurePosixPath(n).name)
         for n in sorted(names)
