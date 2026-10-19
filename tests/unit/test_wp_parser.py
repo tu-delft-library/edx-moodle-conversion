@@ -587,6 +587,15 @@ def test_reading_with_dangling_wp_link_logs_warning(caplog):
     assert "ocw.tudelft.nl/courses/other-course/subjects/2-more/" in caplog.text
 
 
+def test_keep_all_content_does_not_warn_about_ocw_links(caplog):
+    course = WPCourse("https://ocw.tudelft.nl/courses/example/", keep_all_content=True)
+    course._fetch_page = lambda url: BeautifulSoup(READING_WITH_DANGLING_WP_LINK, "lxml")
+    with caplog.at_level("WARNING"):
+        result = course._parse_reading_uncached("https://x/read1/", "Reading 1")
+    assert result is not None
+    assert "still hosted on ocw.tudelft.nl" not in caplog.text
+
+
 def test_unhandled_icon_type_logs_warning_and_is_dropped(caplog):
     course = _course({})
     course._fetch_page = lambda url: BeautifulSoup(

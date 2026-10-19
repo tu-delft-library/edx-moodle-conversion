@@ -125,7 +125,7 @@ class WPCourse(BaseParser):
         ).strip()
         if not html:
             return
-        warn_external_wp_urls(html, context="course overview")
+        self._warn_ocw_urls(html, "course overview")
         self.overview_summary_html = html
 
     _BANNER_URL_RE = re.compile(r"background-image:\s*url\((['\"]?)(.*?)\1\)")
@@ -400,7 +400,7 @@ class WPCourse(BaseParser):
         chapter = {"display_name": title, "sequentials": sequentials}
         if intro_rows:
             summary_html = "".join(str(row) for row in intro_rows)
-            warn_external_wp_urls(summary_html, context=title)
+            self._warn_ocw_urls(summary_html, title)
             chapter["summary_html"] = summary_html
         return self._with_source_url(chapter, url)
 
@@ -562,11 +562,17 @@ class WPCourse(BaseParser):
             components.append({"type": "html", "content": content})
         return len(boxes)
 
+    def _warn_ocw_urls(self, html: str, context: str) -> None:
+        """Warn about ocw.tudelft.nl urls left in `html`, unless keeping all content: the zip rewrites
+        or unwraps every one of them."""
+        if not self._keep_all_content:
+            warn_external_wp_urls(html, context=context)
+
     def _warn_external_wp_links(self, components: list[dict], context: str) -> None:
         """Warn about any `html` component still linking back to ocw.tudelft.nl."""
         for comp in components:
             if comp["type"] == "html":
-                warn_external_wp_urls(comp["content"], context=context)
+                self._warn_ocw_urls(comp["content"], context)
 
     def _download_link_component(self, name: str, block: dict) -> dict:
         """Build the vc_download-style HTML block for one resolved download link."""
@@ -896,7 +902,7 @@ class WPCourse(BaseParser):
             set(),
             url,
         )
-        warn_external_wp_urls(html, context=url)
+        self._warn_ocw_urls(html, url)
         return html
 
     def _resolve_and_fetch(self, asset_url: str) -> str | None:
