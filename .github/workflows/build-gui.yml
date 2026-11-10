@@ -67,6 +67,7 @@ jobs:
       - run: poetry run pyinstaller --onefile --windowed --name ocw-gui-${{ github.ref_name }} ocw/gui/olx.py
       - run: poetry run pyinstaller --onefile --windowed --name ocw-gui-wp-${{ github.ref_name }} ocw/gui/wp.py
       - run: poetry run pyinstaller --onefile --windowed --name ocw-gui-wp-zip-${{ github.ref_name }} ocw/gui/wp_zip.py
+      - run: poetry run pyinstaller --onefile --windowed --name link-scan-${{ github.ref_name }} scripts/link_scan.py
       - uses: softprops/action-gh-release@v2
         if: startsWith(github.ref, 'refs/tags/')
         with:
@@ -75,6 +76,7 @@ jobs:
             dist/ocw-gui-${{ github.ref_name }}.exe
             dist/ocw-gui-wp-${{ github.ref_name }}.exe
             dist/ocw-gui-wp-zip-${{ github.ref_name }}.exe
+            dist/link-scan-${{ github.ref_name }}.exe
 
   moodle-plugins:
     runs-on: ubuntu-latest
