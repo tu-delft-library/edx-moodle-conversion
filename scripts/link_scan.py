@@ -15,9 +15,14 @@ from tkinter import END, StringVar, Text, Tk, filedialog, ttk
 ARCHIVE_SUFFIXES = (".tar.gz", ".mbz")
 NAV_CLASS = "vc_btn3"
 NAV_TEXTS = frozenset({"previous", "next", "vorige", "volgende"})
-ANY_OCW_RE = re.compile(r"""[^\s"'<>]*(?<![A-Za-z0-9-])ocw\.tudelft\.nl(?![A-Za-z0-9-])[^\s"'<>]*""", re.IGNORECASE)
+ANY_OCW_RE = re.compile(
+    r"""[^\s"'<>]*(?<![A-Za-z0-9-])ocw\.tudelft\.nl(?![A-Za-z0-9-])[^\s"'<>]*""",
+    re.IGNORECASE,
+)
 TEACHER_RE = re.compile(r"ocw\.tudelft\.nl/teachers(?:[/?#]|$)", re.IGNORECASE)
-NON_RELATIVE_RE = re.compile(r"(?:[a-z][a-z0-9+.-]*:|//|#|@@PLUGINFILE@@)", re.IGNORECASE)
+NON_RELATIVE_RE = re.compile(
+    r"(?:[a-z][a-z0-9+.-]*:|//|#|@@PLUGINFILE@@)", re.IGNORECASE
+)
 FULLNAME_RE = re.compile(r"<fullname>(.*?)</fullname>", re.DOTALL)
 KIND_LABELS = {"nav": "Nav button", "teacher": "Teacher Profile", "other": "Other"}
 DETAIL_LIMIT = 500
@@ -58,7 +63,9 @@ class ArchiveResult:
 
     @property
     def nav_pages(self) -> int:
-        return len({f.member for f in self.findings if f.kind == "nav" and _is_page(f.member)})
+        return len(
+            {f.member for f in self.findings if f.kind == "nav" and _is_page(f.member)}
+        )
 
 
 class LinkParser(HTMLParser):
@@ -72,7 +79,11 @@ class LinkParser(HTMLParser):
     def handle_starttag(self, tag, attrs) -> None:
         if tag == "a":
             attrs = dict(attrs)
-            self._open = [attrs.get("href") or "", (attrs.get("class") or "").split(), ""]
+            self._open = [
+                attrs.get("href") or "",
+                (attrs.get("class") or "").split(),
+                "",
+            ]
 
     def handle_data(self, data) -> None:
         if self._open:
@@ -96,7 +107,9 @@ def scan_text(member: str, text: str, result: ArchiveResult) -> None:
     unescaped = html.unescape(text)
     parser = LinkParser()
     parser.feed(unescaped)
-    nav_hrefs = Counter(href for href, classes, label in parser.links if _is_nav(classes, label))
+    nav_hrefs = Counter(
+        href for href, classes, label in parser.links if _is_nav(classes, label)
+    )
     for match in ANY_OCW_RE.finditer(unescaped):
         url = html.unescape(match.group(0))
         if nav_hrefs[url]:
@@ -120,10 +133,12 @@ def scan_text(member: str, text: str, result: ArchiveResult) -> None:
         result.findings.append(Finding(member, kind, href))
 
 
-def scan_archive(path: Path, stop: threading.Event, on_progress=lambda fraction: None) -> ArchiveResult:
+def scan_archive(
+    path: Path, stop: threading.Event, on_progress=lambda fraction: None
+) -> ArchiveResult:
     result = ArchiveResult(path.name)
-    size = max(path.stat().st_size, 1)
     try:
+        size = max(path.stat().st_size, 1)
         with path.open("rb") as raw, tarfile.open(fileobj=raw, mode="r|*") as tar:
             for member in tar:
                 if stop.is_set():
@@ -131,7 +146,11 @@ def scan_archive(path: Path, stop: threading.Event, on_progress=lambda fraction:
                     break
                 name = member.name.removeprefix("./")
                 if member.isfile() and name.endswith(".xml"):
-                    scan_text(name, tar.extractfile(member).read().decode("utf-8", "replace"), result)
+                    scan_text(
+                        name,
+                        tar.extractfile(member).read().decode("utf-8", "replace"),
+                        result,
+                    )
                 on_progress(raw.tell() / size)
     except (tarfile.TarError, EOFError, OSError, zlib.error) as exc:
         result.error = f"{type(exc).__name__}: {exc}"
@@ -139,7 +158,11 @@ def scan_archive(path: Path, stop: threading.Event, on_progress=lambda fraction:
 
 
 def find_archives(folder: Path) -> list[Path]:
-    return sorted(p for p in folder.iterdir() if p.is_file() and p.name.lower().endswith(ARCHIVE_SUFFIXES))
+    return sorted(
+        p
+        for p in folder.iterdir()
+        if p.is_file() and p.name.lower().endswith(ARCHIVE_SUFFIXES)
+    )
 
 
 def write_csv(path: Path, results: list[ArchiveResult]) -> None:
@@ -147,7 +170,10 @@ def write_csv(path: Path, results: list[ArchiveResult]) -> None:
         writer = csv.writer(handle)
         writer.writerow(["Archive", "Course", "Member", "Type", "Text"])
         for r in results:
-            writer.writerows([r.name, r.course, f.member, KIND_LABELS[f.kind], f.url] for f in r.findings)
+            writer.writerows(
+                [r.name, r.course, f.member, KIND_LABELS[f.kind], f.url]
+                for f in r.findings
+            )
 
 
 class App:
@@ -165,15 +191,25 @@ class App:
     def _build(self) -> None:
         top = ttk.Frame(self.root, padding=8)
         top.pack(fill="x")
-        ttk.Entry(top, textvariable=self.folder).pack(side="left", fill="x", expand=True)
-        ttk.Button(top, text="Choose folder", command=self._choose).pack(side="left", padx=4)
+        ttk.Entry(top, textvariable=self.folder).pack(
+            side="left", fill="x", expand=True
+        )
+        ttk.Button(top, text="Choose folder", command=self._choose).pack(
+            side="left", padx=4
+        )
         self.scan_button = ttk.Button(top, text="Scan", command=self._scan)
         self.scan_button.pack(side="left")
-        self.stop_button = ttk.Button(top, text="Stop", command=self.stop.set, state="disabled")
+        self.stop_button = ttk.Button(
+            top, text="Stop", command=self.stop.set, state="disabled"
+        )
         self.stop_button.pack(side="left", padx=4)
-        self.export_button = ttk.Button(top, text="Export CSV", command=self._export, state="disabled")
+        self.export_button = ttk.Button(
+            top, text="Export CSV", command=self._export, state="disabled"
+        )
         self.export_button.pack(side="left")
-        self.table = ttk.Treeview(self.root, columns=[c for c, _, _ in COLUMNS], show="headings", height=12)
+        self.table = ttk.Treeview(
+            self.root, columns=[c for c, _, _ in COLUMNS], show="headings", height=12
+        )
         for column, heading, width in COLUMNS:
             self.table.heading(column, text=heading)
             self.table.column(column, width=width, anchor="w" if width > 100 else "e")
@@ -206,13 +242,17 @@ class App:
         self.root.after(POLL_MS, self._poll)
 
     def _worker(self, archives: list[Path]) -> None:
-        for index, path in enumerate(archives, 1):
-            self.events.put(("start", path.name, index, len(archives)))
-            result = scan_archive(path, self.stop, lambda f: self.events.put(("progress", f)))
-            self.events.put(("done", result))
-            if self.stop.is_set():
-                break
-        self.events.put(("finished",))
+        try:
+            for index, path in enumerate(archives, 1):
+                self.events.put(("start", path.name, index, len(archives)))
+                result = scan_archive(
+                    path, self.stop, lambda f: self.events.put(("progress", f))
+                )
+                self.events.put(("done", result))
+                if self.stop.is_set():
+                    break
+        finally:
+            self.events.put(("finished",))
 
     def _poll(self) -> None:
         while not self.events.empty():
@@ -267,10 +307,14 @@ class App:
         for f in findings[:DETAIL_LIMIT]:
             self.detail.insert(END, f"{KIND_LABELS[f.kind]:<16} {f.member}  {f.url}\n")
         if len(findings) > DETAIL_LIMIT:
-            self.detail.insert(END, f"... {len(findings) - DETAIL_LIMIT} more, use Export CSV\n")
+            self.detail.insert(
+                END, f"... {len(findings) - DETAIL_LIMIT} more, use Export CSV\n"
+            )
 
     def _export(self) -> None:
-        target = filedialog.asksaveasfilename(defaultextension=".csv", initialfile="link_scan.csv")
+        target = filedialog.asksaveasfilename(
+            defaultextension=".csv", initialfile="link_scan.csv"
+        )
         if target:
             write_csv(Path(target), list(self.results.values()))
             self.status.set(f"Wrote {target}")
