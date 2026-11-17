@@ -1,9 +1,8 @@
 """Inline the DelftxDownloads widget from its server-rendered tool page.
 
 On edX and WordPress the widget is an iframe of `TUD_download_tool.php`, set up client-side by
-builder.js. Under Moodle that script chain breaks (resizer.js hands off to Moodle's RequireJS,
-which throws "Mismatched anonymous define() module"), so the tool page is fetched at parse time
-and its markup inlined instead, with native `details` dropdowns so no JS is needed.
+builder.js. The tool page is fetched at parse time
+and its markup inlined instead, with HTML `details` dropdowns.
 """
 
 from collections.abc import Callable
@@ -16,10 +15,7 @@ _TOOL_URL = (
     "?src={src}&path={download_id}&lang={lang}&ft={filetype}&ccSA={cc_sa}&ccNC={cc_nc}"
 )
 
-# base-styles.css + ocw-styles.css from the tool page, scoped to the widget, with the jQuery
-# `.tud-open` toggle class swapped for native `details[open]`. Dropdowns flow in-layout rather
-# than absolutely positioned, since Moodle's `.no-overflow` content wrapper would otherwise clip
-# them into a scrollbox.
+# Widget stylesheet, see wordpress-importer.md, Download widget.
 CSS = (
     "<style>"
     ".TUD_box_download{margin:0;padding:12px 12px .5em 12px;border-radius:5px;clear:both;"
@@ -66,7 +62,7 @@ def tool_url(
     cc_sa: str = "y",
     cc_nc: str = "y",
 ) -> str:
-    """Build the tool page URL the same way builder.js sets the widget iframe's `src`."""
+    """Return the url of the tool page for `download_id`, built like builder.js sets the widget iframe's `src`."""
     return _TOOL_URL.format(
         src=src,
         download_id=quote(download_id, safe="/"),
@@ -80,11 +76,11 @@ def tool_url(
 def inline_widget(
     page: BeautifulSoup, page_url: str, localize: Callable[[str], str | None]
 ) -> Tag:
-    """Return the tool page's widget, ready to inline.
+    """Return the tool page's widget `Tag`, restyled to sit inside a Moodle page without JS.
 
     `localize(url)` bundles an asset and returns its static-file name, or `None` when it can't.
-    Images and the "Other" tab's files are bundled; Video/Subtitles links stay on
-    delftxdownloads.
+    Buttons become `details` dropdowns, images and the "Other" tab's files are bundled, Video/Subtitles
+    links stay on delftxdownloads.
     """
     widget = page.select_one("div.TUD_box_download")
     for button in widget.select("div.tud-button"):

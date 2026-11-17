@@ -1,3 +1,5 @@
+import pytest
+
 from ocw.utils import (
     _Counter,
     _EDX_HOST_RE,
@@ -5,6 +7,7 @@ from ocw.utils import (
     rewrite_static_urls,
     sha1_of,
     warn_external_edx_urls,
+    warn_external_wp_urls,
 )
 
 
@@ -52,6 +55,32 @@ def test_warn_external_edx_urls_logs_on_edx_host(caplog):
     with caplog.at_level("WARNING", logger="ocw.converter"):
         warn_external_edx_urls('<img src="https://courses.edx.org/asset-v1:x.png"/>')
     assert "still hosted on edX" in caplog.text
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "https://prod-edxapp.edx-cdn.org/assets/x.png",
+        "https://edxapp.org/x.png",
+        "https://edx.readthedocs.io/en/latest/",
+    ],
+)
+def test_warn_external_edx_urls_logs_on_edx_asset_hosts(caplog, url):
+    with caplog.at_level("WARNING", logger="ocw.converter"):
+        warn_external_edx_urls(f'<img src="{url}"/>')
+    assert "still hosted on edX" in caplog.text
+
+
+def test_warn_external_edx_urls_logs_on_protocol_relative_url(caplog):
+    with caplog.at_level("WARNING", logger="ocw.converter"):
+        warn_external_edx_urls('<img src="//prod-edxapp.edx-cdn.org/assets/x.png"/>')
+    assert "still hosted on edX" in caplog.text
+
+
+def test_warn_external_wp_urls_logs_on_protocol_relative_url(caplog):
+    with caplog.at_level("WARNING", logger="ocw.converter"):
+        warn_external_wp_urls('<img src="//ocw.tudelft.nl/wp-content/uploads/x.png"/>')
+    assert "still hosted on ocw.tudelft.nl" in caplog.text
 
 
 def test_warn_external_edx_urls_silent_on_www_edx_org():

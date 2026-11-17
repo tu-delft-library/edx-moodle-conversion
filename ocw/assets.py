@@ -1,4 +1,9 @@
-"""One place that decides how a static file ref is found, named and kept, for the MBZ and the zip."""
+"""One place that decides how a static file ref is found, named and kept, for the MBZ and the zip.
+
+A static file ref is a placeholder (`/static/<name>` or `@@PLUGINFILE@@/<name>`) the parser leaves in the
+html for a file it has bundled. The builders turn it into a real file link. The patterns that match
+source urls (edX `asset-v1` / `c4x`) are not refs yet and live in `ocw/utils.py`.
+"""
 
 import re
 
@@ -13,9 +18,7 @@ ASSET_BLACKLIST = (
 )
 
 # The inlined download widget's Video/Subtitles links: the one place a platform URL may stay a link.
-WIDGET_MEDIA_LINKS = (
-    ".TUD_box_download .video-download a[href], .TUD_box_download .subtitle-download a[href]"
-)
+WIDGET_MEDIA_LINKS = ".TUD_box_download .video-download a[href], .TUD_box_download .subtitle-download a[href]"
 
 
 def static_refs(html: str) -> list[str]:

@@ -1,3 +1,5 @@
+"""External content report for the zip export: which links leave the course and what was done with each."""
+
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 from urllib.parse import urlparse
@@ -11,20 +13,52 @@ from openpyxl import Workbook
 from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 from openpyxl.utils import get_column_letter
 
-from ocw.utils import _XML_ILLEGAL_CHARS_RE
+from ocw.utils import _XML_ILLEGAL_CHARS_RE, hostname, in_domain, is_ocw_host
 
-_OCW_HOST = "ocw.tudelft.nl"
-# Domains never reported (each entry also covers its subdomains). Add boilerplate hosts here.
+# Link classification
 _BLACKLIST = frozenset({"creativecommons.org", "amazon.com"})
-_HYPERLINK_REL = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/hyperlink"
-_HTML_REFS = (("a", "href", "link"), ("iframe", "src", "embed"), ("img", "src", "image"))
+_HTML_REFS = (
+    ("a", "href", "link"),
+    ("iframe", "src", "embed"),
+    ("img", "src", "image"),
+)
+
+# Docx table
+_HYPERLINK_REL = (
+    "http://schemas.openxmlformats.org/officeDocument/2006/relationships/hyperlink"
+)
 _TABLE_FONT = Pt(9)
-_COLUMN_WIDTHS = (Inches(1.3), Inches(0.7), Inches(1.8), Inches(1.9), Inches(0.6), Inches(1.2))
-_XLSX_HEADERS = ("File / link title", "Type", "URL", "Status", "Saved to", "Found at path")
+_COLUMN_WIDTHS = (
+    Inches(1.3),
+    Inches(0.7),
+    Inches(1.8),
+    Inches(1.9),
+    Inches(0.6),
+    Inches(1.2),
+)
+# Xlsx sheet
+_XLSX_HEADERS = (
+    "File / link title",
+    "Type",
+    "URL",
+    "Status",
+    "Saved to",
+    "Found at path",
+)
 _XLSX_COLUMN_WIDTHS = (32, 8, 60, 20, 36, 60)
-_XLSX_COLUMN_COLORS = ("FFD9E1F2", "FFFCE4D6", "FF595959", "FFFFF2CC", "FFEAD1DC", "FFD9D2E9")
+_XLSX_COLUMN_COLORS = (
+    "FFD9E1F2",
+    "FFFCE4D6",
+    "FF595959",
+    "FFFFF2CC",
+    "FFEAD1DC",
+    "FFD9D2E9",
+)
 _XLSX_WRAP_COLUMNS = (3, 5, 6)
-_XLSX_BORDER = Border(top=Side(style="thin", color="FF000000"), bottom=Side(style="thin", color="FF000000"))
+_XLSX_BORDER = Border(
+    top=Side(style="thin", color="FF000000"),
+    bottom=Side(style="thin", color="FF000000"),
+)
 
 
 @dataclass(frozen=True)
@@ -53,13 +87,9 @@ def _local_kind(name: str) -> str:
     return _KIND_BY_SUFFIX.get(PurePosixPath(name).suffix.lower(), "file")
 
 
-def _in_domain(host: str, domain: str) -> bool:
-    return host == domain or host.endswith(f".{domain}")
-
-
 def _is_blacklisted(url: str) -> bool:
     host = urlparse(url).hostname or ""
-    return any(_in_domain(host, domain) for domain in _BLACKLIST)
+    return any(in_domain(host, domain) for domain in _BLACKLIST)
 
 
 def _is_external(url: str) -> bool:
@@ -67,7 +97,7 @@ def _is_external(url: str) -> bool:
     host = parsed.hostname or ""
     return (
         parsed.scheme in ("http", "https")
-        and not _in_domain(host, _OCW_HOST)
+        and not is_ocw_host(host)
         and not _is_blacklisted(url)
     )
 
@@ -86,7 +116,9 @@ def _refs_in_html(html: str, page: str) -> list[ExternalRef]:
             url = el[attr]
             if _is_external(url):
                 title = el.get("title") or el.get("alt") or el.get_text(" ", strip=True)
-                refs.append(ExternalRef(title.strip() or _fallback_title(url), url, kind, page))
+                refs.append(
+                    ExternalRef(title.strip() or _fallback_title(url), url, kind, page)
+                )
     return refs
 
 
@@ -111,7 +143,11 @@ def _found_on(pages: list[str]) -> str:
 
 
 class ExternalContentReport:
-    """Write external references as a Docx table with clickable URLs."""
+    """Report every external reference of a zip export, built by `ZipBuilder` from `ExternalRef`s.
+
+    `add_to` / `write` give a merged table in `course.docx`, `write_xlsx` gives `external_content.xlsx` with one row
+    per page a reference was found on.
+    """
 
     def __init__(self, refs: list[ExternalRef]) -> None:
         self.refs = refs
@@ -129,7 +165,10 @@ class ExternalContentReport:
         doc.add_heading("External content", level=0)
         table = doc.add_table(rows=1, cols=6)
         table.autofit = False
-        for cell, label in zip(table.rows[0].cells, ("Title", "Type", "URL", "Found on", "Status", "Saved to")):
+        for cell, label in zip(
+            table.rows[0].cells,
+            ("Title", "Type", "URL", "Found on", "Status", "Saved to"),
+        ):
             cell.text = label
             cell.paragraphs[0].runs[0].bold = True
         merged = sorted(merge_refs(self.refs), key=lambda rp: rp[0].location == "")
@@ -138,7 +177,7 @@ class ExternalContentReport:
             row[0].text, row[1].text = _clean(ref.title), ref.kind
             row[3].text, row[4].text = _clean(_found_on(pages)), ref.status
             row[5].text = ref.location
-            if _in_domain(urlparse(ref.url).hostname or "", _OCW_HOST):
+            if is_ocw_host(hostname(ref.url)):
                 row[2].text = ref.url
             else:
                 self._add_hyperlink(row[2].paragraphs[0], ref.url)
@@ -157,30 +196,47 @@ class ExternalContentReport:
         ws = wb.active
         ws.title = "External content"
         ws.append(_XLSX_HEADERS)
-        header_fill = PatternFill(start_color="FF4472C4", end_color="FF4472C4", fill_type="solid")
+        header_fill = PatternFill(
+            start_color="FF4472C4", end_color="FF4472C4", fill_type="solid"
+        )
         header_font = Font(bold=True, color="FFFFFFFF")
         for cell in ws[1]:
             cell.fill = header_fill
             cell.font = header_font
             cell.alignment = Alignment(vertical="center")
             cell.border = _XLSX_BORDER
+        # Refs with no location (not bundled) go last
         refs = sorted(self.refs, key=lambda ref: ref.location == "")
         for ref in refs:
-            ws.append((ref.title, ref.kind, ref.url, ref.status, ref.location or "-", ref.page))
+            ws.append(
+                (
+                    ref.title,
+                    ref.kind,
+                    ref.url,
+                    ref.status,
+                    ref.location or "-",
+                    ref.page,
+                )
+            )
+
+        # One background colour per column, body rows only
         for col_idx, color in enumerate(_XLSX_COLUMN_COLORS, start=1):
             fill = PatternFill(start_color=color, end_color=color, fill_type="solid")
             for row_idx in range(2, ws.max_row + 1):
                 ws.cell(row=row_idx, column=col_idx).fill = fill
+        # URL column becomes a clickable link
         for row_idx in range(2, ws.max_row + 1):
             cell = ws.cell(row=row_idx, column=3)
             cell.hyperlink = cell.value
             cell.font = Font(color="FF9CC3E5", underline="single")
+        # Border on every cell, wrap the long text columns
         for row_idx in range(2, ws.max_row + 1):
             for col_idx in range(1, len(_XLSX_HEADERS) + 1):
                 cell = ws.cell(row=row_idx, column=col_idx)
                 cell.border = _XLSX_BORDER
                 if col_idx in _XLSX_WRAP_COLUMNS:
                     cell.alignment = Alignment(wrap_text=True, vertical="top")
+        # Column widths, header row stays visible when scrolling
         for col_idx, width in enumerate(_XLSX_COLUMN_WIDTHS, start=1):
             ws.column_dimensions[get_column_letter(col_idx)].width = width
         ws.freeze_panes = "A2"
@@ -207,3 +263,4 @@ class ExternalContentReport:
         run.append(text)
         link.append(run)
         paragraph._p.append(link)
+

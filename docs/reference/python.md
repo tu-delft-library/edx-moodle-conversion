@@ -61,6 +61,10 @@ generated reference content.
 
 ::: ocw.converter.external_report
 
+::: ocw.converter.html_to_docx
+
+::: ocw.url_audit
+
 ::: ocw.cli.wp_zip.main
 
 ## WordPress subject parsing

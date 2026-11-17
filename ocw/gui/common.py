@@ -145,7 +145,7 @@ class ConverterApp:
 
         ttk.Checkbutton(
             self.root,
-            text="Fetch PDFs still hosted on edX",
+            text="Fetch files still hosted on edX, DelftX or OCW",
             variable=self.fetch_external_assets,
         ).pack(anchor="w", **pad)
 

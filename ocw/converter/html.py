@@ -1,4 +1,4 @@
-"""Apply small HTML transformations before course content is written to Moodle.
+"""Apply small HTML transformations before passing content to MBZ parser.
 
 The converter preserves authored markup where possible. These functions remove source-only
 elements and add minimal inline styling where OLX or Word-authored HTML would otherwise render
@@ -7,6 +7,8 @@ poorly in Moodle's content area.
 
 import logging
 import re
+
+from ocw.utils import EDX_DOMAINS
 
 log = logging.getLogger("ocw.converter")
 
@@ -32,6 +34,7 @@ def strip_blacklisted_classes(html: str) -> str:
 
 def strip_templated_iframes(html: str) -> str:
     """Remove iframes whose source URL contains an unresolved template placeholder."""
+
     def _drop(m: re.Match) -> str:
         open_tag = m.group(1)
         return "" if re.search(r'src="[^"]*%%[A-Z_]+%%[^"]*"', open_tag) else m.group(0)
@@ -41,6 +44,7 @@ def strip_templated_iframes(html: str) -> str:
 
 def constrain_img_size(html: str) -> str:
     """Constrain images to Moodle's content width while preserving aspect ratio."""
+
     def _inject(m: re.Match) -> str:
         tag = m.group(0)
         if "style=" in tag:
@@ -54,6 +58,7 @@ def constrain_img_size(html: str) -> str:
 
 def constrain_table_size(html: str) -> str:
     """Constrain tables to Moodle's content width without rewriting cell dimensions."""
+
     def _inject(m: re.Match) -> str:
         tag = m.group(0)
         if "style=" in tag:
@@ -63,9 +68,10 @@ def constrain_table_size(html: str) -> str:
     return re.sub(r"<table\b[^>]*>", _inject, html)
 
 
+# Links to unwrap: the edX domains and delftxtools only. Other delftx hosts (delftxdownloads) are kept for the widget.
 _PLATFORM_LINK_RE = re.compile(
     r"<a\b[^>]*?\bhref=([\"'])(?:https?:)?//(?:[\w-]+\.)*"
-    r"(?:edx\.org|edx-video\.net|edx-cdn\.org|edxapp\.org|edx\.readthedocs\.(?:org|io)"
+    rf"(?:{EDX_DOMAINS}"
     r"|delftxtools\.tudelft\.nl)"
     r"(?:[/:?#][^\"']*)?\1[^>]*>(.*?)</a>",
     re.DOTALL | re.IGNORECASE,
@@ -79,6 +85,7 @@ def unlink_platform_hrefs(html: str, context: str = "") -> str:
 
     Run after `rewrite_static_urls`, so links to assets that were bundled are already local.
     """
+
     def _unlink(m: re.Match) -> str:
         log.info(
             "Unlinked platform link%s: %s",
@@ -100,6 +107,7 @@ def mark_hyperlinks_nomediaplugin(html: str) -> str:
 
     Adds the `nomediaplugin` class without removing existing link classes.
     """
+
     def _inject(m: re.Match) -> str:
         tag = m.group(0)
         if "class=" in tag:
@@ -111,6 +119,7 @@ def mark_hyperlinks_nomediaplugin(html: str) -> str:
 
 def style_figcaption(html: str) -> str:
     """Style headings inside figure captions as caption text."""
+
     def _inject_heading_style(hm: re.Match) -> str:
         tag = hm.group(0)
         if "style=" in tag:

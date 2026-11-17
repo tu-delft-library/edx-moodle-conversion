@@ -1,4 +1,8 @@
-"""Shared helpers for Moodle backup generation, source assets, and conversion diagnostics."""
+"""Shared helpers for Moodle backup generation, source assets, and conversion diagnostics.
+
+The asset regexes here match source urls that may become a static file ref. Refs to files already
+bundled (`/static/`, `@@PLUGINFILE@@/`) are matched in `ocw/assets.py`.
+"""
 
 import hashlib
 import logging
@@ -125,22 +129,48 @@ def rewrite_static_urls(html: str, static_files: dict[str, Path] | None = None) 
     return _RELATIVE_ASSET_RE.sub(_rewrite_asset, html)
 
 
-# Hosts that mean "still depends on edX or DelftX infrastructure".
+# Regex alternation of the edX domains, shared with `PLATFORM_LINK_RE` in `ocw/converter/html.py`.
+EDX_DOMAINS = r"edx\.org|edx-video\.net|edx-cdn\.org|edxapp\.org|edx\.readthedocs\.(?:org|io)"
+
+# Hosts that mean "still depends on edX or DelftX infrastructure": checked by the audit and the WP zip.
 PLATFORM_HOST_RE = re.compile(
-    r"(^|\.)(edx\.org|edx-video\.net|edx-cdn\.org|edxapp\.org|edx\.readthedocs\.(?:org|io)"
+    rf"(^|\.)({EDX_DOMAINS}"
     r"|d2f1egay8yehza\.cloudfront\.net|d37djvu3ytnwxt\.cloudfront\.net"
     r"|delftx[\w-]*\.tudelft\.nl)$",
     re.IGNORECASE,
 )
 
-# EdX domains that indicate a course-content dependency. Generic `www.edx.org` links are excluded.
+OCW_HOST = "ocw.tudelft.nl"
+
+
+def hostname(url: str) -> str:
+    return urlparse(url.strip()).hostname or ""
+
+
+def in_domain(host: str, domain: str) -> bool:
+    return host == domain or host.endswith(f".{domain}")
+
+
+def is_ocw_host(host: str) -> bool:
+    return in_domain(host, OCW_HOST)
+
+
+def is_platform_host(host: str) -> bool:
+    return bool(PLATFORM_HOST_RE.search(host))
+
+
+def is_dead_host(host: str) -> bool:
+    """Hosts the WP zip must not leave a live link to: ocw.tudelft.nl and the edX / DelftX hosts."""
+    return is_ocw_host(host) or is_platform_host(host)
+
+
+# Parse time warning for edX content. Same hosts as `PLATFORM_HOST_RE` bar the delftx ones (the download widget keeps
+# its delftxdownloads Video / Subtitles links on purpose), and generic `www.edx.org` links are excluded.
 _EDX_HOST_RE = re.compile(
-    r'https?://(?:'
-    r'(?!www\.edx\.org)(?:[\w-]+\.)*edx\.org'
-    r'|(?:[\w-]+\.)*edx-video\.net'
-    r'|d2f1egay8yehza\.cloudfront\.net'
-    r'|d37djvu3ytnwxt\.cloudfront\.net'
-    r'|edx\.readthedocs\.(?:org|io)'
+    r"(?:https?:)?//(?:"
+    rf"(?!www\.edx\.org)(?:[\w-]+\.)*(?:{EDX_DOMAINS})"
+    r"|d2f1egay8yehza\.cloudfront\.net"
+    r"|d37djvu3ytnwxt\.cloudfront\.net"
     r')[^"\'>\s]*'
 )
 
@@ -159,10 +189,7 @@ def warn_external_edx_urls(
         )
 
 
-# The WP source domain. By the time content is finalised, resolved assets and reading links have
-# already been rewritten to `/static/` or `$@PAGEVIEWBYID*...@$`, so any surviving match here is a
-# genuinely unresolved link back to the source site.
-_WP_HOST_RE = re.compile(r'https?://(?:[\w-]+\.)*ocw\.tudelft\.nl[^"\'>\s]*')
+_WP_HOST_RE = re.compile(r'(?:https?:)?//(?:[\w-]+\.)*ocw\.tudelft\.nl[^"\'>\s]*')
 
 
 def warn_external_wp_urls(html: str, context: str = "") -> None:

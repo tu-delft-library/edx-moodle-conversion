@@ -31,18 +31,13 @@ class SectionStrategy(ABC):
         self.c = course
         self.ids = ids
         self.section_offset = section_offset
-        # reading URL -> canonical page's mod_id, populated as pages are built so later
-        # "reading_link" stubs (built after their canonical page, per source parse order) can
-        # resolve their target.
+        # reading url -> mod_id of its page, for `reading_link` stubs built later
         self._reading_page_ids: dict[str, int] = {}
-        # dedup URL -> canonical page's mod_id, same mechanism as `_reading_page_ids` but for any
-        # other content type that can be linked from more than one place (currently: lectures).
+        # dedup url -> mod_id of its page, same idea for lectures linked from several places
         self._dedup_page_ids: dict[str, int] = {}
-        # Set by `build_sections()`: how many of its sections are *not* subsection-linked --
-        # i.e. how many of its declared section numbers Moodle's restore actually honours (see
-        # `build_sections()`).
+        # sections Moodle restore honours the number of (not subsection linked), set by `build_sections()`
         self.regular_section_count = 0
-        # Set by `build_sections()`: how many subsection-linked child sections it built.
+        # subsection linked child sections, set by `build_sections()`
         self.child_section_count = 0
 
     @abstractmethod
@@ -143,7 +138,8 @@ class SectionStrategy(ABC):
         target_id = self._reading_page_ids.get(reading_url)
         if target_id is None:
             log.warning(
-                "No canonical page built yet for reading '%s'; dropping link", reading_url
+                "No canonical page built yet for reading '%s'; dropping link",
+                reading_url,
             )
             return None
         mod_id, ctx_id = self.ids.next(), self.ids.next()

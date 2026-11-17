@@ -1,3 +1,8 @@
+"""Render course html into `course.docx` for the zip export (`ZipBuilder._write_docx`).
+
+Zip exporter only, the MBZ pipeline does not use it.
+"""
+
 import logging
 import posixpath
 import re
