@@ -1,4 +1,4 @@
-"""Parse WordPress course sites into the normalised data consumed by `MBZBuilder`."""
+"""Parse WordPress course sites into the normalised data consumed by `MBZBuilder` and `ZipBuilder`."""
 
 import copy
 import itertools
@@ -14,10 +14,17 @@ from bs4.element import NavigableString
 from ocw.fetcher import THROTTLE, AssetFetcher
 from ocw.parser import download_tool
 from ocw.parser.base import BaseParser
-from ocw.utils import PLATFORM_HOST_RE, resolve_asset_name, safe_vidkey, warn_external_wp_urls
+from ocw.utils import (
+    PLATFORM_HOST_RE,
+    resolve_asset_name,
+    safe_vidkey,
+    warn_external_wp_urls,
+)
 
 log = logging.getLogger("ocw.wp_parser")
-_OCW_UPLOAD_RE = re.compile(r"^https?://ocw\.tudelft\.nl/wp-content/uploads/", re.IGNORECASE)
+_OCW_UPLOAD_RE = re.compile(
+    r"^https?://ocw\.tudelft\.nl/wp-content/uploads/", re.IGNORECASE
+)
 
 
 class WPCourse(BaseParser):
@@ -75,14 +82,11 @@ class WPCourse(BaseParser):
         self._include_license_banner = include_license_banner
         self._keep_all_content = keep_all_content
         self._session = requests.Session()
-        # URL -> parsed canonical reading vertical (or None), for dedup across subject pages.
+        # url -> parsed reading page (or None), shared across subject pages
         self._reading_pages: dict[str, dict | None] = {}
-        # URL -> parsed canonical lecture vertical, for dedup across subject pages.
+        # url -> parsed lecture page, shared across subject pages
         self._lecture_pages: dict[str, dict] = {}
-        # Lecture URL -> number of subject pages referencing it, from a pre-scan pass in
-        # `parse()`. Only URLs referenced 2+ times get routed through the dedup/Hidden-section
-        # mechanism (see `_parse_lecture`); direct calls that bypass `parse()` (unit tests) get
-        # an empty Counter, i.e. every URL defaults to "single reference".
+        # lecture url -> subject pages linking it, set in `parse()` 
         self._lecture_ref_counts: Counter[str] = Counter()
 
     def parse(self) -> None:
@@ -145,7 +149,9 @@ class WPCourse(BaseParser):
         url = match.group(2)
         name = self._resolve_and_fetch(url)
         if name is None:
-            log.warning("Parsing WP: banner image %r found but could not be resolved", url)
+            log.warning(
+                "Parsing WP: banner image %r found but could not be resolved", url
+            )
             return
         path = self.static_files[name]
         self.course_image_path = path
@@ -227,7 +233,9 @@ class WPCourse(BaseParser):
         """
         for link in article.select("a[href]"):
             href = link["href"].strip()
-            if PLATFORM_HOST_RE.search(urlparse(href).hostname or "") or _OCW_UPLOAD_RE.match(href):
+            if PLATFORM_HOST_RE.search(
+                urlparse(href).hostname or ""
+            ) or _OCW_UPLOAD_RE.match(href):
                 name = self._resolve_and_fetch(href)
                 if name:
                     link["href"] = f"/static/{name}"
@@ -263,16 +271,10 @@ class WPCourse(BaseParser):
     _TUD_HOST_CHECK = 'TUD_location.indexOf("ocw.tudelft.nl")!=-1'
 
     def _fix_download_tool_widgets(self, article) -> list[str]:
-        """Inline WordPress's DelftxDownloads widget instead of relying on its CDN script chain.
+        """Replace each DelftX download widget in `article` with a static copy and drop its loader script.
 
-        The widget normally runs client-side (TUD_download_tool.js -> builder.js -> resizer.js),
-        iframing the server-rendered `TUD_download_tool.php`. resizer.js detects Moodle's global
-        RequireJS and throws "Mismatched anonymous define() module", so the widget never builds.
-        Fetching that tool page at parse time yields the same per-lecture markup; it's inlined
-        with native `details` dropdowns so it works without JS, and the "Other" tab's files are
-        bundled locally. The bootstrap <script> (matched by the host-check signature) is dropped.
-
-        Returns each box's download id, so the caller can pair one onto the page's video.
+        Returns the download id of every box, so the caller can pair one onto the page's video.
+        See wordpress-importer.md, Download widget.
         """
         download_ids = download_tool.replace_inline_boxes(
             article, "ocw", self._fetch_page, self._resolve_and_fetch
@@ -387,7 +389,9 @@ class WPCourse(BaseParser):
         if activities is None:
             log.warning("No activities list found on subject page '%s'", url)
         sequentials = []
-        groups = activities.find_all("li", recursive=False) if activities is not None else []
+        groups = (
+            activities.find_all("li", recursive=False) if activities is not None else []
+        )
         for group in groups:
             seq_title_el = group.select_one("span.course-title")
             seq_title = seq_title_el.get_text(strip=True) if seq_title_el else title
@@ -417,7 +421,9 @@ class WPCourse(BaseParser):
             return None
         return self._with_source_url(vertical, link["href"])
 
-    def _dispatch_item(self, link, chapter_name: str, sequential_name: str) -> dict | None:
+    def _dispatch_item(
+        self, link, chapter_name: str, sequential_name: str
+    ) -> dict | None:
         """Dispatch one activity link according to its `icon--...` class.
 
         Configured unsupported icon types are skipped and unknown types produce a warning,
@@ -518,7 +524,9 @@ class WPCourse(BaseParser):
         self._warn_external_wp_links(components, title)
         self._attach_video_download_ids(components, download_ids, title)
         if not components:
-            log.warning("Parsing WP: lecture '%s' at %s produced no components", title, url)
+            log.warning(
+                "Parsing WP: lecture '%s' at %s produced no components", title, url
+            )
         return {"display_name": title, "components": components, "dedup_url": url}
 
     def _attach_video_download_ids(
@@ -861,13 +869,17 @@ class WPCourse(BaseParser):
                 components.append(self._download_link_component(name, dl_blocks[0]))
 
         if not components:
-            log.warning("Parsing WP: reading '%s' at %s produced no components", title, url)
+            log.warning(
+                "Parsing WP: reading '%s' at %s produced no components", title, url
+            )
             return None
         return {"display_name": title, "components": components, "reading_url": url}
 
     def _reading_body_html(self, soup: BeautifulSoup, url: str) -> str:
-        """Extract reading-body HTML without the title, PDF download control, licence footer, or
-        subject link list."""
+        """Return the reading's article body as an html string, or "" when the page has no `<article>`.
+
+        The following are dropped: the title, the PDF download control, the licence footer and the subject link list.
+        """
         article = soup.select_one("article")
         if article is None:
             return ""

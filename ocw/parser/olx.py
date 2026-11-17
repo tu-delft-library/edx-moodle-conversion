@@ -20,18 +20,13 @@ from ocw.utils import (
 
 log = logging.getLogger("ocw.parser")
 
-# Tags the parser actively converts into page content.
-# _WHITELISTED_TAGS = frozenset({"html", "video"})
-
-# PDFs and mp3s on DelftX hosts, plus delftxtools' extensionless Discussion and Collaboration Guidelines.
+# DelftX pdf / mp3 links (and the extensionless DaCG guidelines) that get bundled
 _DELFTX_FILE_RE = re.compile(
     r"https?://delftx[\w-]*\.tudelft\.nl/(?:[^\"'\s#?<>]*\.(?:pdf|mp3)|DaCG)(?=[#?\"'\s<>]|$)",
     re.IGNORECASE,
 )
 _DACG_NAME = "DaCG.pdf"
-# edX/DelftX markup with no use on Moodle: old dframe widget stylesheets and builder.js loaders
-# (superseded by the inlined widget), inline download tool loaders (only run on ocw.tudelft.nl),
-# edX "verify" purchase buttons, and Studio editor attributes.
+# edX/DelftX markup with no use on Moodle, stripped from html (see olx-importer.md, Platform junk)
 _PLATFORM_JUNK_RES = tuple(
     re.compile(pattern, re.IGNORECASE | re.DOTALL)
     for pattern in (

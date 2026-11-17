@@ -35,6 +35,7 @@ from ocw.utils import (
     warn_external_edx_urls,
 )
 
+# Moodle version stamps, overridable via .env
 load_dotenv()
 MOODLE_VERSION = os.getenv("MOODLE_VERSION", "2024042212")
 MOODLE_BACKUP_RELEASE = os.getenv("MOODLE_BACKUP_RELEASE", "5.1")
@@ -59,14 +60,6 @@ class MBZBuilder:
     Each build creates its own monotonically increasing `_Counter`. Every generated Moodle
     record identifier must be allocated from that one counter, in the order records are written.
     This keeps IDs unique and preserves the cross-file references that Moodle restores.
-
-    Args:
-        course: Source-normalised course data to export.
-        sequential_sections: Create one Moodle section per source sequential instead of nested
-            subsections.
-        disable_custom_fields: Omit Edusources custom-field data from `course.xml`.
-        authora: Apply Authora layout changes: an empty General section 0, with Overview as
-            section 1 and every other section number shifted up by one.
     """
 
     def __init__(
@@ -102,15 +95,20 @@ class MBZBuilder:
 
         Section numbering: an optional empty General at 0 (`authora`), then Overview at
         `section_offset - 1`, then every source section from `section_offset`.
+
+        Phases, in order:
+
+        1. Allocate section ids (`_alloc_sections`).
+        2. Allocate subsection ids (`_alloc_subsections`).
+        3. Build the Readings, Hidden, syllabus and strategy pages.
+        4. Build the file records (`_build_file_entries` and the course image / summary variants).
+        5. Write every XML manifest, activity and file (`_write_all`).
         """
         ids = _Counter()
         ts = int(time.time())
         c = self.course
         section_offset = 2 if self.authora else 1
-        # Must be distinct from every other id allocated below, and in particular from 1 -- every
-        # Moodle site's own system context is permanently id 1, and restore pre-maps backup
-        # context id 1 straight to it. Reusing 1 here silently redirects course-context files
-        # (course image, overviewfiles) into the site's system context instead of the course.
+        # Never 1: restore maps backup context 1 to the site system context (mbz-format.md, Context ids)
         course_ctx = ids.next()
 
         strategy = (
@@ -126,7 +124,7 @@ class MBZBuilder:
             ids, strategy, overview_section, readings_child_sec
         )
 
-        # Phase 3: every page/resource ID.
+        # Readings, OLX readings become file resources, WP reading pages become pages, empty section is dropped
         resources: list[dict] = []
         readings_pages: list[dict] = []
         if c.readings:
@@ -141,6 +139,7 @@ class MBZBuilder:
                 all_sections.remove(readings_child_sec)
                 sub_mods.remove(readings_subsection)
 
+        # Hidden section: lectures linked from 2+ subjects are built once here, the subjects link to them
         dedup_pages: list[dict] = []
         if dedup_section is not None:
             dedup_pages = [
@@ -191,9 +190,8 @@ class MBZBuilder:
         strategy: SectionStrategy,
         section_offset: int,
     ) -> tuple[dict, list[dict], dict | None, dict | None]:
-        """Phase 1: allocate every section ID in the course, including Overview/Readings/Hidden
-        which aren't part of `strategy`. See `_populate`'s docstring for the numbering rules.
-        """
+        """Allocate every section id in the course, including Overview/Readings/Hidden, which aren't part of
+        `strategy`. Phase 1 of `_populate`, which also holds the numbering rules."""
         overview_section = {
             "id": ids.next(),
             "name": "Overview",
@@ -218,9 +216,6 @@ class MBZBuilder:
                 },
             )
 
-        # Hidden is a plain top-level section (no component), so it's a "regular" section whose
-        # declared number Moodle actually honours -- keep it right after the strategy's regular
-        # sections, with no gap.
         dedup_section = None
         if c.dedup_pages:
             dedup_section = {
@@ -232,9 +227,6 @@ class MBZBuilder:
             }
             all_sections.append(dedup_section)
 
-        # Readings is always subsection-linked (see `_populate`'s docstring), so its declared
-        # number is never honoured either -- it belongs in the same "past every regular section"
-        # range as the strategy's own child sections, not right after them like Hidden.
         readings_child_sec = None
         if c.readings or c.reading_pages:
             readings_child_sec = {"id": ids.next(), "name": "Readings", "modules": []}
@@ -281,7 +273,7 @@ class MBZBuilder:
     def _build_syllabus_page(
         self, c: BaseParser, ids: _Counter, overview_section: dict
     ) -> dict | None:
-        """Build the Syllabus page inside `overview_section`, when the course has one."""
+        """Build the Syllabus page inside `overview_section`, when the course has one (phase 3)."""
         if c.syllabus_html is None:
             return None
 
@@ -312,7 +304,7 @@ class MBZBuilder:
     def _build_readings_resources(
         self, c: BaseParser, ids: _Counter, child_sec: dict
     ) -> list[dict]:
-        """Build one resource activity per OLX reading, inside the already-built `child_sec`."""
+        """Build one resource activity per OLX reading, inside the already-built `child_sec` (phase 3)."""
         resources: list[dict] = []
         for reading in c.readings:
             mod_id, ctx_id = ids.next(), ids.next()
@@ -333,7 +325,7 @@ class MBZBuilder:
     def _build_wp_readings_pages(
         self, c: BaseParser, strategy: SectionStrategy, child_sec: dict
     ) -> list[dict]:
-        """Build one real page per WP reading, inside the already-built `child_sec`."""
+        """Build one real page per WP reading, inside the already-built `child_sec` (phase 3)."""
         return [
             page
             for vert in c.reading_pages
@@ -346,7 +338,7 @@ class MBZBuilder:
     def _build_file_entries(
         self, c: BaseParser, pages: list[dict], ids: _Counter
     ) -> list[dict]:
-        """Build MBZ file records for locally resolved files referenced by pages or resources."""
+        """Build MBZ file records for locally resolved files referenced by pages or resources (phase 4)."""
         file_entries: list[dict] = []
         for page in pages:
             for name in page["file_refs"]:
@@ -377,8 +369,7 @@ class MBZBuilder:
     def _build_section_summary_file_entries(
         self, c: BaseParser, ids: _Counter, course_ctx: int, all_sections: list[dict]
     ) -> list[dict]:
-        """Register `@@PLUGINFILE@@` refs left dangling in a section's own `summary` field.
-        """
+        """Register `@@PLUGINFILE@@` refs left dangling in a section's own `summary` field (phase 4)."""
         entries: list[dict] = []
         for sec in all_sections:
             summary = sec.get("summary")
@@ -426,14 +417,9 @@ class MBZBuilder:
     def _build_course_image_entries(
         self, c: BaseParser, ids: _Counter, course_ctx: int
     ) -> list[dict]:
-        """Build the course-context `overviewfiles` file record for the catalogue thumbnail.
+        """Build the course-context `overviewfiles` file record for the catalogue thumbnail (phase 4).
 
-        Only `course_image_path` goes here -- Moodle's `get_course_overviewfiles()` sorts this
-        area by filename (not by any sortorder we write) and keeps only the first
-        `courseoverviewfileslimit` files, so a second real file (`banner_image_path`) can win the
-        catalogue tile over the intended course image depending on filename. `banner_image_path`
-        has no confirmed Authora storage target yet (see Moodle_thumbnail_and_banner_docs.md),
-        so it isn't written anywhere here rather than risk clobbering the thumbnail.
+        `course_image_path` goes here, never `banner_image_path` (see mbz-format.md, Course image).
         """
         entries: list[dict] = []
         path = c.course_image_path
@@ -475,13 +461,9 @@ class MBZBuilder:
     def _build_overview_image_entries(
         self, c: BaseParser, ids: _Counter, course_ctx: int, overview_section: dict
     ) -> list[dict]:
-        """Embed the course thumbnail inline in the Overview section summary.
+        """Embed the course thumbnail inline in the Overview section summary (Authora only).
 
-        Matches real Authora-restored courses: the catalogue thumbnail (`overviewfiles`) is a
-        second, separate copy of the same image embedded directly in the course's own
-        front/Overview section text -- registered under `component=course, filearea=section,
-        itemid=<overview section id>` with its own `.` placeholder, referenced from that
-        section's own `inforef.xml` (not the course's).
+        Phase 4 of `_populate`. See mbz-format.md, Overview image.
         """
         path = c.course_image_path
         if not self.authora or path is None:
@@ -491,10 +473,13 @@ class MBZBuilder:
             # Already registered by `_build_section_summary_file_entries()` -- the scraped WP
             # description reused the same image inline, so don't double-embed or double-register.
             return []
+        # Prepend the image so the Overview shows it above the scraped text
         overview_section["summary"] = (
             f'<p><img src="@@PLUGINFILE@@/{path.name}" alt=""></p>' + existing_summary
         )
+        # One real file record plus the `.` directory placeholder for the filearea
         real_id, placeholder_id = ids.next(), ids.next()
+        # Linked from the section's own inforef.xml
         overview_section.setdefault("file_ids", []).extend([real_id, placeholder_id])
         return [
             {
@@ -539,7 +524,10 @@ class MBZBuilder:
         ids: _Counter,
         course_ctx: int,
     ) -> None:
-        """Write every XML manifest, activity directory, and referenced file into `tmp`."""
+        """Write every XML manifest, activity directory, and referenced file into `tmp`.
+
+        Phase 5 of `_populate`.
+        """
         self._write_moodle_backup(
             tmp, c, all_sections, sub_mods, pages, resources, ts, course_ctx
         )

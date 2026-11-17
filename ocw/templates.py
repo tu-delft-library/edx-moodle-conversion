@@ -1,6 +1,7 @@
 """Raw XML templates for the Moodle backup files written by `MBZBuilder`.
 
-Templates mirror Moodle's `moodle2` backup structure. Callers must XML-escape interpolated values
+Templates mirror Moodle's `moodle2` backup structure. Callers must
+use XML-escape interpolated values
 before formatting them into these strings.
 """
 

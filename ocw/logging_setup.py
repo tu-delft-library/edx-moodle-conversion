@@ -17,9 +17,6 @@ class ColourFormatter(logging.Formatter):
         if record.levelno == logging.WARNING:
             record = logging.makeLogRecord(record.__dict__)
             record.levelname = f"{self._YELLOW}WARNING{self._RESET}"
-            # Substitute args into the message before colouring: colouring the raw args
-            # first (as before) turns numeric args into strings, which breaks %d/%f
-            # placeholders (e.g. "%d dframe(s)") at format time.
             record.msg = f"{self._YELLOW}{record.getMessage()}{self._RESET}"
             record.args = None
         msg = super().format(record)

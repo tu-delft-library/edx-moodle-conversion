@@ -66,6 +66,15 @@ is enabled. Verticals become Moodle pages and preserve the order of supported co
 
 Unsupported interactive components are skipped while the surrounding page is retained.
 
+## Platform junk and DelftX files
+
+PDFs and mp3s on DelftX hosts, plus delftxtools' extensionless Discussion and Collaboration Guidelines (`DaCG`), are
+fetched and bundled (`_DELFTX_FILE_RE`).
+
+Markup with no use on Moodle is stripped (`_PLATFORM_JUNK_RES`). Old dframe widget stylesheets and builder.js loaders
+(which seems to be superseded by the inlined widget), inline download tool loaders (they only run on ocw.tudelft.nl),
+edX "verify" purchase buttons and Studio editor attributes.
+
 ## Warnings and checks
 
 The parser warns about missing static files, content still hosted on edX infrastructure, unsupported components, and

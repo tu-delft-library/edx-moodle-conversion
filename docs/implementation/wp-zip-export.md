@@ -2,9 +2,7 @@
 
 ## Purpose
 
-`ocw-wp-zip` backs up a WordPress course site as a browsable HTML folder inside a zip. It is not an MBZ and nothing
-restores it into Moodle. The zip is a standalone backup: assume ocw.tudelft.nl and the edX / DelftX hosts will go
-down, so everything the course needs is inside it.
+`ocw-wp-zip` backs up a WordPress course site as a browsable HTML folder inside a zip.
 
 ## Data flow
 
@@ -20,6 +18,7 @@ down, so everything the course needs is inside it.
 | Report | `ExternalContentReport`                              | `external_content.xlsx`, and the table at the top of `course.docx`    |
 | Docx   | `ZipBuilder._write_docx()`, `HtmlToDocx`             | `course.docx`: table, contents list, then the whole course in order   |
 | Check  | `ocw/zip_checks.py` `log_zip_checks()`               | `PASS`/`FAIL` log line                                                |
+
 
 The zip and the MBZ share the static ref parser, the naming helper and the asset blacklist (`ocw/assets.py`), and a
 test pins that both ship the same static files.
@@ -77,5 +76,4 @@ Matched by filename in `ocw/assets.py` (`ASSET_BLACKLIST`). Matched files are no
 
 ## GUI
 
-`ocw/gui/wp_zip.py` reuses the WordPress URL dialog. The MBZ-only checkboxes are hidden through
-`ConverterApp.MBZ_OPTIONS = False`. Packaged as `ocw-gui-wp-zip` in `.github/workflows/build-gui.yml`.
+Packaged as `ocw-gui-wp-zip` in `.github/workflows/build-gui.yml`.

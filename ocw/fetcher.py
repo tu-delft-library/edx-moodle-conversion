@@ -13,10 +13,27 @@ from ocw.utils import resolve_asset_name
 log = logging.getLogger("ocw.fetcher")
 
 # Supported download types and their expected MIME types. Keep the mappings in sync.
-FETCHABLE_EXTENSIONS = frozenset({
-    ".pdf", ".xls", ".xlsx", ".doc", ".docx", ".ppt", ".pptx", ".zip", ".woff2", ".woff",
-    ".jpg", ".jpeg", ".png", ".gif", ".svg", ".webp", ".mp3",
-})
+FETCHABLE_EXTENSIONS = frozenset(
+    {
+        ".pdf",
+        ".xls",
+        ".xlsx",
+        ".doc",
+        ".docx",
+        ".ppt",
+        ".pptx",
+        ".zip",
+        ".woff2",
+        ".woff",
+        ".jpg",
+        ".jpeg",
+        ".png",
+        ".gif",
+        ".svg",
+        ".webp",
+        ".mp3",
+    }
+)
 _CONTENT_TYPE_BY_EXT = {
     ".pdf": "application/pdf",
     ".xls": "application/vnd.ms-excel",
@@ -60,7 +77,7 @@ THROTTLE = HostThrottle(_MIN_HOST_INTERVAL)
 
 
 class AssetFetcher:
-    """Fetch approved external assets into `dest_dir`.
+    """Fetch approved external assets into `dest_dir` at parse time.
 
     Results are cached by URL for this fetcher's lifetime. Requests to the same host are rate
     limited through `THROTTLE` to avoid repeatedly hitting the source service.
