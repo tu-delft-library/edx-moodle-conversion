@@ -28,7 +28,7 @@ jobs:
       fail-fast: false
       matrix:
         php: ["8.2"]
-        moodle-branch: ["MOODLE_503_STABLE"]
+        moodle-branch: ["MOODLE_502_STABLE", "MOODLE_503_STABLE"]
         database: ["pgsql"]
         plugin: ["filter/vidrouter", "local/vidrouter", "local/linearnav"]
 

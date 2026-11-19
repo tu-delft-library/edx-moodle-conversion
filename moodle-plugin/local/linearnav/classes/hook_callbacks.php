@@ -26,7 +26,7 @@ namespace local_linearnav;
 
 use core\hook\output\before_footer_html_generation;
 use core\hook\output\before_http_headers;
-use core\output\supplementary_sticky_footer;
+use core\output\sticky_footer;
 use html_writer;
 
 /**
@@ -47,7 +47,11 @@ final class hook_callbacks {
             return;
         }
 
-        $page->set_show_navigation_footer(false);
+        // Core's navigation footer only exists from 5.3.
+        $corefooter = method_exists($page, 'set_show_navigation_footer');
+        if ($corefooter) {
+            $page->set_show_navigation_footer(false);
+        }
         $plan = self::plan($page);
 
         $hook->add_html(html_writer::tag(
@@ -58,7 +62,7 @@ final class hook_callbacks {
         $page->requires->js_call_amd('local_linearnav/links', 'init');
 
         $entry = $plan->get(optional_param('lnav', '', PARAM_ALPHANUM));
-        if ($entry === null || !self::is_current($page, $entry) || $page->has_sticky_footer()) {
+        if ($entry === null || !self::is_current($page, $entry) || ($corefooter && $page->has_sticky_footer())) {
             return;
         }
 
@@ -68,7 +72,7 @@ final class hook_callbacks {
             'next' => $next ? ['url' => $next['url']->out(false), 'name' => $next['name']] : null,
             'courseurl' => (new \moodle_url('/course/view.php', ['id' => $page->course->id]))->out(false),
         ]);
-        $hook->add_html($hook->renderer->render(new supplementary_sticky_footer($content, 'local-linearnav')));
+        $hook->add_html($hook->renderer->render(new sticky_footer($content, 'local-linearnav')));
     }
 
     /**
