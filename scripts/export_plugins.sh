@@ -33,5 +33,6 @@ build_zip() {
 
 build_zip "$PLUGIN_DIR/filter/vidrouter" "vidrouter" "filter_vidrouter.zip"
 build_zip "$PLUGIN_DIR/local/vidrouter" "vidrouter" "local_vidrouter.zip"
+build_zip "$PLUGIN_DIR/local/linearnav" "linearnav" "local_linearnav.zip"
 
-echo "Done: $OUTDIR/filter_vidrouter.zip, $OUTDIR/local_vidrouter.zip"
+echo "Done: $OUTDIR/filter_vidrouter.zip, $OUTDIR/local_vidrouter.zip, $OUTDIR/local_linearnav.zip"

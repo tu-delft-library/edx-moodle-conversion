@@ -92,3 +92,4 @@ jobs:
           files: |
             filter_vidrouter.zip
             local_vidrouter.zip
+            local_linearnav.zip
