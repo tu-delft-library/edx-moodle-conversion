@@ -194,7 +194,6 @@ final class hook_callbacks_test extends \advanced_testcase {
     public function test_footer_on_section_page(): void {
         $this->resetAfterTest();
         $this->setAdminUser();
-        set_config('includesections', 1, 'local_linearnav');
         set_config('includetopsections', 1, 'local_linearnav');
         $gen = $this->getDataGenerator();
         $course = $gen->create_course(['numsections' => 1], ['createsections' => true]);

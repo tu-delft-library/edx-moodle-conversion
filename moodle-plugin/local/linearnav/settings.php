@@ -32,12 +32,6 @@ if ($hassiteconfig) {
         new lang_string('skiplinked_desc', 'local_linearnav'),
         0
     ));
-    $settings->add(new \local_linearnav\admin_setting_checkbox(
-        'local_linearnav/includesections',
-        new lang_string('includesections', 'local_linearnav'),
-        new lang_string('includesections_desc', 'local_linearnav'),
-        1
-    ));
     foreach (['includetopsections', 'includesubsections'] as $name) {
         $settings->add(new \local_linearnav\admin_setting_checkbox(
             'local_linearnav/' . $name,
@@ -45,7 +39,6 @@ if ($hassiteconfig) {
             new lang_string($name . '_desc', 'local_linearnav'),
             0
         ));
-        $settings->hide_if('local_linearnav/' . $name, 'local_linearnav/includesections', 'notchecked');
     }
     foreach (['prevlabel', 'nextlabel'] as $name) {
         $settings->add(new admin_setting_configtext(

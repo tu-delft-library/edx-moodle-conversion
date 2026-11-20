@@ -33,7 +33,7 @@ use core_course\hook\before_course_deleted;
  */
 final class course_settings {
     /** @var string[] settings a course can override */
-    public const NAMES = ['skiplinked', 'includesections', 'includetopsections', 'includesubsections'];
+    public const NAMES = ['skiplinked', 'includetopsections', 'includesubsections'];
 
     /**
      * Site config with this course's overrides applied.
@@ -75,9 +75,6 @@ final class course_settings {
             $field = 'local_linearnav_' . $name;
             $mform->addElement('select', $field, get_string($name, 'local_linearnav'), $options);
             $mform->setDefault($field, $current[$name] ?? '');
-        }
-        foreach (['includetopsections', 'includesubsections'] as $name) {
-            $mform->hideIf('local_linearnav_' . $name, 'local_linearnav_includesections', 'eq', '0');
         }
     }
 

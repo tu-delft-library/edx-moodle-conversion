@@ -113,7 +113,6 @@ final class plan_test extends \advanced_testcase {
 
         $this->resetAfterTest();
         set_config('skiplinked', 1, 'local_linearnav');
-        set_config('includesections', 1, 'local_linearnav');
         set_config('includetopsections', 1, 'local_linearnav');
         set_config('includesubsections', 1, 'local_linearnav');
         [$course, $a, , $c, , $r1] = $this->course_with_stubs();
@@ -174,7 +173,6 @@ final class plan_test extends \advanced_testcase {
     public function test_sections_option_adds_section_entries_before_contents(): void {
         $this->resetAfterTest();
         set_config('skiplinked', 0, 'local_linearnav');
-        set_config('includesections', 1, 'local_linearnav');
         set_config('includetopsections', 1, 'local_linearnav');
         set_config('includesubsections', 0, 'local_linearnav');
         [$course, $a, $b, $c, $b2, $r1] = $this->course_with_stubs();
@@ -212,7 +210,7 @@ final class plan_test extends \advanced_testcase {
             $kinds(plan::for_course($course))
         );
 
-        set_config('includesections', 0, 'local_linearnav');
+        set_config('includesubsections', 0, 'local_linearnav');
         $this->assertCount(5, plan::for_course($course)->keys());
     }
 }

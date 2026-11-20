@@ -72,15 +72,14 @@ final class plan {
         $targets = self::stub_targets($modinfo, $urls);
         $config = course_settings::for_course((int) $course->id);
         $skiplinked = !empty($config->skiplinked);
-        $sections = !empty($config->includesections);
 
         $plan = new self(
             $modinfo,
             $targets,
             $skiplinked ? array_flip($targets) : [],
             $skiplinked,
-            $sections && !empty($config->includetopsections),
-            $sections && !empty($config->includesubsections),
+            !empty($config->includetopsections),
+            !empty($config->includesubsections),
         );
         foreach ($modinfo->get_section_info_all() as $section) {
             if (!$section->is_delegated()) {

@@ -47,7 +47,7 @@ final class course_settings_test extends \advanced_testcase {
         $course = $this->getDataGenerator()->create_course();
         $submit = fn(array $data) => course_settings::form_submission(new after_form_submission((object) $data));
 
-        $submit(['id' => $course->id, 'local_linearnav_skiplinked' => '0', 'local_linearnav_includesections' => '']);
+        $submit(['id' => $course->id, 'local_linearnav_skiplinked' => '0', 'local_linearnav_includetopsections' => '']);
         $this->assertSame(
             ['skiplinked' => '0'],
             $DB->get_records_menu('local_linearnav', ['courseid' => $course->id], '', 'name, value')
