@@ -61,8 +61,13 @@ final class hook_callbacks {
         ));
         $page->requires->js_call_amd('local_linearnav/links', 'init');
 
+        // get stop from key
         $entry = $plan->get(optional_param('lnav', '', PARAM_ALPHANUM));
-        if ($entry === null || !self::is_current($page, $entry) || ($corefooter && $page->has_sticky_footer())) {
+        // fall back if key missing or stale
+        if ($entry === null || !self::is_current($page, $entry)) {
+            $entry = self::fallback($plan, $page);
+        }
+        if ($entry === null || ($corefooter && $page->has_sticky_footer())) {
             return;
         }
 
@@ -106,6 +111,32 @@ final class hook_callbacks {
     private static function plan(\moodle_page $page): plan {
         self::$plans ??= new \WeakMap();
         return self::$plans[$page] ??= plan::for_course($page->course);
+    }
+
+    /**
+     * Plan entry for a page opened without a usable key.
+     *
+     * @param plan $plan
+     * @param \moodle_page $page
+     * @return array|null
+     */
+    private static function fallback(plan $plan, \moodle_page $page): ?array {
+        $first = null;
+        foreach ($plan->keys() as $key) {
+            $entry = $plan->get($key);
+            // skip activity sub-pages
+            if (!self::is_current($page, $entry) || !$page->url->compare($entry['url'], URL_MATCH_BASE)) {
+                continue;
+            }
+            // prefer the real page
+            if ($entry['id'] == $entry['targetid']) {
+                return $entry;
+            }
+            // else first stub
+            $first ??= $entry;
+        }
+        // null if not in walk
+        return $first;
     }
 
     /**
