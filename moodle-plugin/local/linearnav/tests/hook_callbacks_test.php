@@ -75,6 +75,7 @@ final class hook_callbacks_test extends \advanced_testcase {
         $next = 'id=' . $b->cmid . '&amp;lnav=';
 
         $this->assertStringContainsString($next, $this->footer($course, $a->cmid, ''));
+        $this->assertStringNotContainsString('course/view.php', $this->footer($course, $a->cmid, ''));
         $this->assertStringContainsString($next, $this->footer($course, $a->cmid, 'deadbeef0000'));
         $this->assertStringContainsString($next, $this->footer($course, $a->cmid, $ka));
         $this->assertStringNotContainsString($next, $this->footer($course, $b->cmid, $ka));

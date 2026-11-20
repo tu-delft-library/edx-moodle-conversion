@@ -75,7 +75,6 @@ final class hook_callbacks {
         $content = $hook->renderer->render_from_template('local_linearnav/footer', [
             'prev' => $prev ? ['url' => $prev['url']->out(false), 'name' => $prev['name']] : null,
             'next' => $next ? ['url' => $next['url']->out(false), 'name' => $next['name']] : null,
-            'courseurl' => (new \moodle_url('/course/view.php', ['id' => $page->course->id]))->out(false),
         ]);
         $hook->add_html($hook->renderer->render(new sticky_footer($content, 'local-linearnav')));
     }

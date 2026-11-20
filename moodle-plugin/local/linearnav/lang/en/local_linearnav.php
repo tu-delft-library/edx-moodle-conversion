@@ -24,7 +24,6 @@
 
 defined('MOODLE_INTERNAL') || die();
 
-$string['backtocourse'] = 'Back to course';
 $string['includesections'] = 'Travel through sections';
 $string['includesections_desc'] = 'Also stop at section pages, before the activities in them. Pick which kinds below.';
 $string['includesubsections'] = 'Subsections';
