@@ -75,8 +75,8 @@ final class hook_callbacks {
         $content = $hook->renderer->render_from_template('local_linearnav/footer', [
             'prev' => $prev ? ['url' => $prev['url']->out(false), 'name' => $prev['name']] : null,
             'next' => $next ? ['url' => $next['url']->out(false), 'name' => $next['name']] : null,
-            'prevlabel' => get_config('local_linearnav', 'prevlabel') ?: get_string('previous', 'local_linearnav'),
-            'nextlabel' => get_config('local_linearnav', 'nextlabel') ?: get_string('next', 'local_linearnav'),
+            'prevlabel' => self::label('prevlabel'),
+            'nextlabel' => self::label('nextlabel'),
         ]);
         $hook->add_html($hook->renderer->render(new sticky_footer($content, 'local-linearnav')));
     }
@@ -112,6 +112,17 @@ final class hook_callbacks {
     private static function plan(\moodle_page $page): plan {
         self::$plans ??= new \WeakMap();
         return self::$plans[$page] ??= plan::for_course($page->course);
+    }
+
+    /**
+     * Button text from a quoted setting, spaces kept and empty kept one character wide.
+     *
+     * @param string $name
+     * @return string
+     */
+    private static function label(string $name): string {
+        $text = substr((string) get_config('local_linearnav', $name), 1, -1);
+        return $text === '' ? "\u{00A0}" : str_replace(' ', "\u{00A0}", $text);
     }
 
     /**

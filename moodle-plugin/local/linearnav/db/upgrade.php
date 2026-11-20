@@ -66,5 +66,15 @@ function xmldb_local_linearnav_upgrade($oldversion) {
         upgrade_plugin_savepoint(true, 2026112001, 'local', 'linearnav');
     }
 
+    if ($oldversion < 2026112002) {
+        foreach (['prevlabel', 'nextlabel'] as $name) {
+            $text = get_config('local_linearnav', $name);
+            if ($text !== false && !preg_match('/^".*"$/', $text)) {
+                set_config($name, '"' . $text . '"', 'local_linearnav');
+            }
+        }
+        upgrade_plugin_savepoint(true, 2026112002, 'local', 'linearnav');
+    }
+
     return true;
 }
