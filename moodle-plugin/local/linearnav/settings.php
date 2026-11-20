@@ -47,5 +47,14 @@ if ($hassiteconfig) {
         ));
         $settings->hide_if('local_linearnav/' . $name, 'local_linearnav/includesections', 'notchecked');
     }
+    foreach (['prevlabel', 'nextlabel'] as $name) {
+        $settings->add(new admin_setting_configtext(
+            'local_linearnav/' . $name,
+            new lang_string($name, 'local_linearnav'),
+            new lang_string($name . '_desc', 'local_linearnav'),
+            '',
+            PARAM_TEXT
+        ));
+    }
     $ADMIN->add('localplugins', $settings);
 }

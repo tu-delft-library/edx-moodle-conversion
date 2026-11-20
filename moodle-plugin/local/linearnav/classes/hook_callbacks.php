@@ -75,6 +75,8 @@ final class hook_callbacks {
         $content = $hook->renderer->render_from_template('local_linearnav/footer', [
             'prev' => $prev ? ['url' => $prev['url']->out(false), 'name' => $prev['name']] : null,
             'next' => $next ? ['url' => $next['url']->out(false), 'name' => $next['name']] : null,
+            'prevlabel' => get_config('local_linearnav', 'prevlabel') ?: get_string('previous', 'local_linearnav'),
+            'nextlabel' => get_config('local_linearnav', 'nextlabel') ?: get_string('next', 'local_linearnav'),
         ]);
         $hook->add_html($hook->renderer->render(new sticky_footer($content, 'local-linearnav')));
     }

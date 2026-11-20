@@ -22,18 +22,20 @@
     Example context (json):
     {
         "prev": {"url": "https://example.com/mod/page/view.php?id=1&lnav=abc", "name": "Intro"},
-        "next": {"url": "https://example.com/mod/page/view.php?id=3&lnav=def", "name": "Week 1"}
+        "next": {"url": "https://example.com/mod/page/view.php?id=3&lnav=def", "name": "Week 1"},
+        "prevlabel": "Previous",
+        "nextlabel": "Next"
     }
 }}
 <nav class="d-flex w-100 justify-content-between align-items-center" aria-label="{{#str}}pluginname, local_linearnav{{/str}}">
     <div>
         {{#prev}}
-            <a class="btn btn-secondary rounded-0" href="{{url}}" title="{{name}}">{{#str}}previous, local_linearnav{{/str}}</a>
+            <a class="btn btn-secondary rounded-0" href="{{url}}" title="{{name}}">{{prevlabel}}</a>
         {{/prev}}
     </div>
     <div>
         {{#next}}
-            <a class="btn btn-primary rounded-0" href="{{url}}" title="{{name}}">{{#str}}next, local_linearnav{{/str}}</a>
+            <a class="btn btn-primary rounded-0" href="{{url}}" title="{{name}}">{{nextlabel}}</a>
         {{/next}}
     </div>
 </nav>

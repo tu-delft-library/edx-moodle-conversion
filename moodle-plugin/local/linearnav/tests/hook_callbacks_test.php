@@ -81,6 +81,21 @@ final class hook_callbacks_test extends \advanced_testcase {
         $this->assertStringNotContainsString($next, $this->footer($course, $b->cmid, $ka));
     }
 
+    public function test_button_labels_come_from_settings(): void {
+        $this->resetAfterTest();
+        $this->setAdminUser();
+        $gen = $this->getDataGenerator();
+        $course = $gen->create_course();
+        $a = $gen->create_module('page', ['course' => $course->id, 'section' => 0]);
+        $b = $gen->create_module('page', ['course' => $course->id, 'section' => 0]);
+
+        $this->assertStringContainsString('>Next<', $this->footer($course, $a->cmid, ''));
+        set_config('nextlabel', 'Verder', 'local_linearnav');
+        set_config('prevlabel', 'Terug', 'local_linearnav');
+        $this->assertStringContainsString('>Verder<', $this->footer($course, $a->cmid, ''));
+        $this->assertStringContainsString('>Terug<', $this->footer($course, $b->cmid, ''));
+    }
+
     public function test_no_fallback_footer_on_activity_sub_pages(): void {
         $this->resetAfterTest();
         $this->setAdminUser();
