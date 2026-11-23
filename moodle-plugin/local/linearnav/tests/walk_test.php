@@ -190,9 +190,11 @@ final class walk_test extends \advanced_testcase {
      * @param int $top
      * @param int $sub
      * @param string $role
+     * @param int $targets
      */
-    private function as(\stdClass $course, int $skip, int $top, int $sub, string $role): void {
+    private function as(\stdClass $course, int $skip, int $top, int $sub, string $role, int $targets = 1): void {
         set_config('skiplinked', $skip, 'local_linearnav');
+        set_config('skiptargets', $targets, 'local_linearnav');
         set_config('includetopsections', $top, 'local_linearnav');
         set_config('includesubsections', $sub, 'local_linearnav');
         if ($role === 'admin') {
@@ -222,14 +224,27 @@ final class walk_test extends \advanced_testcase {
             '2.9 B skip off, student' => ['b', 0, 0, 0, 'student', 'p1 U1/R1 p2'],
             '2.10 B skip off, admin' => ['b', 0, 0, 0, 'admin', 'p1 U1/R1 p2 R1'],
             '2.11 B skip on, student' => ['b', 1, 0, 0, 'student', 'p1 p2'],
+            'A skip on, targets kept, student' => ['a', 1, 0, 0, 'student', 'p0 p1 p2 Q1 p3 p4 p5 R1 R2', 0],
+            'A skip on, targets kept, admin' => ['a', 1, 0, 0, 'admin', 'p0 p1 p2 Q1 p3 p4 p5 R1 R2 p7 p8', 0],
+            'A skip off, targets setting ignored' => ['a', 0, 0, 0, 'student',
+                'p0 p1 p2 U1/R1 Q1 p3 p4 U2/p1 p5 R1 R2 U3/R2', 0],
+            'B skip on, targets kept, student' => ['b', 1, 0, 0, 'student', 'p1 p2', 0],
         ];
     }
 
     #[DataProvider('walk_provider')]
-    public function test_walk(string $which, int $skip, int $top, int $sub, string $role, string $expected): void {
+    public function test_walk(
+        string $which,
+        int $skip,
+        int $top,
+        int $sub,
+        string $role,
+        string $expected,
+        int $targets = 1,
+    ): void {
         $this->resetAfterTest();
         [$course] = $which === 'a' ? $this->course_a() : $this->course_b();
-        $this->as($course, $skip, $top, $sub, $role);
+        $this->as($course, $skip, $top, $sub, $role, $targets);
         $plan = plan::for_course($course);
         $keys = $plan->keys();
 
@@ -286,6 +301,20 @@ final class walk_test extends \advanced_testcase {
         // skip on drops R1 and U1 for the student
         $this->as($course, 1, 0, 0, 'student');
         $this->assertStringNotContainsString('local-linearnav', $this->footer($course, $r1, $url));
+    }
+
+    public function test_course_override_keeps_targets(): void {
+        global $DB;
+
+        $this->resetAfterTest();
+        [$course] = $this->course_a();
+        $this->as($course, 1, 0, 0, 'student');
+        $DB->insert_record('local_linearnav', ['courseid' => $course->id, 'name' => 'skiptargets', 'value' => '0']);
+
+        $this->assertSame(
+            explode(' ', 'p0 p1 p2 Q1 p3 p4 p5 R1 R2'),
+            $this->names($course, plan::for_course($course))
+        );
     }
 
     public function test_course_override_beats_site(): void {

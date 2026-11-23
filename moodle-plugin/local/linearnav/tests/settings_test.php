@@ -56,6 +56,7 @@ final class settings_test extends \advanced_testcase {
         $this->resetAfterTest();
         $this->setAdminUser();
         set_config('skiplinked', 0, 'local_linearnav');
+        set_config('skiptargets', 1, 'local_linearnav');
         set_config('includetopsections', 1, 'local_linearnav');
         set_config('nextlabel', '" "', 'local_linearnav');
 
@@ -63,6 +64,7 @@ final class settings_test extends \advanced_testcase {
 
         $config = get_config('local_linearnav');
         $this->assertSame('1', $config->skiplinked);
+        $this->assertSame('0', $config->skiptargets);
         $this->assertSame('0', $config->includetopsections);
         $this->assertSame('"Next"', $config->nextlabel);
         $this->assertSame('"Previous"', $config->prevlabel);

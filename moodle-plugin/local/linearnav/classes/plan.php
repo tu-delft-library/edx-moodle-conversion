@@ -76,7 +76,7 @@ final class plan {
         $plan = new self(
             $modinfo,
             $targets,
-            $skiplinked ? array_flip($targets) : [],
+            $skiplinked && !empty($config->skiptargets) ? array_flip($targets) : [],
             $skiplinked,
             !empty($config->includetopsections),
             !empty($config->includesubsections),

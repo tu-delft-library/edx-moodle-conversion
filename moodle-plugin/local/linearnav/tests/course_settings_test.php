@@ -105,10 +105,11 @@ final class course_settings_test extends \advanced_testcase {
         $this->setAdminUser();
         $course = $this->getDataGenerator()->create_course();
         $DB->insert_record('local_linearnav', ['courseid' => $course->id, 'name' => 'skiplinked', 'value' => '0']);
+        $DB->insert_record('local_linearnav', ['courseid' => $course->id, 'name' => 'skiptargets', 'value' => '0']);
 
-        $this->assertSame(
-            ['skiplinked' => '0'],
-            $DB->get_records_menu('local_linearnav', ['courseid' => $this->copy($course)], '', 'name, value')
+        $this->assertEquals(
+            ['skiplinked' => '0', 'skiptargets' => '0'],
+            $DB->get_records_menu('local_linearnav', ['courseid' => $this->copy($course)], 'name', 'name, value')
         );
     }
 

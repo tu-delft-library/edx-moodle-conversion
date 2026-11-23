@@ -37,6 +37,13 @@ if ($hassiteconfig) {
         new lang_string('skiplinked_desc', 'local_linearnav'),
         1
     ));
+    $settings->add(new \local_linearnav\admin_setting_checkbox(
+        'local_linearnav/skiptargets',
+        html_writer::tag('em', get_string('skiptargets', 'local_linearnav')),
+        new lang_string('skiptargets_desc', 'local_linearnav'),
+        0
+    ));
+    $settings->hide_if('local_linearnav/skiptargets', 'local_linearnav/skiplinked');
     foreach (['includetopsections', 'includesubsections'] as $name) {
         $settings->add(new \local_linearnav\admin_setting_checkbox(
             'local_linearnav/' . $name,

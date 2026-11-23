@@ -113,6 +113,7 @@ final class plan_test extends \advanced_testcase {
 
         $this->resetAfterTest();
         set_config('skiplinked', 1, 'local_linearnav');
+        set_config('skiptargets', 1, 'local_linearnav');
         set_config('includetopsections', 1, 'local_linearnav');
         set_config('includesubsections', 1, 'local_linearnav');
         [$course, $a, , $c, , $r1] = $this->course_with_stubs();
@@ -147,6 +148,7 @@ final class plan_test extends \advanced_testcase {
 
         $this->resetAfterTest();
         set_config('skiplinked', 0, 'local_linearnav');
+        set_config('skiptargets', 1, 'local_linearnav');
         [$course, $a, , $c] = $this->course_with_stubs();
         $DB->insert_record('local_linearnav', ['courseid' => $course->id, 'name' => 'skiplinked', 'value' => '1']);
 

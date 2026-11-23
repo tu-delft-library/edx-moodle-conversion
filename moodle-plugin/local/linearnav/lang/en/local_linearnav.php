@@ -42,6 +42,7 @@ $string['resetconfirm'] = 'Put all linear navigation site settings back to their
 $string['resetdefaults'] = 'Reset to defaults';
 $string['resetdone'] = 'Linear navigation settings reset to their defaults.';
 $string['skiplinked'] = 'Skip linked and hidden pages';
-$string['skiplinked_desc'] = 'Leave out link activities that point at a page in the course, the pages they point at, '
-    . 'and everything in hidden sections.';
+$string['skiplinked_desc'] = 'Leave out link activities that point at a page in the course, and everything in hidden sections.';
+$string['skiptargets'] = 'Include target of links in skipping';
+$string['skiptargets_desc'] = 'When off, original pages stay in the walk.';
 $string['usesitedefault'] = 'Use site default';
