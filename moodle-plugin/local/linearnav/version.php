@@ -28,4 +28,4 @@ $plugin->component = 'local_linearnav';
 $plugin->version = 2026112004;
 $plugin->requires = 2026042000;
 $plugin->maturity = MATURITY_BETA;
-$plugin->release = '0.1.0 (Build: 2026111904)';
+$plugin->release = '0.1.0 (Build: 2026112004)';
