@@ -30,6 +30,8 @@ defined('MOODLE_INTERNAL') || die();
 
 global $CFG;
 require_once($CFG->libdir . '/adminlib.php');
+require_once($CFG->libdir . '/upgradelib.php');
+require_once($CFG->dirroot . '/local/linearnav/db/upgrade.php');
 
 /**
  * Admin settings tests.
@@ -64,5 +66,17 @@ final class settings_test extends \advanced_testcase {
         $this->assertSame('0', $config->includetopsections);
         $this->assertSame('"Next"', $config->nextlabel);
         $this->assertSame('"Previous"', $config->prevlabel);
+    }
+
+    public function test_upgrade_quotes_labels_and_maps_empty_to_default(): void {
+        $this->resetAfterTest();
+        set_config('version', 2026112001, 'local_linearnav');
+        set_config('prevlabel', '', 'local_linearnav');
+        set_config('nextlabel', 'Verder', 'local_linearnav');
+
+        xmldb_local_linearnav_upgrade(2026112001);
+
+        $this->assertSame('"Previous"', get_config('local_linearnav', 'prevlabel'));
+        $this->assertSame('"Verder"', get_config('local_linearnav', 'nextlabel'));
     }
 }
