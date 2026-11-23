@@ -1,0 +1,14 @@
+/* The bar has a fixed height, so long button text wraps to two lines at most. */
+.local-linearnav-label {
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    overflow: hidden;
+    white-space: pre-wrap;
+    overflow-wrap: break-word;
+}
+
+/* Another plugin's sticky footer wins, two would stack on top of each other. */
+body:has(#sticky-footer:not([data-local-linearnav])) #sticky-footer[data-local-linearnav] {
+    display: none;
+}

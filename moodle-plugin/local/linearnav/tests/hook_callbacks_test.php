@@ -90,10 +90,11 @@ final class hook_callbacks_test extends \advanced_testcase {
         $b = $gen->create_module('page', ['course' => $course->id, 'section' => 0]);
 
         $this->assertStringContainsString('>Next<', $this->footer($course, $a->cmid, ''));
+        $this->assertStringContainsString('data-local-linearnav="1"', $this->footer($course, $a->cmid, ''));
         set_config('nextlabel', '"Verder"', 'local_linearnav');
         set_config('prevlabel', '"< Terug"', 'local_linearnav');
         $this->assertStringContainsString('>Verder<', $this->footer($course, $a->cmid, ''));
-        $this->assertStringContainsString(">&lt;\u{00A0}Terug<", $this->footer($course, $b->cmid, ''));
+        $this->assertStringContainsString('>&lt; Terug<', $this->footer($course, $b->cmid, ''));
 
         set_config('nextlabel', '""', 'local_linearnav');
         $this->assertStringContainsString(">\u{00A0}<", $this->footer($course, $a->cmid, ''));

@@ -78,7 +78,7 @@ final class hook_callbacks {
             'prevlabel' => self::label('prevlabel'),
             'nextlabel' => self::label('nextlabel'),
         ]);
-        $hook->add_html($hook->renderer->render(new sticky_footer($content, 'local-linearnav')));
+        $hook->add_html($hook->renderer->render(new sticky_footer($content, 'local-linearnav', ['data-local-linearnav' => 1])));
     }
 
     /**
@@ -115,14 +115,14 @@ final class hook_callbacks {
     }
 
     /**
-     * Button text from a quoted setting, spaces kept and empty kept one character wide.
+     * Button text from a quoted setting, empty kept one character wide.
      *
      * @param string $name
      * @return string
      */
     private static function label(string $name): string {
         $text = substr((string) get_config('local_linearnav', $name), 1, -1);
-        return $text === '' ? "\u{00A0}" : str_replace(' ', "\u{00A0}", $text);
+        return $text === '' ? "\u{00A0}" : $text;
     }
 
     /**
