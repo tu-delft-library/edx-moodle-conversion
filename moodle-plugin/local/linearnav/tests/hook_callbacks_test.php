@@ -64,7 +64,7 @@ final class hook_callbacks_test extends \advanced_testcase {
         return $page;
     }
 
-    public function test_footer_only_with_matching_key(): void {
+    public function test_missing_or_stale_key_falls_back_to_the_page(): void {
         $this->resetAfterTest();
         $this->setAdminUser();
         $gen = $this->getDataGenerator();
@@ -72,10 +72,74 @@ final class hook_callbacks_test extends \advanced_testcase {
         $a = $gen->create_module('page', ['course' => $course->id, 'section' => 0]);
         $b = $gen->create_module('page', ['course' => $course->id, 'section' => 0]);
         [$ka] = plan::for_course($course)->keys();
+        $next = 'id=' . $b->cmid . '&amp;lnav=';
 
-        $this->assertStringNotContainsString('local-linearnav', $this->footer($course, $a->cmid, ''));
-        $this->assertStringNotContainsString('local-linearnav', $this->footer($course, $b->cmid, $ka));
-        $this->assertStringContainsString('id=' . $b->cmid . '&amp;lnav=', $this->footer($course, $a->cmid, $ka));
+        $this->assertStringContainsString($next, $this->footer($course, $a->cmid, ''));
+        $this->assertStringNotContainsString('course/view.php', $this->footer($course, $a->cmid, ''));
+        $this->assertStringContainsString($next, $this->footer($course, $a->cmid, 'deadbeef0000'));
+        $this->assertStringContainsString($next, $this->footer($course, $a->cmid, $ka));
+        $this->assertStringNotContainsString($next, $this->footer($course, $b->cmid, $ka));
+    }
+
+    public function test_button_labels_come_from_settings(): void {
+        $this->resetAfterTest();
+        $this->setAdminUser();
+        $gen = $this->getDataGenerator();
+        $course = $gen->create_course();
+        $a = $gen->create_module('page', ['course' => $course->id, 'section' => 0]);
+        $b = $gen->create_module('page', ['course' => $course->id, 'section' => 0]);
+
+        $this->assertStringContainsString('>Next<', $this->footer($course, $a->cmid, ''));
+        $this->assertStringContainsString('data-local-linearnav="1"', $this->footer($course, $a->cmid, ''));
+        set_config('nextlabel', '"Verder"', 'local_linearnav');
+        set_config('prevlabel', '"< Terug"', 'local_linearnav');
+        $this->assertStringContainsString('>Verder<', $this->footer($course, $a->cmid, ''));
+        $this->assertStringContainsString('>&lt; Terug<', $this->footer($course, $b->cmid, ''));
+
+        set_config('nextlabel', '""', 'local_linearnav');
+        $this->assertStringContainsString(">\u{00A0}<", $this->footer($course, $a->cmid, ''));
+    }
+
+    public function test_no_fallback_footer_on_activity_sub_pages(): void {
+        $this->resetAfterTest();
+        $this->setAdminUser();
+        $gen = $this->getDataGenerator();
+        $course = $gen->create_course();
+        $a = $gen->create_module('page', ['course' => $course->id, 'section' => 0]);
+        $gen->create_module('page', ['course' => $course->id, 'section' => 0]);
+        $page = $this->page($course, $a->cmid, '');
+        $page->set_url('/mod/page/other.php', ['id' => $a->cmid]);
+
+        $hook = new before_footer_html_generation($page->get_renderer('core'));
+        hook_callbacks::before_footer($hook);
+
+        $this->assertStringNotContainsString('local-linearnav', $hook->get_output());
+    }
+
+    public function test_keyless_visit_lands_on_the_real_page_not_its_stub(): void {
+        global $CFG;
+
+        $this->resetAfterTest();
+        $this->setAdminUser();
+        set_config('skiplinked', 0, 'local_linearnav');
+        $gen = $this->getDataGenerator();
+        $course = $gen->create_course(['numsections' => 1], ['createsections' => true]);
+        // walk: p1 -> link->R1 -> p2 | R1 -> p3
+        $gen->create_module('page', ['course' => $course->id, 'section' => 0]);
+        $r1 = $gen->create_module('page', ['course' => $course->id, 'section' => 1]);
+        $gen->create_module('url', [
+            'course' => $course->id,
+            'section' => 0,
+            'externalurl' => $CFG->wwwroot . '/mod/page/view.php?id=' . $r1->cmid,
+        ]);
+        $p2 = $gen->create_module('page', ['course' => $course->id, 'section' => 0]);
+        $p3 = $gen->create_module('page', ['course' => $course->id, 'section' => 1]);
+        [, $kstub] = plan::for_course($course)->keys();
+
+        // no key: next is p3
+        $this->assertStringContainsString('id=' . $p3->cmid . '&amp;lnav=', $this->footer($course, $r1->cmid, ''));
+        // stub key: next is p2
+        $this->assertStringContainsString('id=' . $p2->cmid . '&amp;lnav=', $this->footer($course, $r1->cmid, $kstub));
     }
 
     public function test_stub_marked_viewed_when_target_opened(): void {
@@ -105,10 +169,35 @@ final class hook_callbacks_test extends \advanced_testcase {
         $this->assertEquals(COMPLETION_COMPLETE, (new \completion_info($course))->get_data($stubcm)->completionstate);
     }
 
+    public function test_stub_not_marked_viewed_without_its_key(): void {
+        global $CFG;
+
+        $this->resetAfterTest();
+        $gen = $this->getDataGenerator();
+        $course = $gen->create_course(['enablecompletion' => 1]);
+        $student = $gen->create_and_enrol($course, 'student');
+        $r1 = $gen->create_module('page', ['course' => $course->id, 'section' => 0]);
+        $stub = $gen->create_module('url', [
+            'course' => $course->id,
+            'section' => 0,
+            'externalurl' => $CFG->wwwroot . '/mod/page/view.php?id=' . $r1->cmid,
+            'completion' => COMPLETION_TRACKING_AUTOMATIC,
+            'completionview' => COMPLETION_VIEW_REQUIRED,
+        ]);
+        set_config('skiplinked', 0, 'local_linearnav');
+        $this->setUser($student);
+
+        hook_callbacks::before_http_headers(
+            new before_http_headers($this->page($course, $r1->cmid, '')->get_renderer('core'))
+        );
+
+        $stubcm = get_fast_modinfo($course)->get_cm($stub->cmid);
+        $this->assertEquals(COMPLETION_INCOMPLETE, (new \completion_info($course))->get_data($stubcm)->completionstate);
+    }
+
     public function test_footer_on_section_page(): void {
         $this->resetAfterTest();
         $this->setAdminUser();
-        set_config('includesections', 1, 'local_linearnav');
         set_config('includetopsections', 1, 'local_linearnav');
         $gen = $this->getDataGenerator();
         $course = $gen->create_course(['numsections' => 1], ['createsections' => true]);

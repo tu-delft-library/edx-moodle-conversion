@@ -26,18 +26,24 @@ defined('MOODLE_INTERNAL') || die();
 
 if ($hassiteconfig) {
     $settings = new admin_settingpage('local_linearnav', new lang_string('pluginname', 'local_linearnav'));
+    $settings->add(new admin_setting_heading(
+        'local_linearnav/disclaimer',
+        '',
+        new lang_string('disclaimer', 'local_linearnav')
+    ));
     $settings->add(new \local_linearnav\admin_setting_checkbox(
         'local_linearnav/skiplinked',
         new lang_string('skiplinked', 'local_linearnav'),
         new lang_string('skiplinked_desc', 'local_linearnav'),
-        0
-    ));
-    $settings->add(new \local_linearnav\admin_setting_checkbox(
-        'local_linearnav/includesections',
-        new lang_string('includesections', 'local_linearnav'),
-        new lang_string('includesections_desc', 'local_linearnav'),
         1
     ));
+    $settings->add(new \local_linearnav\admin_setting_checkbox(
+        'local_linearnav/skiptargets',
+        html_writer::tag('em', get_string('skiptargets', 'local_linearnav')),
+        new lang_string('skiptargets_desc', 'local_linearnav'),
+        0
+    ));
+    $settings->hide_if('local_linearnav/skiptargets', 'local_linearnav/skiplinked');
     foreach (['includetopsections', 'includesubsections'] as $name) {
         $settings->add(new \local_linearnav\admin_setting_checkbox(
             'local_linearnav/' . $name,
@@ -45,7 +51,24 @@ if ($hassiteconfig) {
             new lang_string($name . '_desc', 'local_linearnav'),
             0
         ));
-        $settings->hide_if('local_linearnav/' . $name, 'local_linearnav/includesections', 'notchecked');
     }
+    foreach (['prevlabel' => 'previous', 'nextlabel' => 'next'] as $name => $default) {
+        $settings->add(new admin_setting_configtext(
+            'local_linearnav/' . $name,
+            new lang_string($name, 'local_linearnav'),
+            new lang_string($name . '_desc', 'local_linearnav'),
+            '"' . get_string($default, 'local_linearnav') . '"',
+            '/^".*"$/'
+        ));
+    }
+    $settings->add(new admin_setting_description(
+        'local_linearnav/reset',
+        '',
+        html_writer::link(
+            new moodle_url('/local/linearnav/reset.php'),
+            get_string('resetdefaults', 'local_linearnav'),
+            ['class' => 'btn btn-secondary mb-4']
+        )
+    ));
     $ADMIN->add('localplugins', $settings);
 }

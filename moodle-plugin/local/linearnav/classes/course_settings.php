@@ -33,7 +33,7 @@ use core_course\hook\before_course_deleted;
  */
 final class course_settings {
     /** @var string[] settings a course can override */
-    public const NAMES = ['skiplinked', 'includesections', 'includetopsections', 'includesubsections'];
+    public const NAMES = ['skiplinked', 'skiptargets', 'includetopsections', 'includesubsections'];
 
     /**
      * Site config with this course's overrides applied.
@@ -73,12 +73,11 @@ final class course_settings {
         $current = self::overrides((int) ($hook->formwrapper->get_course()->id ?? 0));
         foreach (self::NAMES as $name) {
             $field = 'local_linearnav_' . $name;
-            $mform->addElement('select', $field, get_string($name, 'local_linearnav'), $options);
+            $label = get_string($name, 'local_linearnav');
+            $mform->addElement('select', $field, $name === 'skiptargets' ? \html_writer::tag('em', $label) : $label, $options);
             $mform->setDefault($field, $current[$name] ?? '');
         }
-        foreach (['includetopsections', 'includesubsections'] as $name) {
-            $mform->hideIf('local_linearnav_' . $name, 'local_linearnav_includesections', 'eq', '0');
-        }
+        $mform->hideIf('local_linearnav_skiptargets', 'local_linearnav_skiplinked', 'eq', '0');
     }
 
     /**

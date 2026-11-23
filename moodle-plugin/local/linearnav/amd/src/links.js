@@ -35,7 +35,8 @@ export const init = () => {
     const links = JSON.parse(node.textContent);
 
     const lookup = (target, link, item, prefix) => {
-        const anchor = target.closest(link);
+        // keyboard focus lands on the tree item around the link
+        const anchor = target.closest(link) ?? target.querySelector(link);
         const id = anchor?.closest(item)?.dataset.id;
         return id && links[prefix + id] ? [anchor, links[prefix + id]] : null;
     };

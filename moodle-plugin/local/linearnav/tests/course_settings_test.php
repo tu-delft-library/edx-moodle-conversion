@@ -47,7 +47,7 @@ final class course_settings_test extends \advanced_testcase {
         $course = $this->getDataGenerator()->create_course();
         $submit = fn(array $data) => course_settings::form_submission(new after_form_submission((object) $data));
 
-        $submit(['id' => $course->id, 'local_linearnav_skiplinked' => '0', 'local_linearnav_includesections' => '']);
+        $submit(['id' => $course->id, 'local_linearnav_skiplinked' => '0', 'local_linearnav_includetopsections' => '']);
         $this->assertSame(
             ['skiplinked' => '0'],
             $DB->get_records_menu('local_linearnav', ['courseid' => $course->id], '', 'name, value')
@@ -74,13 +74,14 @@ final class course_settings_test extends \advanced_testcase {
         );
     }
 
-    public function test_overrides_survive_backup_and_restore(): void {
-        global $DB, $USER;
-
-        $this->resetAfterTest();
-        $this->setAdminUser();
-        $course = $this->getDataGenerator()->create_course();
-        $DB->insert_record('local_linearnav', ['courseid' => $course->id, 'name' => 'skiplinked', 'value' => '0']);
+    /**
+     * Backup a course and restore it as a new one.
+     *
+     * @param \stdClass $course
+     * @return int new course id
+     */
+    private function copy(\stdClass $course): int {
+        global $USER;
 
         $bc = new \backup_controller(\backup::TYPE_1COURSE, $course->id, \backup::FORMAT_MOODLE,
             \backup::INTERACTIVE_NO, \backup::MODE_IMPORT, $USER->id);
@@ -94,11 +95,40 @@ final class course_settings_test extends \advanced_testcase {
         $rc->execute_precheck();
         $rc->execute_plan();
         $rc->destroy();
+        return $newid;
+    }
 
-        $this->assertSame(
-            ['skiplinked' => '0'],
-            $DB->get_records_menu('local_linearnav', ['courseid' => $newid], '', 'name, value')
+    public function test_overrides_survive_backup_and_restore(): void {
+        global $DB;
+
+        $this->resetAfterTest();
+        $this->setAdminUser();
+        $course = $this->getDataGenerator()->create_course();
+        $DB->insert_record('local_linearnav', ['courseid' => $course->id, 'name' => 'skiplinked', 'value' => '0']);
+        $DB->insert_record('local_linearnav', ['courseid' => $course->id, 'name' => 'skiptargets', 'value' => '0']);
+
+        $this->assertEquals(
+            ['skiplinked' => '0', 'skiptargets' => '0'],
+            $DB->get_records_menu('local_linearnav', ['courseid' => $this->copy($course)], 'name', 'name, value')
         );
+    }
+
+    public function test_old_includesections_restores_as_both_section_kinds(): void {
+        global $DB;
+
+        $this->resetAfterTest();
+        $this->setAdminUser();
+        $gen = $this->getDataGenerator();
+        $off = $gen->create_course();
+        $on = $gen->create_course();
+        $DB->insert_record('local_linearnav', ['courseid' => $off->id, 'name' => 'includesections', 'value' => '0']);
+        $DB->insert_record('local_linearnav', ['courseid' => $on->id, 'name' => 'includesections', 'value' => '1']);
+
+        $this->assertEquals(
+            ['includesubsections' => '0', 'includetopsections' => '0'],
+            $DB->get_records_menu('local_linearnav', ['courseid' => $this->copy($off)], 'name', 'name, value')
+        );
+        $this->assertSame([], $DB->get_records_menu('local_linearnav', ['courseid' => $this->copy($on)]));
     }
 
     public function test_overrides_go_with_the_course(): void {

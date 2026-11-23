@@ -50,5 +50,34 @@ function xmldb_local_linearnav_upgrade($oldversion) {
         upgrade_plugin_savepoint(true, 2026111906, 'local', 'linearnav');
     }
 
+    if ($oldversion < 2026112001) {
+        if (!get_config('local_linearnav', 'includesections')) {
+            set_config('includetopsections', 0, 'local_linearnav');
+            set_config('includesubsections', 0, 'local_linearnav');
+        }
+        unset_config('includesections', 'local_linearnav');
+        foreach ($DB->get_records('local_linearnav', ['name' => 'includesections', 'value' => '0']) as $row) {
+            foreach (['includetopsections', 'includesubsections'] as $name) {
+                $DB->delete_records('local_linearnav', ['courseid' => $row->courseid, 'name' => $name]);
+                $DB->insert_record('local_linearnav', ['courseid' => $row->courseid, 'name' => $name, 'value' => '0']);
+            }
+        }
+        $DB->delete_records('local_linearnav', ['name' => 'includesections']);
+        upgrade_plugin_savepoint(true, 2026112001, 'local', 'linearnav');
+    }
+
+    if ($oldversion < 2026112002) {
+        foreach (['prevlabel' => 'previous', 'nextlabel' => 'next'] as $name => $default) {
+            $text = get_config('local_linearnav', $name);
+            if ($text === '') {
+                $text = get_string($default, 'local_linearnav');
+            }
+            if ($text !== false && !preg_match('/^".*"$/', $text)) {
+                set_config($name, '"' . $text . '"', 'local_linearnav');
+            }
+        }
+        upgrade_plugin_savepoint(true, 2026112002, 'local', 'linearnav');
+    }
+
     return true;
 }

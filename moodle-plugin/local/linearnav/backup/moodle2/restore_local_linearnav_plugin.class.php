@@ -44,12 +44,20 @@ class restore_local_linearnav_plugin extends restore_local_plugin {
         global $DB;
 
         $courseid = $this->task->get_courseid();
-        $valid = in_array($data['name'], \local_linearnav\course_settings::NAMES, true)
-            && in_array($data['value'], ['0', '1'], true);
-        if (!$valid) {
-            return;
+        // Backups from before the split: includesections off turned both section kinds off, on changed nothing.
+        if ($data['name'] === 'includesections') {
+            $names = $data['value'] === '0' ? ['includetopsections', 'includesubsections'] : [];
+        } else {
+            $names = [$data['name']];
         }
-        $DB->delete_records('local_linearnav', ['courseid' => $courseid, 'name' => $data['name']]);
-        $DB->insert_record('local_linearnav', ['courseid' => $courseid, 'name' => $data['name'], 'value' => $data['value']]);
+        foreach ($names as $name) {
+            $valid = in_array($name, \local_linearnav\course_settings::NAMES, true)
+                && in_array($data['value'], ['0', '1'], true);
+            if (!$valid) {
+                continue;
+            }
+            $DB->delete_records('local_linearnav', ['courseid' => $courseid, 'name' => $name]);
+            $DB->insert_record('local_linearnav', ['courseid' => $courseid, 'name' => $name, 'value' => $data['value']]);
+        }
     }
 }

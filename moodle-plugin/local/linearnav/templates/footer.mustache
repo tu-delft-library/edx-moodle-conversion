@@ -23,19 +23,19 @@
     {
         "prev": {"url": "https://example.com/mod/page/view.php?id=1&lnav=abc", "name": "Intro"},
         "next": {"url": "https://example.com/mod/page/view.php?id=3&lnav=def", "name": "Week 1"},
-        "courseurl": "https://example.com/course/view.php?id=2"
+        "prevlabel": "Previous",
+        "nextlabel": "Next"
     }
 }}
 <nav class="d-flex w-100 justify-content-between align-items-center" aria-label="{{#str}}pluginname, local_linearnav{{/str}}">
     <div>
         {{#prev}}
-            <a class="btn btn-secondary rounded-0" href="{{url}}" title="{{name}}">{{#str}}previous, local_linearnav{{/str}}</a>
+            <a class="btn btn-secondary rounded-0" href="{{url}}" title="{{name}}"><span class="local-linearnav-label">{{prevlabel}}</span></a>
         {{/prev}}
     </div>
-    <a href="{{courseurl}}">{{#str}}backtocourse, local_linearnav{{/str}}</a>
     <div>
         {{#next}}
-            <a class="btn btn-primary rounded-0" href="{{url}}" title="{{name}}">{{#str}}next, local_linearnav{{/str}}</a>
+            <a class="btn btn-primary rounded-0" href="{{url}}" title="{{name}}"><span class="local-linearnav-label">{{nextlabel}}</span></a>
         {{/next}}
     </div>
 </nav>
