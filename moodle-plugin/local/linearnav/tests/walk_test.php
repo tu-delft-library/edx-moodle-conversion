@@ -71,7 +71,7 @@ final class walk_test extends \advanced_testcase
             '{"op":"&","c":[{"type":"date","d":">=","t":4102444800}],"showc":[true]}']);
         $cm['p8'] = $page(6, 'p8', ['visible' => 0]);
         $hidden = get_fast_modinfo($course)->get_section_info(4);
-        (new \core_courseformat\local\sectionactions($course))->set_visibility($hidden, false);
+        (new \core_courseformat\local\sectionactions($course))->update($hidden, ['visible' => 0]);
         $this->name_sections($course);
 
         // a fixture mistake must fail here, not look like a walk bug
@@ -97,7 +97,7 @@ final class walk_test extends \advanced_testcase
         $cm['U1'] = $this->stub($course, 1, 'U1', $cm['R1']);
         $cm['p2'] = $gen->create_module('page', ['course' => $course->id, 'section' => 1, 'name' => 'p2']);
         $hidden = get_fast_modinfo($course)->get_section_info(2);
-        (new \core_courseformat\local\sectionactions($course))->set_visibility($hidden, false);
+        (new \core_courseformat\local\sectionactions($course))->update($hidden, ['visible' => 0]);
         set_coursemodule_visible($cm['R1']->cmid, 1, 0);
         $this->name_sections($course);
 
@@ -472,7 +472,7 @@ final class walk_test extends \advanced_testcase
         $this->resetAfterTest();
         [$course] = $this->course_c();
         $hidden = get_fast_modinfo($course)->get_section_info(5);
-        (new \core_courseformat\local\sectionactions($course))->set_visibility($hidden, false);
+        (new \core_courseformat\local\sectionactions($course))->update($hidden, ['visible' => 0]);
 
         $this->as($course, 1, 0, 0, 'student');
         $this->assertSame(explode(' ', 'a1 a7 w gr c3 sp'), $this->names($course, plan::for_course($course)));
