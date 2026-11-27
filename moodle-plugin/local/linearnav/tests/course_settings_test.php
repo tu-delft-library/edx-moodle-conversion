@@ -106,11 +106,25 @@ final class course_settings_test extends \advanced_testcase {
         $course = $this->getDataGenerator()->create_course();
         $DB->insert_record('local_linearnav', ['courseid' => $course->id, 'name' => 'skiplinked', 'value' => '0']);
         $DB->insert_record('local_linearnav', ['courseid' => $course->id, 'name' => 'skiptargets', 'value' => '0']);
+        $DB->insert_record('local_linearnav', ['courseid' => $course->id, 'name' => 'sectionorder', 'value' => 'treedesc']);
+        $DB->insert_record('local_linearnav', ['courseid' => $course->id, 'name' => 'skipfiles', 'value' => '1']);
 
         $this->assertEquals(
-            ['skiplinked' => '0', 'skiptargets' => '0'],
+            ['sectionorder' => 'treedesc', 'skipfiles' => '1', 'skiplinked' => '0', 'skiptargets' => '0'],
             $DB->get_records_menu('local_linearnav', ['courseid' => $this->copy($course)], 'name', 'name, value')
         );
+    }
+
+    public function test_restore_drops_unknown_values(): void {
+        global $DB;
+
+        $this->resetAfterTest();
+        $this->setAdminUser();
+        $course = $this->getDataGenerator()->create_course();
+        $DB->insert_record('local_linearnav', ['courseid' => $course->id, 'name' => 'sectionorder', 'value' => 'bogus']);
+        $DB->insert_record('local_linearnav', ['courseid' => $course->id, 'name' => 'skiplinked', 'value' => 'tree']);
+
+        $this->assertSame([], $DB->get_records_menu('local_linearnav', ['courseid' => $this->copy($course)]));
     }
 
     public function test_old_includesections_restores_as_both_section_kinds(): void {

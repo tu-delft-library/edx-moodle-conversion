@@ -31,6 +31,12 @@ if ($hassiteconfig) {
         '',
         new lang_string('disclaimer', 'local_linearnav')
     ));
+    $heading = fn(string $name) => $settings->add(new admin_setting_heading(
+        'local_linearnav/heading_' . $name,
+        new lang_string('heading_' . $name, 'local_linearnav'),
+        ''
+    ));
+    $heading('skipping');
     $settings->add(new \local_linearnav\admin_setting_checkbox(
         'local_linearnav/skiplinked',
         new lang_string('skiplinked', 'local_linearnav'),
@@ -44,6 +50,13 @@ if ($hassiteconfig) {
         0
     ));
     $settings->hide_if('local_linearnav/skiptargets', 'local_linearnav/skiplinked');
+    $settings->add(new \local_linearnav\admin_setting_checkbox(
+        'local_linearnav/skipfiles',
+        new lang_string('skipfiles', 'local_linearnav'),
+        new lang_string('skipfiles_desc', 'local_linearnav'),
+        0
+    ));
+    $heading('stops');
     foreach (['includetopsections', 'includesubsections'] as $name) {
         $settings->add(new \local_linearnav\admin_setting_checkbox(
             'local_linearnav/' . $name,
@@ -52,6 +65,15 @@ if ($hassiteconfig) {
             0
         ));
     }
+    $heading('order');
+    $settings->add(new admin_setting_configselect(
+        'local_linearnav/sectionorder',
+        new lang_string('sectionorder', 'local_linearnav'),
+        new lang_string('sectionorder_desc', 'local_linearnav'),
+        'auto',
+        \local_linearnav\course_settings::sectionorder_choices()
+    ));
+    $heading('buttons');
     foreach (['prevlabel' => 'previous', 'nextlabel' => 'next'] as $name => $default) {
         $settings->add(new admin_setting_configtext(
             'local_linearnav/' . $name,

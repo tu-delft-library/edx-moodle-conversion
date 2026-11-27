@@ -79,5 +79,14 @@ function xmldb_local_linearnav_upgrade($oldversion) {
         upgrade_plugin_savepoint(true, 2026112002, 'local', 'linearnav');
     }
 
+    if ($oldversion < 2026112600) {
+        foreach (['sectionorder' => 'auto', 'skipfiles' => 0] as $name => $default) {
+            if (get_config('local_linearnav', $name) === false) {
+                set_config($name, $default, 'local_linearnav');
+            }
+        }
+        upgrade_plugin_savepoint(true, 2026112600, 'local', 'linearnav');
+    }
+
     return true;
 }
