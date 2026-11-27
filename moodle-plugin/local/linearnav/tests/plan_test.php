@@ -100,7 +100,7 @@ final class plan_test extends \advanced_testcase {
         $shown = $gen->create_module('page', ['course' => $course->id, 'section' => 1]);
         $gen->create_module('page', ['course' => $course->id, 'section' => 2]);
         $hidden = get_fast_modinfo($course)->get_section_info(2);
-        (new \core_courseformat\local\sectionactions($course))->set_visibility($hidden, false);
+        (new \core_courseformat\local\sectionactions($course))->update($hidden, ['visible' => 0]);
 
         set_config('skiplinked', 1, 'local_linearnav');
         $this->assertSame([[(int) $shown->cmid, (int) $shown->cmid]], $this->walk(plan::for_course($course)));

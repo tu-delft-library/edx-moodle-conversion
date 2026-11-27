@@ -24,6 +24,7 @@
 
 namespace local_linearnav;
 
+use core_course\cm_info;
 use core_course\modinfo;
 use core_course\section_info;
 use moodle_url;
@@ -227,13 +228,13 @@ final class plan {
             }
             $linked = isset($this->targets[$cm->id]) || isset($this->linked[$cm->id]);
             $skipped = ($this->skiplinked && $linked) || ($this->skipfiles && $cm->modname === 'resource');
-            if (!$cm->uservisible || !$cm->get_navigation_url() || $skipped) {
+            if (!$cm->uservisible || !$this->navigation_url($cm) || $skipped) {
                 continue;
             }
             $target = isset($this->targets[$cm->id]) ? $this->modinfo->get_cm($this->targets[$cm->id]) : $cm;
             if ($target->uservisible) {
                 $this->add('cm', (int) $cm->id, (int) $target->id, $cm->get_formatted_name(),
-                    $target->get_navigation_url());
+                    $this->navigation_url($target));
             }
         }
         foreach ($this->children[$section->section] ?? [] as $number) {
@@ -255,6 +256,20 @@ final class plan {
             }
         }
         return $ids && !array_diff($ids, array_keys($this->targets));
+    }
+
+    /**
+     * The page an activity opens from navigation, files and links get their own page instead of redirecting.
+     *
+     * @param cm_info $cm
+     * @return moodle_url|null
+     */
+    private function navigation_url(cm_info $cm): ?moodle_url {
+        if (method_exists($cm, 'get_navigation_url')) {
+            return $cm->get_navigation_url();
+        }
+        // shortcut: mirrors core 5.2 mod_resource/mod_url cm_info_dynamic, drop when requires >= 5.2.
+        return $cm->url ? new moodle_url($cm->url, in_array($cm->modname, ['resource', 'url']) ? ['forceview' => 1] : []) : null;
     }
 
     /**
