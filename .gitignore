@@ -41,3 +41,4 @@ tools/phpdoc/vendor/
 phpdoc.xml
 
 .cache/
+third_party/
