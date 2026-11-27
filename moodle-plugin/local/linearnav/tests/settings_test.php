@@ -52,12 +52,30 @@ final class settings_test extends \advanced_testcase {
         $this->assertNotTrue($setting->validate('"Next'));
     }
 
+    public function test_settings_are_grouped_under_headings(): void {
+        $this->resetAfterTest();
+        $this->setAdminUser();
+        $names = array_keys((array) admin_get_root(true)->locate('local_linearnav')->settings);
+        $names = array_map(fn($n) => substr($n, strlen('local_linearnav')), $names);
+
+        $this->assertSame([
+            'disclaimer',
+            'heading_skipping', 'skiplinked', 'skiptargets', 'skipfiles',
+            'heading_stops', 'includetopsections', 'includesubsections',
+            'heading_order', 'sectionorder',
+            'heading_buttons', 'prevlabel', 'nextlabel',
+            'reset',
+        ], $names);
+    }
+
     public function test_reset_restores_defaults(): void {
         $this->resetAfterTest();
         $this->setAdminUser();
         set_config('skiplinked', 0, 'local_linearnav');
         set_config('skiptargets', 1, 'local_linearnav');
         set_config('includetopsections', 1, 'local_linearnav');
+        set_config('sectionorder', 'core', 'local_linearnav');
+        set_config('skipfiles', 1, 'local_linearnav');
         set_config('nextlabel', '" "', 'local_linearnav');
 
         site_settings::reset();
@@ -66,6 +84,8 @@ final class settings_test extends \advanced_testcase {
         $this->assertSame('1', $config->skiplinked);
         $this->assertSame('0', $config->skiptargets);
         $this->assertSame('0', $config->includetopsections);
+        $this->assertSame('auto', $config->sectionorder);
+        $this->assertSame('0', $config->skipfiles);
         $this->assertSame('"Next"', $config->nextlabel);
         $this->assertSame('"Previous"', $config->prevlabel);
     }
@@ -80,5 +100,27 @@ final class settings_test extends \advanced_testcase {
 
         $this->assertSame('"Previous"', get_config('local_linearnav', 'prevlabel'));
         $this->assertSame('"Verder"', get_config('local_linearnav', 'nextlabel'));
+    }
+
+    public function test_upgrade_sets_new_defaults(): void {
+        $this->resetAfterTest();
+        set_config('version', 2026112004, 'local_linearnav');
+        unset_config('sectionorder', 'local_linearnav');
+        unset_config('skipfiles', 'local_linearnav');
+
+        xmldb_local_linearnav_upgrade(2026112004);
+
+        $this->assertSame('auto', get_config('local_linearnav', 'sectionorder'));
+        $this->assertSame('0', get_config('local_linearnav', 'skipfiles'));
+    }
+
+    public function test_upgrade_keeps_existing_sectionorder(): void {
+        $this->resetAfterTest();
+        set_config('version', 2026112004, 'local_linearnav');
+        set_config('sectionorder', 'core', 'local_linearnav');
+
+        xmldb_local_linearnav_upgrade(2026112004);
+
+        $this->assertSame('core', get_config('local_linearnav', 'sectionorder'));
     }
 }

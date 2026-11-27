@@ -32,8 +32,28 @@ use core_course\hook\before_course_deleted;
  * Course overrides: blank means use the site setting, only overrides are stored.
  */
 final class course_settings {
-    /** @var string[] settings a course can override */
-    public const NAMES = ['skiplinked', 'skiptargets', 'includetopsections', 'includesubsections'];
+    /** @var array<string, string[]> settings a course can override => their allowed values */
+    public const VALUES = [
+        'skiplinked' => ['0', '1'],
+        'skiptargets' => ['0', '1'],
+        'skipfiles' => ['0', '1'],
+        'includetopsections' => ['0', '1'],
+        'includesubsections' => ['0', '1'],
+        'sectionorder' => plan::SECTIONORDERS,
+    ];
+
+    /**
+     * Labels of the sectionorder values.
+     *
+     * @return array<string, string> value => label
+     */
+    public static function sectionorder_choices(): array {
+        $choices = [];
+        foreach (plan::SECTIONORDERS as $value) {
+            $choices[$value] = get_string('sectionorder_' . $value, 'local_linearnav');
+        }
+        return $choices;
+    }
 
     /**
      * Site config with this course's overrides applied.
@@ -69,11 +89,13 @@ final class course_settings {
     public static function form_definition(after_form_definition $hook): void {
         $mform = $hook->mform;
         $mform->addElement('header', 'local_linearnav', get_string('pluginname', 'local_linearnav'));
-        $options = ['' => get_string('usesitedefault', 'local_linearnav'), '1' => get_string('yes'), '0' => get_string('no')];
+        $default = ['' => get_string('usesitedefault', 'local_linearnav')];
+        $yesno = ['1' => get_string('yes'), '0' => get_string('no')];
         $current = self::overrides((int) ($hook->formwrapper->get_course()->id ?? 0));
-        foreach (self::NAMES as $name) {
+        foreach (array_keys(self::VALUES) as $name) {
             $field = 'local_linearnav_' . $name;
             $label = get_string($name, 'local_linearnav');
+            $options = $default + ($name === 'sectionorder' ? self::sectionorder_choices() : $yesno);
             $mform->addElement('select', $field, $name === 'skiptargets' ? \html_writer::tag('em', $label) : $label, $options);
             $mform->setDefault($field, $current[$name] ?? '');
         }
@@ -92,7 +114,7 @@ final class course_settings {
         global $DB;
 
         $data = $hook->get_data();
-        foreach (self::NAMES as $name) {
+        foreach (array_keys(self::VALUES) as $name) {
             $field = 'local_linearnav_' . $name;
             if (!property_exists($data, $field)) {
                 continue;

@@ -51,9 +51,7 @@ class restore_local_linearnav_plugin extends restore_local_plugin {
             $names = [$data['name']];
         }
         foreach ($names as $name) {
-            $valid = in_array($name, \local_linearnav\course_settings::NAMES, true)
-                && in_array($data['value'], ['0', '1'], true);
-            if (!$valid) {
+            if (!in_array($data['value'], \local_linearnav\course_settings::VALUES[$name] ?? [], true)) {
                 continue;
             }
             $DB->delete_records('local_linearnav', ['courseid' => $courseid, 'name' => $name]);
